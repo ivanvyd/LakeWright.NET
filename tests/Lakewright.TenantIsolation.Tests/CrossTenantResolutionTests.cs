@@ -1,7 +1,7 @@
-﻿using Lakewright.Core.Tenancy;
-using Microsoft.EntityFrameworkCore;
+using Lakewright.Core.Tenancy;
 using Lakewright.Multitenancy;
 using Lakewright.Multitenancy.Model;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace Lakewright.TenantIsolation.Tests;
@@ -30,13 +30,19 @@ public class CrossTenantResolutionTests(PostgresFixture postgres)
         db.Organizations.AddRange(
             new Organization
             {
-                Id = AcmeId, Name = "Acme", Slug = "acme", CreatedAt = now,
+                Id = AcmeId,
+                Name = "Acme",
+                Slug = "acme",
+                CreatedAt = now,
                 Schema = UnityCatalogIdentifier.SchemaForTenant(AcmeId),
                 State = OrganizationState.Active
             },
             new Organization
             {
-                Id = GlobexId, Name = "Globex", Slug = "globex", CreatedAt = now,
+                Id = GlobexId,
+                Name = "Globex",
+                Slug = "globex",
+                CreatedAt = now,
                 Schema = UnityCatalogIdentifier.SchemaForTenant(GlobexId),
                 State = OrganizationState.Active
             });

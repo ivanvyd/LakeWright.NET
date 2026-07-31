@@ -52,19 +52,22 @@ settles it.
 
 ## Planned repository layout
 
+Projects appear when there is code to put in them, so this grows over the milestones in
+[ROADMAP.md](ROADMAP.md). What exists today:
+
 ```
 src/
-  Lakewright.Core/            operations, tenancy contracts, result types
-  Lakewright.Databricks/      typed clients over the platform REST surface
-  Lakewright.Multitenancy/    tenant context, resolution, provisioning
-  Lakewright.AspNetCore/      DI, middleware, Problem Details mapping
-  Lakewright.Observability/   OpenTelemetry wiring, OTLP to MLflow
-  Signalboard/                the sample product that proves the architecture
-databricks/                   Declarative Automation Bundle, jobs, pipelines, grants
-docs/planning/                research and the plan
+  Lakewright.Core/            tenancy contracts
+  Lakewright.Databricks/      tenant-scoped Databricks SQL access
+  Lakewright.Multitenancy/    tenant model, resolution, EF Core
+tests/
+  Lakewright.TenantIsolation.Tests/   the suite the rest of it rests on
+docs/planning/                research, spikes and the plan
 docs/decisions/               architecture decision records
-tests/                        unit, contract, cross-tenant isolation, integration
 ```
+
+Still to come: the ASP.NET Core integration, observability, the Declarative Automation Bundle, and
+the Signalboard sample.
 
 ## Documentation
 

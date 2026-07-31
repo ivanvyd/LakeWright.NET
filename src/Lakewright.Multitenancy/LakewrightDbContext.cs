@@ -1,4 +1,4 @@
-﻿using Lakewright.Core.Tenancy;
+using Lakewright.Core.Tenancy;
 using Lakewright.Multitenancy.Model;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;

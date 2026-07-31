@@ -1,4 +1,4 @@
-﻿using Lakewright.Multitenancy;
+using Lakewright.Multitenancy;
 using Microsoft.EntityFrameworkCore;
 using Testcontainers.PostgreSql;
 
