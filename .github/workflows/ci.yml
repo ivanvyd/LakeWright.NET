@@ -51,6 +51,12 @@ jobs:
           name: test-results
           path: TestResults/
 
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: bash scripts/check-doc-links.sh
+
   # Its own required check, so a skipped or filtered-out isolation suite fails
   # the build instead of passing quietly inside the general test job.
   tenant-isolation:
