@@ -99,6 +99,45 @@ public class OperationClaimTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task Work_queued_by_a_tenant_that_is_since_suspended_is_never_claimed()
+    {
+        // The resolver refuses a suspended organization at request time. Without the same rule on
+        // the claim, an operation queued while the tenant was active keeps spending Databricks
+        // compute after their access was cut off, which is the case suspension exists to stop.
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await SeedAsync(postgres, operations: 1);
+        var store = new OperationStore(db);
+
+        var acme = await db.Organizations.FindAsync([AcmeId], ct);
+        acme!.State = OrganizationState.Suspended;
+        await db.SaveChangesAsync(ct);
+
+        (await store.ClaimNextAsync(ct)).ShouldBeNull();
+
+        // Reinstating the tenant makes the queued work runnable again rather than losing it.
+        acme.State = OrganizationState.Active;
+        await db.SaveChangesAsync(ct);
+
+        (await store.ClaimNextAsync(ct)).ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task Completing_another_tenants_operation_is_refused()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await SeedAsync(postgres, operations: 1);
+        var store = new OperationStore(db);
+
+        var claimed = await store.ClaimNextAsync(ct);
+
+        await Should.ThrowAsync<InvalidOperationException>(
+            async () => await store.CompleteAsync(
+                TenantId.New(), claimed!.Id, OperationState.Succeeded, null, ct));
+
+        (await store.FindAsync(Ctx(), claimed!.Id, ct))!.State.ShouldBe(OperationState.Pending);
+    }
+
+    [Fact]
     public async Task An_operation_orphaned_between_submit_and_record_is_found_by_reconciliation()
     {
         // The crash-critical window from ADR 0005: a worker dies after submitting to Databricks

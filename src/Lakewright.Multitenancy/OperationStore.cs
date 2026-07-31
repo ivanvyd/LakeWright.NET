@@ -9,9 +9,15 @@ namespace Lakewright.Multitenancy;
 /// identifier.
 /// </summary>
 /// <remarks>
-/// Every method takes a <see cref="TenantContext"/> and filters on it. There is no lookup by
-/// external identifier alone, because that is the query whose absence stops a caller polling
-/// another tenant's results with an identifier from a log line.
+/// Every tenant-facing method takes a tenant and filters on it. There is no lookup by external
+/// identifier alone, because that is the query whose absence stops a caller polling another
+/// tenant's results with an identifier from a log line.
+///
+/// Two methods are deliberately system-scoped and say so at their own definitions:
+/// <see cref="ClaimNextAsync"/> and <see cref="FindOrphanedForReconciliationAsync"/>. They run in
+/// the worker, outside any request, and serve every tenant. Nothing else may be added to that list
+/// without the same explicit note, because a blanket guarantee in this comment that two of the
+/// methods do not honour is worse than no comment.
 /// </remarks>
 public sealed class OperationStore(LakewrightDbContext db)
 {
@@ -104,36 +110,63 @@ public sealed class OperationStore(LakewrightDbContext db)
     ///
     /// A worker that dies mid-claim releases its lock on rollback and the row returns to the pool.
     ///
-    /// Not tenant-scoped: the worker serves every tenant. The tenant comes off the claimed row.
+    /// Not tenant-scoped: the worker serves every tenant, and the tenant comes off the claimed row.
+    /// It does still honour organization lifecycle. An operation queued while a tenant was active
+    /// and claimed after it was suspended would keep spending Databricks compute for a tenant whose
+    /// access was cut off, so the claim joins organizations and takes only active ones. The
+    /// request-time resolver has the same rule; this is the asynchronous half of it.
     /// </remarks>
     public async Task<Operation?> ClaimNextAsync(CancellationToken cancellationToken)
     {
+        // Both states are interpolated, which FromSql turns into parameters rather than text.
+        // A literal 0 here would silently start claiming a different state if the enum is ever
+        // reordered, with nothing to catch it: the raw SQL does not see the enum at all.
         var claimed = await db.Operations
             .FromSql($"""
-                UPDATE operations
+                UPDATE operations o
                 SET "ClaimedAt" = now()
-                WHERE "Id" = (
-                    SELECT "Id" FROM operations
-                    WHERE "State" = 0 AND "ClaimedAt" IS NULL
-                    ORDER BY "CreatedAt"
-                    FOR UPDATE SKIP LOCKED
+                WHERE o."Id" = (
+                    SELECT c."Id" FROM operations c
+                    JOIN organizations org ON org."Id" = c."OrganizationId"
+                    WHERE c."State" = {(int)OperationState.Pending}
+                      AND c."ClaimedAt" IS NULL
+                      AND org."State" = {(int)OrganizationState.Active}
+                    ORDER BY c."CreatedAt"
+                    FOR UPDATE OF c SKIP LOCKED
                     LIMIT 1
                 )
-                RETURNING *
+                RETURNING o.*
                 """)
+            // The caller wants the claimed row as data. Leaving it untracked keeps the raw UPDATE
+            // from seeding the change tracker with a row state that later writes would compare
+            // against; those writes re-read the row.
+            .AsNoTracking()
             .ToListAsync(cancellationToken);
 
         return claimed.FirstOrDefault();
     }
 
     /// <summary>Marks a claimed operation as finished.</summary>
+    /// <remarks>
+    /// Takes the owning tenant and filters on it, even though today's only caller is the worker
+    /// acting on a row it just claimed. The cost is one predicate; the alternative is a method
+    /// that writes to any operation by id, which is a cross-tenant write the first time someone
+    /// puts an admin endpoint in front of it.
+    /// </remarks>
     public async Task CompleteAsync(
+        TenantId tenantId,
         Guid operationId,
         OperationState state,
         string? error,
         CancellationToken cancellationToken)
     {
-        var operation = await db.Operations.SingleAsync(o => o.Id == operationId, cancellationToken);
+        var operation = await db.Operations
+            .SingleOrDefaultAsync(
+                o => o.Id == operationId && o.OrganizationId == tenantId,
+                cancellationToken)
+            ?? throw new InvalidOperationException(
+                $"Operation {operationId} does not belong to tenant {tenantId}.");
+
         operation.State = state;
         operation.Error = error;
         operation.CompletedAt = DateTimeOffset.UtcNow;
