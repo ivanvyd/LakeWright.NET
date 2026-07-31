@@ -26,9 +26,10 @@ Databricks documents the trade-off directly, for Databricks Apps:
 App identity means you filter. User identity means Unity Catalog filters. There is no third option,
 and there is no general on-behalf-of flow for a service hosted outside Databricks.
 
-This is the kind of thing that passes a demo and fails an audit. Lakewright.NET is the architecture
-that takes it seriously, plus the pieces around it that every such product needs anyway: durable
-asynchronous operations, per-tenant cost attribution, and deployment of the Databricks side as code.
+You find this in an audit rather than in testing, because every tenant's request returns a
+plausible-looking result. Lakewright.NET handles it in the query layer, along with the pieces such a
+product needs anyway: durable asynchronous operations, per-tenant cost attribution, and the
+Databricks side deployed as code.
 
 ## What this is not
 
@@ -46,8 +47,8 @@ bypassing single sign-on (SSO) are not supported." Every end user must exist as 
 Databricks account, there are no custom domains, and the runtime ships Python and Node with no .NET.
 
 Databricks Apps is the right host for internal tooling. It cannot host a customer-facing product.
-That is a locked premise here, not an open question. See
-[docs/decisions](docs/decisions).
+[ADR 0001](docs/decisions/0001-host-the-application-outside-databricks.md) records the evidence and
+settles it.
 
 ## Planned repository layout
 

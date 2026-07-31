@@ -43,9 +43,8 @@ jobs:
           name: test-results
           path: TestResults/
 
-  # Isolation is the property this project exists to provide, so it gets its own
-  # required check rather than sitting inside the general test job where a
-  # skipped suite would go unnoticed.
+  # Its own required check, so a skipped or filtered-out isolation suite fails
+  # the build instead of passing quietly inside the general test job.
   tenant-isolation:
     runs-on: ubuntu-latest
     steps:
@@ -63,9 +62,14 @@ jobs:
       # `bundle validate` resolves against a live workspace, so it needs credentials
       # that a fork PR must never receive. Forks get schema validation only; a
       # maintainer runs the authenticated validation before merge.
-      - name: Validate bundle syntax (no credentials)
+      # `bundle schema` only prints the schema, so it has to be fed to a validator
+      # against the actual file to check anything.
+      - name: Validate bundle against schema (no credentials)
         working-directory: databricks
-        run: databricks bundle schema > /dev/null && echo "schema OK"
+        run: |
+          pipx install check-jsonschema
+          databricks bundle schema > /tmp/bundle.schema.json
+          check-jsonschema --schemafile /tmp/bundle.schema.json databricks.yml
 
       - name: Validate against workspace
         if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository

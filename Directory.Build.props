@@ -18,6 +18,13 @@
   </PropertyGroup>
 
   <PropertyGroup>
+    <!-- Lock files are what make `dotnet restore --locked-mode` in CI mean anything:
+         without them a compromised or yanked transitive package changes silently
+         between the run that passed review and the run that produced the artifact. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+  <PropertyGroup>
     <!-- Deterministic output so a release binary can be rebuilt and compared
          against the published artifact. Required for the provenance attestation
          in .github/workflows/release.yml to mean anything. -->
