@@ -5,9 +5,12 @@ The build kit for multi-tenant .NET SaaS on Databricks.
 An opinionated reference architecture and a small set of reusable components for teams that sell
 analytics to customers who are not themselves Databricks customers.
 
-> **Status: planning. There is no runnable code yet.**
-> This repository currently contains the research, the architecture decisions and the delivery plan.
-> The first milestone is defined in [ROADMAP.md](ROADMAP.md). Watch the repo rather than cloning it.
+> **Status: early. The tenancy core exists; the product around it does not.**
+> The tenant model, the tenant-scoped Databricks query layer and the isolation suite are
+> implemented and tested. There is no web application, no bundle and no sample yet, so there is
+> nothing to run end to end. The milestone is in [ROADMAP.md](ROADMAP.md), and
+> [docs/compatibility.md](docs/compatibility.md) records exactly what has been verified against a
+> live workspace and what has not.
 
 ## What problem this solves
 
@@ -76,6 +79,9 @@ the Signalboard sample.
 | [Product thesis](docs/planning/01-product-thesis.md) | What this is for, and the strongest argument against building it |
 | [Architecture](docs/planning/03-architecture.md) | The three planes, what lives where, and why |
 | [Tenant model](docs/planning/04-tenant-model.md) | The isolation decision matrix and the recommended default |
+| [Testing isolation](docs/guides/testing-isolation.md) | How the isolation suite is shown to fail when isolation is broken |
+| [Compatibility](docs/compatibility.md) | Verified against a live workspace, versus taken from documentation |
+| [SOC 2 mapping](docs/compliance/soc2-mapping.md) | Which controls exist, and which are the adopter's problem |
 | [Decisions](docs/decisions) | One record per load-bearing choice |
 
 ## Support boundary
@@ -84,8 +90,9 @@ This is a community project maintained in personal time. It is provided for your
 it carries no service-level agreement, and it is provided as-is without warranties or guarantees of
 any kind. Do not open Databricks support tickets about it.
 
-The compatibility matrix records which Databricks features have been verified against a live
-workspace and which have not. Anything not listed as verified should be treated as unverified.
+[docs/compatibility.md](docs/compatibility.md) records which Databricks features have been verified
+against a live workspace and which have not. Anything not listed as verified should be treated as
+unverified.
 
 ## Trademarks
 

@@ -22,13 +22,16 @@ multi-tenant product on Databricks should be assembled, then runs it.
 
 The three assumptions that would invalidate the plan are tested before anything is built on them.
 
-| Spike | Question it answers | Kill condition |
+| Spike | Question it answers | Status |
 |---|---|---|
-| Free Edition service principals | Can a contributor authenticate as a service principal on Free Edition? Undocumented. | If not, the contributor auth story changes to user identity and the README must say so. |
-| Managed identity to Databricks | Does an Entra token from a Container App managed identity work as a Databricks bearer token end to end? | If not, the secretless claim is withdrawn. |
-| `Microsoft.Extensions.AI.OpenAI` against Databricks | Does chat, streaming, and tool calling round-trip? | If not, the AI module needs a hand-written client and drops out of v0.1. |
+| Statement Execution through the client library | Does `Microsoft.Azure.Databricks.Client` support parameters, `EXTERNAL_LINKS` and `ARROW_STREAM`? | **Done.** Kill condition not triggered. [spike 01](docs/planning/spike-01-statement-execution.md) |
+| Interpolation guard | Can interpolated SQL be made a compile error? | **Done**, after the first attempt turned out to be inert. [spike 02](docs/planning/spike-02-interpolation-guard.md) |
+| Managed identity to Databricks | Does an Entra token work as a Databricks bearer token end to end? | **Partly.** Verified for a user principal; the managed-identity variant is untested. Kill condition stands: if it fails, the secretless claim is withdrawn rather than qualified. |
+| Free Edition service principals | Can a contributor authenticate as a service principal on Free Edition? Undocumented. | Open. Highest-risk assumption in the contributor story. |
+| `Microsoft.Extensions.AI.OpenAI` against Databricks | Does chat, streaming and tool calling round-trip? | Open. If not, the AI module drops out of v0.1. |
 
 Also in this window: solution skeleton, EF Core model, Postgres via Testcontainers, CI green.
+**Done**, except that CI has never run a bundle job because there is no bundle yet.
 
 ### Weeks 3-4: the tenancy core
 
