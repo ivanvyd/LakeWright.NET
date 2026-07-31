@@ -48,8 +48,16 @@ is written here, before the features it protects.
   every lookup filters on the tenant. A caller holding another tenant's operation id gets null,
   indistinguishable from one that does not exist.
 
-Still open here: the worker that claims operations with `SELECT ... FOR UPDATE SKIP LOCKED`, and the
-reconciliation pass that matches orphaned rows to runs. The record they need now exists.
+The claim loop and the reconciliation query now exist. Still open: the `BackgroundService` that runs
+them, and the reconciliation *actor* that matches orphaned rows to Databricks runs.
+
+**When the reconciliation actor is built it must claim atomically**, the same way `ClaimNextAsync`
+does, rather than reading with `FindOrphanedForReconciliationAsync` and writing later. A slow-but-
+alive worker and reconciliation can otherwise both act on one row and the later write silently
+undoes the earlier. An `xmin` concurrency token was tried as an alternative and removed: the claim
+is a raw `UPDATE`, so the version the change tracker holds afterwards is read mid-statement and
+every subsequent write failed as a false conflict. Atomic claiming is the simpler fix and matches
+what is already there.
 
 ### Weeks 5-6: operations and Databricks
 

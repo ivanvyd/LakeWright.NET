@@ -51,6 +51,15 @@ public sealed class PostgresFixture : IAsyncLifetime
     /// tested while connected as the owner passes without proving anything. These tests connect as
     /// the role the application actually uses.
     /// </remarks>
+    /// <summary>
+    /// A fresh context over an existing database. Concurrency tests need one connection each;
+    /// sharing a context serialises them and the test passes without exercising anything.
+    /// </summary>
+    public static LakewrightDbContext ContextFor(string connectionString) =>
+        new(new DbContextOptionsBuilder<LakewrightDbContext>()
+            .UseNpgsql(connectionString)
+            .Options);
+
     public static LakewrightDbContext AsApplicationRole(
         LakewrightDbContext owner,
         string role,

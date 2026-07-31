@@ -63,6 +63,24 @@ Passed!  - Failed: 0, Passed: 13, Total: 13
 Two tests failed and they were the two that should have. The other eleven passing is the useful
 part: it means the suite localises the break rather than going uniformly red.
 
+## A test can pass for the wrong reason
+
+Breaking the control is not enough on its own; you have to break the *specific* thing the test
+claims to guard.
+
+The concurrency test for the operation claim loop asserts that ten workers never claim the same
+row. Deleting `FOR UPDATE SKIP LOCKED` left it green, because the single-statement update is atomic
+either way and a competing worker simply blocks and re-evaluates. The test was real, and the
+comment describing what made it pass was wrong.
+
+Replacing the claim with a select-then-update pair — the realistic mistake — did turn it red. So
+the test earns its place, and the code comment now says that `SKIP LOCKED` buys throughput rather
+than correctness.
+
+Four controls in this repository have now shipped with a test that passed while the control did
+nothing or did something other than advertised. Assume yours is the fifth until you have watched
+it fail.
+
 ## Adding an endpoint
 
 Any change touching tenant resolution, the query layer or authentication adds a case here in the
