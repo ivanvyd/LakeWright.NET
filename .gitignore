@@ -1,0 +1,53 @@
+## .NET build output
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+*.user
+*.suo
+.vs/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json.sample
+.idea/
+*.swp
+
+## Test and coverage output
+TestResults/
+coverage/
+*.coverage
+*.trx
+*.received.*
+
+## Secrets. Nothing here is a substitute for push protection being on.
+*.env
+.env.*
+!.env.example
+appsettings.Local.json
+appsettings.*.Local.json
+secrets.json
+*.pfx
+*.p12
+
+## Databricks CLI
+.databricks/
+databricks.yml.local
+.databrickscfg
+
+## Node, for the frontend workspace
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+## Python, for the Databricks-side assets
+__pycache__/
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+## OS
+.DS_Store
+Thumbs.db

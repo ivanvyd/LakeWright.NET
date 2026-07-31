@@ -1,0 +1,37 @@
+name: Feature proposal
+description: Propose something the project should do
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This project declines useful features on purpose. Scope growth into a generic .NET SaaS
+        framework is the most likely way it fails. See
+        [GOVERNANCE.md](../blob/main/GOVERNANCE.md#scope-control).
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you were trying to do, and what stopped you. Not the solution yet.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Which does this belong to?
+      options:
+        - Specific to running a multi-tenant product on Databricks
+        - Part of the tenant isolation, async operation, or cost attribution core
+        - Neither, but I think it belongs here anyway
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead
+      description: If an existing dependency nearly solves this, say which and where it falls short.
+    validations:
+      required: true

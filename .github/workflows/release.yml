@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write      # create the GitHub release
+      id-token: write      # OIDC for provenance attestation
+      attestations: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0   # SourceLink and version derivation need history
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - run: dotnet restore --locked-mode
+      - run: dotnet build --no-restore -c Release
+      - run: dotnet test --no-build -c Release --filter "Category!=Live"
+      - run: dotnet pack --no-build -c Release -o artifacts
+
+      # CycloneDX over the solution: one tool, matches the NuGet dependency graph.
+      # actions/attest accepts either CycloneDX or SPDX, so this does not lock out
+      # a consumer who asks for SPDX later.
+      - name: Generate SBOM
+        run: |
+          dotnet tool install --global CycloneDX
+          dotnet CycloneDX Lakewright.slnx -o artifacts -f sbom.cyclonedx.json --json
+
+      # Provenance is only meaningful because Directory.Build.props sets
+      # Deterministic and ContinuousIntegrationBuild: the artifact can be rebuilt
+      # and compared.
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: 'artifacts/*.nupkg'
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-artifacts
+          path: artifacts/
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "${{ github.ref_name }}" \
+            --notes-file CHANGELOG.md \
+            artifacts/*.nupkg artifacts/sbom.cyclonedx.json
+
+      # Publishing to NuGet is deliberately not wired up. Packages ship when they
+      # have independent value and a stable surface. See GOVERNANCE.md.

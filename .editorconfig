@@ -1,0 +1,55 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{json,yml,yaml,js,jsx,ts,tsx,css,html,razor}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.{cs,csx}]
+indent_size = 4
+
+# Language conventions. These are build-enforced via EnforceCodeStyleInBuild,
+# so a violation fails CI rather than accumulating as reviewer commentary.
+csharp_style_namespace_declarations = file_scoped:error
+csharp_using_directive_placement = outside_namespace:error
+csharp_prefer_braces = true:warning
+csharp_style_var_for_built_in_types = false:silent
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_prefer_primary_constructors = true:suggestion
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+
+dotnet_style_qualification_for_field = false:error
+dotnet_style_qualification_for_property = false:error
+dotnet_style_qualification_for_method = false:error
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:error
+dotnet_style_readonly_field = true:warning
+dotnet_style_coalesce_expression = true:suggestion
+dotnet_style_null_propagation = true:suggestion
+
+# Naming
+dotnet_naming_rule.private_fields_underscore.severity = error
+dotnet_naming_rule.private_fields_underscore.symbols = private_fields
+dotnet_naming_rule.private_fields_underscore.style = underscore_camel
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+dotnet_naming_style.underscore_camel.required_prefix = _
+dotnet_naming_style.underscore_camel.capitalization = camel_case
+
+# Async methods that do not await are almost always a bug in this codebase:
+# every Databricks call is I/O and must flow the CancellationToken.
+dotnet_diagnostic.CS1998.severity = error
+dotnet_diagnostic.CA2016.severity = error
+
+[tests/**/*.cs]
+# Test projects assert on shape, not on documented public surface.
+dotnet_diagnostic.CA1707.severity = none

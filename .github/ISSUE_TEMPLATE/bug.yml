@@ -1,0 +1,45 @@
+name: Bug report
+description: Something behaves differently from what is documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If this is a security issue, stop and follow [SECURITY.md](../blob/main/SECURITY.md) instead.
+
+  - type: textarea
+    id: expected-actual
+    attributes:
+      label: What happened, and what you expected
+      description: Include the exact error text rather than a paraphrase.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Smallest set of steps that shows it. State whether it reproduces against the mock server, a live workspace, or both.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: databricks-tier
+    attributes:
+      label: Databricks environment
+      options:
+        - Mock server only (no Databricks)
+        - Free Edition
+        - Azure Databricks
+        - AWS Databricks
+        - GCP Databricks
+    validations:
+      required: true
+
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Output of `dotnet --version`, the project version or commit SHA, and `databricks -v` if relevant.
+    validations:
+      required: true

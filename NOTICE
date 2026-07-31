@@ -1,0 +1,19 @@
+Lakewright.NET
+Copyright 2026 Lakewright.NET contributors
+
+This product includes software developed at the Lakewright.NET project
+(https://github.com/ivanvyd/lakewright-dotnet).
+
+---
+
+Databricks is a trademark of Databricks, Inc. This project is not affiliated
+with, endorsed by, or sponsored by Databricks, Inc. References to Databricks
+products are descriptive and nominative.
+
+.NET is a trademark of Microsoft Corporation. This project is not affiliated
+with, endorsed by, or sponsored by Microsoft Corporation.
+
+No code in this repository is derived from Databricks Labs projects or from
+Databricks Solution Accelerators. Those are published under the Databricks
+License, which restricts use to Databricks Services and is not compatible with
+Apache-2.0 redistribution.

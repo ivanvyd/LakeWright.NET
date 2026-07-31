@@ -1,0 +1,72 @@
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # CodeQL and Scorecard find things that were not findings when the code merged,
+    # because the advisory database moves. Without this trigger they only ever see
+    # the code at merge time.
+    - cron: '17 6 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  codeql:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [csharp, actions]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: github/codeql-action/init@a2983b8bed1923f44751c5c43237f479442827b3 # v3
+        with:
+          language: ${{ matrix.language }}
+          queries: security-extended
+      - uses: github/codeql-action/autobuild@a2983b8bed1923f44751c5c43237f479442827b3 # v3
+      - uses: github/codeql-action/analyze@a2983b8bed1923f44751c5c43237f479442827b3 # v3
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4
+        with:
+          fail-on-severity: moderate
+          # A copyleft dependency would make the Apache-2.0 promise in the README false.
+          deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0, LGPL-3.0
+          comment-summary-in-pr: on-failure
+
+  scorecard:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
+        with:
+          results_file: scorecard.sarif
+          results_format: sarif
+          publish_results: true
+      - uses: github/codeql-action/upload-sarif@a2983b8bed1923f44751c5c43237f479442827b3 # v3
+        with:
+          sarif_file: scorecard.sarif

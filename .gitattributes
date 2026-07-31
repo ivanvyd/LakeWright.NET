@@ -1,0 +1,26 @@
+# Normalise line endings so a Windows contributor and a Linux CI runner
+# produce the same hash for the same file.
+* text=auto eol=lf
+
+*.sln        text eol=crlf
+*.cmd        text eol=crlf
+*.ps1        text eol=crlf
+
+*.sh         text eol=lf
+*.py         text eol=lf
+*.cs         text eol=lf
+*.csproj     text eol=lf
+*.yml        text eol=lf
+*.yaml       text eol=lf
+
+*.png        binary
+*.jpg        binary
+*.gif        binary
+*.ico        binary
+*.pdf        binary
+*.snupkg     binary
+*.nupkg      binary
+
+# Keep generated and vendored files out of diff review and language stats.
+docs/**/*.md          linguist-documentation
+**/Generated/**       linguist-generated

@@ -1,0 +1,36 @@
+version: 2
+
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # One PR per ecosystem cluster. Fifteen separate bumps a week is how
+      # dependency updates stop being reviewed and start being rubber-stamped.
+      microsoft-extensions:
+        patterns: ['Microsoft.Extensions.*']
+      aspnetcore:
+        patterns: ['Microsoft.AspNetCore.*']
+      efcore:
+        patterns: ['Microsoft.EntityFrameworkCore.*', 'Npgsql.*']
+      opentelemetry:
+        patterns: ['OpenTelemetry.*']
+      test:
+        patterns: ['xunit*', 'Testcontainers*', 'WireMock*', 'NSubstitute', 'Shouldly']
+
+  # Pinned SHAs do not update themselves. Without this, hardening the workflows
+  # means freezing them at whatever was current the day they were written.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday

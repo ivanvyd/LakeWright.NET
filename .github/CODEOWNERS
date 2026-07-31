@@ -1,0 +1,10 @@
+* @ivanvyd
+
+# Changes here alter the security posture of every workflow run, so they are
+# called out separately even though the global rule already covers them.
+/.github/workflows/ @ivanvyd
+/SECURITY.md        @ivanvyd
+
+# The controls the project's central claim rests on.
+/src/Lakewright.Multitenancy/ @ivanvyd
+/docs/decisions/              @ivanvyd

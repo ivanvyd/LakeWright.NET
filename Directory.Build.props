@@ -1,0 +1,43 @@
+﻿<Project>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest-Recommended</AnalysisLevel>
+    <!-- A public accelerator is read as much as it is run. Undocumented public
+         members are a defect here in a way they would not be in a private service. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- Deterministic output so a release binary can be rebuilt and compared
+         against the published artifact. Required for the provenance attestation
+         in .github/workflows/release.yml to mean anything. -->
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Authors>Lakewright.NET contributors</Authors>
+    <Product>Lakewright.NET</Product>
+    <RepositoryUrl>https://github.com/ivanvyd/lakewright-dotnet</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/ivanvyd/lakewright-dotnet</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Copyright>Copyright (c) Lakewright.NET contributors</Copyright>
+  </PropertyGroup>
+
+</Project>
