@@ -28,7 +28,7 @@ The three assumptions that would invalidate the plan are tested before anything 
 | Interpolation guard | Can interpolated SQL be made a compile error? | **Done**, after the first attempt turned out to be inert. [spike 02](docs/planning/spike-02-interpolation-guard.md) |
 | Managed identity to Databricks | Does an Entra token work as a Databricks bearer token end to end? | **Partly.** Verified for a user principal; the managed-identity variant is untested. Kill condition stands: if it fails, the secretless claim is withdrawn rather than qualified. |
 | Free Edition service principals | Can a contributor authenticate as a service principal on Free Edition? Undocumented. | Open. Highest-risk assumption in the contributor story. |
-| `Microsoft.Extensions.AI.OpenAI` against Databricks | Does chat, streaming and tool calling round-trip? | Open. If not, the AI module drops out of v0.1. |
+| `Microsoft.Extensions.AI.OpenAI` against Databricks | Does chat, streaming and tool calling round-trip? | **Done, partly.** Chat and tool calling work with no client code. Streaming fails: Databricks sends a malformed `usage` on every chunk. Module stays in v0.1; streaming needs a shim, and it is a well-evidenced upstream contribution. [spike 03](docs/planning/spike-03-openai-compatibility.md) |
 
 Also in this window: solution skeleton, EF Core model, Postgres via Testcontainers, CI green.
 **Done**, except that CI has never run a bundle job because there is no bundle yet.

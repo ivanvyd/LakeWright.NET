@@ -43,7 +43,10 @@ Last updated 2026-07-31.
 | Unity Catalog row filters with a **shared** service principal | **Not supported** | | `session_user()` returns the principal, not the end user. This is why isolation lives in the query layer. [ADR 0002](decisions/0002-enforce-tenant-isolation-in-the-query-layer.md) |
 | On-behalf-of user tokens for an externally hosted app | **Not supported** | | Exists only for Databricks Apps via `x-forwarded-access-token` |
 | Databricks Apps as host for a customer-facing product | **Not supported** | | Anonymous access unsupported; every user must exist in the host's account. [ADR 0001](decisions/0001-host-the-application-outside-databricks.md) |
-| Model serving, OpenAI-compatible surface | Documented | | Blocking spike before the AI module is built |
+| Model serving: non-streaming chat via `Microsoft.Extensions.AI.OpenAI` | **Verified** | 2026-07-31 | [spike 03](planning/spike-03-openai-compatibility.md) |
+| Model serving: tool calling | **Verified** | 2026-07-31 | [spike 03](planning/spike-03-openai-compatibility.md) |
+| Model serving: **streaming** via the stock OpenAI client | **Not supported** | 2026-07-31 | Databricks sends `usage` on every chunk with `completion_tokens` and `total_tokens` null; the OpenAI deserialiser requires numbers. Needs a shim. |
+| Output-token metering on a streaming call | **Not supported** | 2026-07-31 | `completion_tokens` is null throughout the stream |
 | MLflow tracing from .NET over OTLP | Documented | | |
 | Declarative Automation Bundles | Documented | | No bundle in the repository yet |
 
