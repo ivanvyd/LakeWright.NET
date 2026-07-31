@@ -12,15 +12,19 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <AnalysisLevel>latest-Recommended</AnalysisLevel>
-    <!-- A public accelerator is read as much as it is run. Undocumented public
-         members are a defect here in a way they would not be in a private service. -->
+    <!-- A public accelerator is read as much as it is run, so the XML doc file ships.
+         CS1591 is suppressed rather than enforced: with warnings-as-errors it demands a
+         comment on ToString() and Parse(), and a comment written to satisfy a compiler
+         restates the signature. That is the comment slop this project rejects elsewhere.
+         Document what is not obvious; leave the rest bare. -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup>
-    <!-- Lock files are what make `dotnet restore --locked-mode` in CI mean anything:
-         without them a compromised or yanked transitive package changes silently
-         between the run that passed review and the run that produced the artifact. -->
+    <!-- Lock files are what make locked-mode restore in CI mean anything: without
+         them a compromised or yanked transitive package changes silently between
+         the run that passed review and the run that produced the artifact. -->
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
 

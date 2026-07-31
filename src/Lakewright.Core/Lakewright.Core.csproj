@@ -1,0 +1,5 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Tenancy contracts and operation primitives for Lakewright.NET.</Description>
+  </PropertyGroup>
+</Project>
