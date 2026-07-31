@@ -15,6 +15,8 @@ public sealed class LakewrightDbContext(DbContextOptions<LakewrightDbContext> op
 
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
 
+    public DbSet<Operation> Operations => Set<Operation>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         var tenantId = new ValueConverter<TenantId, Guid>(v => v.Value, v => new TenantId(v));
@@ -46,6 +48,30 @@ public sealed class LakewrightDbContext(DbContextOptions<LakewrightDbContext> op
             // Membership is looked up on every tenant-scoped request, so it is the one index
             // whose absence would show up as latency across the whole product.
             e.HasIndex(x => new { x.PrincipalId, x.OrganizationId }).IsUnique();
+        });
+
+        modelBuilder.Entity<Operation>(e =>
+        {
+            e.ToTable("operations");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.OrganizationId).HasConversion(tenantId);
+            e.Property(x => x.PrincipalId).HasMaxLength(200).IsRequired();
+            e.Property(x => x.Kind).HasMaxLength(100).IsRequired();
+            e.Property(x => x.IdempotencyKey).HasMaxLength(64).IsRequired();
+            e.Property(x => x.ExternalId).HasMaxLength(200);
+            e.Property(x => x.Error).HasMaxLength(2000);
+            e.HasOne(x => x.Organization).WithMany()
+                .HasForeignKey(x => x.OrganizationId).OnDelete(DeleteBehavior.Cascade);
+
+            // Lookups are always (tenant, operation). An index on the operation alone would
+            // support a query that must not exist.
+            e.HasIndex(x => new { x.OrganizationId, x.Id });
+
+            // A second run for the same key is the duplicate-submission bug this exists to stop.
+            e.HasIndex(x => x.IdempotencyKey).IsUnique();
+
+            // Reconciliation scans for rows stuck without an external id.
+            e.HasIndex(x => new { x.State, x.ClaimedAt });
         });
 
         modelBuilder.Entity<AuditEvent>(e =>
