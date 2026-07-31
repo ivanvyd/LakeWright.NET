@@ -37,6 +37,10 @@ public readonly struct TenantScopedStatement
     /// <param name="tenant">The resolved tenant. Supplies catalog and schema.</param>
     /// <param name="sql">
     /// A constant SQL string. Values belong in <paramref name="parameters"/>, never in here.
+    /// The compiler rejects an interpolated literal, but it cannot reject a string built at
+    /// runtime by concatenation or <c>string.Format</c>, which is the residual injection surface.
+    /// Treat this parameter as "must be a constant" even though the type system only enforces
+    /// "must not be interpolated in place".
     /// </param>
     /// <param name="parameters">Values bound by the server, not interpolated.</param>
     public static TenantScopedStatement Create(

@@ -68,12 +68,35 @@ public sealed class LakewrightDbContext(DbContextOptions<LakewrightDbContext> op
     /// Refuses to persist a modification or deletion of an <see cref="AuditEvent"/>.
     /// </summary>
     /// <remarks>
-    /// The entity is init-only, so ordinary code cannot do this. This catches the routes that
-    /// bypass the type: raw SQL through the change tracker, a future property that loses its
-    /// init-only modifier, or an <c>ExecuteUpdate</c> someone adds later. An append-only claim in
-    /// a compliance document should be enforced somewhere that fails, not only documented.
+    /// The entity is init-only, so ordinary code cannot do this. The guard catches the routes that
+    /// bypass the type: a future property that loses its init-only modifier, or an entity attached
+    /// in the <c>Deleted</c> state.
+    ///
+    /// It does <em>not</em> catch <c>ExecuteUpdate</c> or <c>ExecuteDelete</c>, which run straight
+    /// against the database and never call any of these methods, nor raw SQL. An earlier version of
+    /// this comment claimed otherwise, and a security review disproved it. Closing that gap needs
+    /// <c>REVOKE UPDATE, DELETE ON audit_events</c> from the application role, which belongs in the
+    /// migration rather than here. Tracked in the roadmap; until it lands, the append-only
+    /// guarantee holds for the change tracker and not for the connection.
+    ///
+    /// Every save overload is covered, because they are independent virtual methods: overriding
+    /// only the async one left <c>SaveChanges()</c> and the two-argument async overload open.
     /// </remarks>
-    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        GuardAuditEvents();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(
+        bool acceptAllChangesOnSuccess,
+        CancellationToken cancellationToken = default)
+    {
+        GuardAuditEvents();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private void GuardAuditEvents()
     {
         var tampered = ChangeTracker.Entries<AuditEvent>()
             .FirstOrDefault(e => e.State is EntityState.Modified or EntityState.Deleted);
@@ -84,7 +107,5 @@ public sealed class LakewrightDbContext(DbContextOptions<LakewrightDbContext> op
                 $"audit_events is append-only; attempted to {tampered.State} " +
                 $"event {tampered.Entity.Id}.");
         }
-
-        return base.SaveChangesAsync(cancellationToken);
     }
 }

@@ -13,7 +13,9 @@ namespace Lakewright.Core.Tenancy;
 /// </remarks>
 public static partial class UnityCatalogIdentifier
 {
-    [GeneratedRegex("^[a-z][a-z0-9_]{0,62}$", RegexOptions.CultureInvariant)]
+    // `\z` rather than `$`: in .NET, `$` also matches immediately before a single trailing
+    // newline, so "tenant_a\n" passes a `$`-anchored pattern. Verified.
+    [GeneratedRegex(@"^[a-z][a-z0-9_]{0,62}\z", RegexOptions.CultureInvariant)]
     private static partial Regex Pattern { get; }
 
     public static bool IsValid(string? value) => value is not null && Pattern.IsMatch(value);

@@ -38,6 +38,11 @@ public sealed partial class DatabricksStatementExecutor : IStatementExecutor
         TenantScopedStatement statement,
         CancellationToken cancellationToken)
     {
+        // A struct always has an implicit parameterless constructor, so `default` bypasses both
+        // Create factories and arrives here with a null Tenant. Without this the failure is a
+        // NullReferenceException three lines down, which reads as a bug in the wrong place.
+        ArgumentNullException.ThrowIfNull(statement.Tenant);
+
         var request = new SqlStatement
         {
             WarehouseId = _options.WarehouseId,
@@ -77,12 +82,17 @@ public sealed partial class DatabricksStatementExecutor : IStatementExecutor
         return Translate(response, statement.Tenant.TenantId);
     }
 
-    public async Task<StatementOutcome> GetAsync(string statementId, CancellationToken cancellationToken)
+    public async Task<StatementOutcome> GetAsync(
+        Core.Tenancy.TenantContext tenant,
+        string statementId,
+        CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(tenant);
+
         try
         {
             var response = await _client.SQL.StatementExecution.Get(statementId, cancellationToken);
-            return Translate(response, tenantId: null);
+            return Translate(response, tenant.TenantId);
         }
         catch (ClientApiException ex)
         {
@@ -90,8 +100,14 @@ public sealed partial class DatabricksStatementExecutor : IStatementExecutor
         }
     }
 
-    public Task CancelAsync(string statementId, CancellationToken cancellationToken) =>
-        _client.SQL.StatementExecution.Cancel(statementId, cancellationToken);
+    public Task CancelAsync(
+        Core.Tenancy.TenantContext tenant,
+        string statementId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(tenant);
+        return _client.SQL.StatementExecution.Cancel(statementId, cancellationToken);
+    }
 
     private StatementOutcome Translate(StatementExecution response, Core.Tenancy.TenantId? tenantId)
     {

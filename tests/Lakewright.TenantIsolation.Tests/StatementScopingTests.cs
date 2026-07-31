@@ -93,6 +93,44 @@ public class StatementScopingTests
     }
 
     [Fact]
+    public void A_tenant_context_cannot_be_manufactured_from_outside()
+    {
+        // The factory was public in the first version, which let any caller build a context for
+        // any tenant with no membership check. A security review proved it with a working sample.
+        // Nothing outside the resolver assembly and this suite may construct one.
+        var factory = typeof(TenantContext).Assembly.GetType(
+            "Lakewright.Core.Tenancy.TenantContextFactory");
+
+        factory.ShouldNotBeNull();
+        factory.IsPublic.ShouldBeFalse(
+            "a public factory makes the membership check optional, which makes it useless");
+
+        typeof(TenantContext).GetConstructors().ShouldBeEmpty(
+            "TenantContext must have no public constructor");
+    }
+
+    [Fact]
+    public void A_default_statement_is_refused_rather_than_dereferenced()
+    {
+        // A struct always has an implicit parameterless constructor, so `default` skips both
+        // factories. It must fail as a rejected argument, not as a NullReferenceException
+        // somewhere further in.
+        var statement = default(TenantScopedStatement);
+
+        statement.Tenant.ShouldBeNull();
+    }
+
+    [Fact]
+    public void An_identifier_with_a_trailing_newline_is_rejected()
+    {
+        // .NET's `$` also matches immediately before a single trailing newline, so a `$`-anchored
+        // pattern accepted "tenant_a\n". The pattern uses `\z`.
+        UnityCatalogIdentifier.IsValid("tenant_a\n").ShouldBeFalse();
+        UnityCatalogIdentifier.IsValid("tenant_a\r\n").ShouldBeFalse();
+        UnityCatalogIdentifier.IsValid("tenant_a").ShouldBeTrue();
+    }
+
+    [Fact]
     public void A_schema_name_that_needs_quoting_is_rejected()
     {
         // Catalog and schema travel as identifiers rather than bound parameters, because the

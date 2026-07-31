@@ -152,4 +152,38 @@ public class CrossTenantResolutionTests(PostgresFixture postgres)
             async () => await db.SaveChangesAsync(ct));
         deleting.Message.ShouldContain("append-only");
     }
+
+    [Fact]
+    public async Task The_append_only_guard_covers_every_save_overload()
+    {
+        // Overriding only SaveChangesAsync(CancellationToken) left the synchronous path and the
+        // two-argument async overload open. They are independent virtual methods, and a security
+        // review demonstrated both bypassing the guard.
+        await using var db = await SeedTwoTenantsAsync(postgres);
+        var ct = TestContext.Current.CancellationToken;
+
+        var evt = new AuditEvent
+        {
+            Id = Guid.CreateVersion7(),
+            OrganizationId = AcmeId,
+            PrincipalId = AlicePrincipal,
+            Action = "organization.provisioned",
+            ResourceType = "organization",
+            OccurredAt = DateTimeOffset.UtcNow
+        };
+        db.AuditEvents.Add(evt);
+        await db.SaveChangesAsync(ct);
+
+        db.Entry(evt).State = EntityState.Deleted;
+        Should.Throw<InvalidOperationException>(() => db.SaveChanges())
+            .Message.ShouldContain("append-only");
+
+        (await Should.ThrowAsync<InvalidOperationException>(
+            async () => await db.SaveChangesAsync(acceptAllChangesOnSuccess: true, ct)))
+            .Message.ShouldContain("append-only");
+
+        // ExecuteUpdate and ExecuteDelete bypass the change tracker entirely and cannot be caught
+        // here. Closing that needs REVOKE on the database role; it is a documented gap, not a
+        // silent one.
+    }
 }

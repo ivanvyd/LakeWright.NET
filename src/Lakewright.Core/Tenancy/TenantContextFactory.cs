@@ -5,10 +5,16 @@ namespace Lakewright.Core.Tenancy;
 /// </summary>
 /// <remarks>
 /// <see cref="TenantContext"/>'s constructor is internal so that possession of one means the
-/// membership check ran. Resolvers live in other assemblies, so they need this seam. It is
-/// deliberately the only one, and it is the thing to look at first in a security review.
+/// membership check ran. Resolvers live in other assemblies, so they need this seam.
+///
+/// It is <c>internal</c>, exposed only to the resolver assembly and the isolation tests through
+/// <c>InternalsVisibleTo</c>. It was public in the first version, which meant any caller could
+/// manufacture a context for any tenant with no membership check and get full query access to that
+/// tenant's schema. A security review demonstrated exactly that with a working proof of concept.
+/// The comment claiming this was "the thing to look at first in a security review" was there; the
+/// access modifier that would have made it true was not.
 /// </remarks>
-public static class TenantContextFactory
+internal static class TenantContextFactory
 {
     public static TenantContext ForTenant(TenantId tenantId, string catalog, string schema) =>
         TenantContext.Create(tenantId, catalog, schema);
