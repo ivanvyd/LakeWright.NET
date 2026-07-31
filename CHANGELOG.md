@@ -29,6 +29,14 @@ note.
 
 ### Security
 
+- `audit_events` is now append-only at the database as well as in application code.
+  `DatabaseHardening.ApplyAsync` grants the application role select and insert only, closing the
+  `ExecuteUpdate`/`ExecuteDelete`/raw-SQL gap that no C# guard can reach. The role must not own the
+  tables, since an owner keeps privileges `REVOKE` does not remove.
+- `OperationStore` binds a Databricks statement identifier to the tenant that created it, and every
+  lookup filters on the tenant. A statement identifier obtained from a log line is no longer
+  sufficient to read another tenant's results.
+
 Found by an adversarial review of the first implementation, before any release.
 
 - `TenantContextFactory` was public, so any caller could construct a `TenantContext` for any tenant

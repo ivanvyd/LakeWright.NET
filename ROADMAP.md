@@ -39,17 +39,17 @@ Tenant context resolution, membership model, schema-per-tenant provisioning with
 query layer that cannot build a statement without a tenant context. The cross-tenant isolation suite
 is written here, before the features it protects.
 
-### Carried from the security review
+### Carried from the security review — both closed
 
-Two gaps are known, documented in place, and not yet closed:
+- **`REVOKE UPDATE, DELETE ON audit_events`.** Done. `DatabaseHardening.ApplyAsync` creates the
+  application role and grants it select and insert only. Proved by tests that connect as that role
+  and get `insufficient_privilege` from `ExecuteDelete` and `ExecuteUpdate`.
+- **Statement ownership.** Done. `OperationStore` is the only route to an external statement id and
+  every lookup filters on the tenant. A caller holding another tenant's operation id gets null,
+  indistinguishable from one that does not exist.
 
-- **`REVOKE UPDATE, DELETE ON audit_events`** from the application role, in a migration. The C#
-  guard covers every `SaveChanges` path but cannot cover `ExecuteUpdate`, `ExecuteDelete` or raw
-  SQL. Until this lands, the append-only claim holds for application code and not for the
-  connection.
-- **Statement ownership.** `IStatementExecutor.GetAsync` and `CancelAsync` take a statement id that
-  this layer cannot tie to a tenant. Any endpoint keyed on a statement id is a cross-tenant read
-  until the operation record below exists and the lookup goes through it.
+Still open here: the worker that claims operations with `SELECT ... FOR UPDATE SKIP LOCKED`, and the
+reconciliation pass that matches orphaned rows to runs. The record they need now exists.
 
 ### Weeks 5-6: operations and Databricks
 

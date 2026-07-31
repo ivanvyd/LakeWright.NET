@@ -42,6 +42,32 @@ public sealed class PostgresFixture : IAsyncLifetime
         await db.Database.EnsureCreatedAsync();
         return db;
     }
+
+    /// <summary>
+    /// Opens a second context against the same database as the restricted application role.
+    /// </summary>
+    /// <remarks>
+    /// The owner of a table keeps privileges that <c>REVOKE</c> does not remove, so a lockdown
+    /// tested while connected as the owner passes without proving anything. These tests connect as
+    /// the role the application actually uses.
+    /// </remarks>
+    public static LakewrightDbContext AsApplicationRole(
+        LakewrightDbContext owner,
+        string role,
+        string password)
+    {
+        var builder = new Npgsql.NpgsqlConnectionStringBuilder(owner.Database.GetConnectionString())
+        {
+            Username = role,
+            Password = password
+        };
+
+        var options = new DbContextOptionsBuilder<LakewrightDbContext>()
+            .UseNpgsql(builder.ConnectionString)
+            .Options;
+
+        return new LakewrightDbContext(options);
+    }
 }
 
 [CollectionDefinition(nameof(PostgresTests))]
