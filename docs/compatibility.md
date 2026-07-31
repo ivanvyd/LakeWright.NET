@@ -63,7 +63,9 @@ Last updated 2026-07-31.
 | Interpolated SQL is a compile error | **Verified** | 2026-07-31, [spike 02](planning/spike-02-interpolation-guard.md) |
 | Cross-tenant resolution refused, against real Postgres | **Verified** | 2026-07-31, [testing isolation](guides/testing-isolation.md) |
 | Isolation suite fails when isolation is broken | **Verified** | 2026-07-31, same |
-| `audit_events` refuses update and delete | **Verified** | 2026-07-31 |
+| `audit_events` refuses update and delete in application code | **Verified** | 2026-07-31 |
+| `audit_events` refuses `ExecuteDelete`/`ExecuteUpdate` at the database | **Verified** | 2026-07-31, as the restricted application role |
+| An operation is invisible to a tenant that does not own it | **Verified** | 2026-07-31 |
 | EF Core model on Lakebase | Unverified | Standard Postgres only; no Lakebase-specific feature is used |
 
 ## Known gaps
