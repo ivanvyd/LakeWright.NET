@@ -65,8 +65,13 @@ public class OperationClaimTests(PostgresFixture postgres)
     [Fact]
     public async Task Concurrent_workers_never_claim_the_same_operation()
     {
-        // The property the whole queue rests on. Ten connections race for twenty rows; every row
-        // must go to exactly one of them, and none may block waiting for another's lock.
+        // Ten connections race for twenty rows; every row must go to exactly one of them.
+        //
+        // This catches the realistic bug: a select-then-update claim, verified by replacing the
+        // single statement with one and watching this test go red. It does NOT prove `SKIP LOCKED`
+        // is required — that was measured too, and the test stays green without it, because the
+        // single-statement update is atomic either way. `SKIP LOCKED` prevents the convoy, and
+        // nothing here measures blocking.
         var ct = TestContext.Current.CancellationToken;
         const int Operations = 20;
         const int Workers = 10;

@@ -87,14 +87,22 @@ public sealed class OperationStore(LakewrightDbContext db)
     /// Claims one pending operation for this worker, or returns null if there is nothing to do.
     /// </summary>
     /// <remarks>
-    /// <c>FOR UPDATE SKIP LOCKED</c> is what lets several workers share a queue without
-    /// coordination. A worker's claim never waits on a row another worker holds, so workers do not
-    /// form a blocking convoy behind one slow item, and a worker that dies mid-claim releases its
-    /// lock on rollback and the row returns to the pool.
+    /// Two separate properties, and it is worth not conflating them, because measuring showed the
+    /// obvious description of this was wrong.
     ///
-    /// The update and the select are one statement so that claiming is atomic. Selecting first and
-    /// updating second is the version of this that looks correct and hands the same row to two
-    /// workers under load.
+    /// <b>Exactly-once comes from the single statement.</b> The update and its subquery are one
+    /// statement, so claiming is atomic. Selecting first and updating second is the version that
+    /// looks correct and hands the same row to two workers under load; the concurrency test fails
+    /// against that and passes against this.
+    ///
+    /// <b><c>SKIP LOCKED</c> buys throughput, not correctness.</b> Removing it leaves the
+    /// concurrency test green: a competing worker blocks on the row lock, re-evaluates, and takes
+    /// a different row rather than duplicating one. What it prevents is the convoy — ten workers
+    /// queued behind one slow claim instead of moving on to other rows. Measured, not assumed:
+    /// this comment previously credited it with the exactly-once guarantee, and the test passed
+    /// with it deleted.
+    ///
+    /// A worker that dies mid-claim releases its lock on rollback and the row returns to the pool.
     ///
     /// Not tenant-scoped: the worker serves every tenant. The tenant comes off the claimed row.
     /// </remarks>
