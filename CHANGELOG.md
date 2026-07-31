@@ -27,6 +27,22 @@ note.
 - Open-source baseline: Apache-2.0 license, contribution guide, security policy, governance model.
 - Build configuration targeting .NET 10 with warnings as errors and deterministic output.
 
+### Security
+
+Found by an adversarial review of the first implementation, before any release.
+
+- `TenantContextFactory` was public, so any caller could construct a `TenantContext` for any tenant
+  with no membership check and query that tenant's schema. Now `internal`, visible only to the
+  resolver assembly and the isolation suite.
+- The `audit_events` append-only guard covered one of four save paths. The synchronous overload and
+  the two-argument async overload both bypassed it. `ExecuteUpdate`, `ExecuteDelete` and raw SQL
+  remain uncatchable in C# and are recorded as an open gap rather than claimed as covered.
+- `IStatementExecutor.GetAsync` and `CancelAsync` accepted a bare statement id while the interface
+  documentation claimed every method was tenant-scoped. They now require a `TenantContext`, and the
+  documentation states where ownership is actually enforced.
+- The Unity Catalog identifier pattern used `$`, which in .NET also matches before a trailing
+  newline, so `tenant_a\n` validated. Now `\z`.
+
 ### Fixed
 
 - `--locked-mode` inside an XML comment made `Directory.Build.props` unloadable, so no project
