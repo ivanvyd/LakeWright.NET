@@ -84,6 +84,55 @@ public sealed class OperationStore(LakewrightDbContext db)
     }
 
     /// <summary>
+    /// Claims one pending operation for this worker, or returns null if there is nothing to do.
+    /// </summary>
+    /// <remarks>
+    /// <c>FOR UPDATE SKIP LOCKED</c> is what lets several workers share a queue without
+    /// coordination. A worker's claim never waits on a row another worker holds, so workers do not
+    /// form a blocking convoy behind one slow item, and a worker that dies mid-claim releases its
+    /// lock on rollback and the row returns to the pool.
+    ///
+    /// The update and the select are one statement so that claiming is atomic. Selecting first and
+    /// updating second is the version of this that looks correct and hands the same row to two
+    /// workers under load.
+    ///
+    /// Not tenant-scoped: the worker serves every tenant. The tenant comes off the claimed row.
+    /// </remarks>
+    public async Task<Operation?> ClaimNextAsync(CancellationToken cancellationToken)
+    {
+        var claimed = await db.Operations
+            .FromSql($"""
+                UPDATE operations
+                SET "ClaimedAt" = now()
+                WHERE "Id" = (
+                    SELECT "Id" FROM operations
+                    WHERE "State" = 0 AND "ClaimedAt" IS NULL
+                    ORDER BY "CreatedAt"
+                    FOR UPDATE SKIP LOCKED
+                    LIMIT 1
+                )
+                RETURNING *
+                """)
+            .ToListAsync(cancellationToken);
+
+        return claimed.FirstOrDefault();
+    }
+
+    /// <summary>Marks a claimed operation as finished.</summary>
+    public async Task CompleteAsync(
+        Guid operationId,
+        OperationState state,
+        string? error,
+        CancellationToken cancellationToken)
+    {
+        var operation = await db.Operations.SingleAsync(o => o.Id == operationId, cancellationToken);
+        operation.State = state;
+        operation.Error = error;
+        operation.CompletedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
     /// Operations that were submitted but whose external identifier was never written, older than
     /// <paramref name="olderThan"/>.
     /// </summary>
