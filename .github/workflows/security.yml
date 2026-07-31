@@ -13,8 +13,13 @@ on:
 permissions:
   contents: read
 
+# CodeQL, dependency review and Scorecard are free on public repositories and need GitHub Advanced
+# Security on private ones. This repository is private until v0.1, so they are gated on visibility
+# rather than left to fail every run: a permanently red check trains people to ignore red checks.
+# They start working on their own when the repository is made public.
 jobs:
   codeql:
+    if: github.event.repository.private == false
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -37,7 +42,7 @@ jobs:
       - uses: github/codeql-action/analyze@a2983b8bed1923f44751c5c43237f479442827b3 # v3
 
   dependency-review:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.repository.private == false
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -52,7 +57,7 @@ jobs:
           comment-summary-in-pr: on-failure
 
   scorecard:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && github.event.repository.private == false
     runs-on: ubuntu-latest
     permissions:
       security-events: write

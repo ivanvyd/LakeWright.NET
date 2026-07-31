@@ -22,19 +22,34 @@ multi-tenant product on Databricks should be assembled, then runs it.
 
 The three assumptions that would invalidate the plan are tested before anything is built on them.
 
-| Spike | Question it answers | Kill condition |
+| Spike | Question it answers | Status |
 |---|---|---|
-| Free Edition service principals | Can a contributor authenticate as a service principal on Free Edition? Undocumented. | If not, the contributor auth story changes to user identity and the README must say so. |
-| Managed identity to Databricks | Does an Entra token from a Container App managed identity work as a Databricks bearer token end to end? | If not, the secretless claim is withdrawn. |
-| `Microsoft.Extensions.AI.OpenAI` against Databricks | Does chat, streaming, and tool calling round-trip? | If not, the AI module needs a hand-written client and drops out of v0.1. |
+| Statement Execution through the client library | Does `Microsoft.Azure.Databricks.Client` support parameters, `EXTERNAL_LINKS` and `ARROW_STREAM`? | **Done.** Kill condition not triggered. [spike 01](docs/planning/spike-01-statement-execution.md) |
+| Interpolation guard | Can interpolated SQL be made a compile error? | **Done**, after the first attempt turned out to be inert. [spike 02](docs/planning/spike-02-interpolation-guard.md) |
+| Managed identity to Databricks | Does an Entra token work as a Databricks bearer token end to end? | **Partly.** Verified for a user principal; the managed-identity variant is untested. Kill condition stands: if it fails, the secretless claim is withdrawn rather than qualified. |
+| Free Edition service principals | Can a contributor authenticate as a service principal on Free Edition? Undocumented. | Open. Highest-risk assumption in the contributor story. |
+| `Microsoft.Extensions.AI.OpenAI` against Databricks | Does chat, streaming and tool calling round-trip? | Open. If not, the AI module drops out of v0.1. |
 
 Also in this window: solution skeleton, EF Core model, Postgres via Testcontainers, CI green.
+**Done**, except that CI has never run a bundle job because there is no bundle yet.
 
 ### Weeks 3-4: the tenancy core
 
 Tenant context resolution, membership model, schema-per-tenant provisioning with rollback, and the
 query layer that cannot build a statement without a tenant context. The cross-tenant isolation suite
 is written here, before the features it protects.
+
+### Carried from the security review
+
+Two gaps are known, documented in place, and not yet closed:
+
+- **`REVOKE UPDATE, DELETE ON audit_events`** from the application role, in a migration. The C#
+  guard covers every `SaveChanges` path but cannot cover `ExecuteUpdate`, `ExecuteDelete` or raw
+  SQL. Until this lands, the append-only claim holds for application code and not for the
+  connection.
+- **Statement ownership.** `IStatementExecutor.GetAsync` and `CancelAsync` take a statement id that
+  this layer cannot tie to a tenant. Any endpoint keyed on a statement id is a cross-tenant read
+  until the operation record below exists and the lookup goes through it.
 
 ### Weeks 5-6: operations and Databricks
 

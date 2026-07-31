@@ -11,25 +11,22 @@ change, the expected behaviour, and how to verify it.
 
 ## Running it
 
-You do not need a Databricks account to work on most of this.
+You do not need a Databricks account to work on this. You do need Docker, because the isolation
+suite runs against a real PostgreSQL container rather than an in-memory substitute.
 
 ```bash
-docker compose up -d          # Postgres, the mock Databricks server, an OIDC provider
-dotnet run --project src/Signalboard/Signalboard.Web
-dotnet test                   # unit, contract and isolation suites; no external services
+dotnet build                                      # warnings are errors
+dotnet test --filter "Category!=Live"             # everything that needs no cloud account
+dotnet test --filter "Category=TenantIsolation"   # the suite the rest of it rests on
+dotnet format --verify-no-changes
 ```
 
-The .NET Aspire AppHost is a convenience layer. It is never the only way to run the project, because
-that would make a fast-moving dependency a condition of contributing.
+There is no application to run yet. The web tier, the Declarative Automation Bundle and the
+Signalboard sample arrive over the milestones in [ROADMAP.md](ROADMAP.md), and this section grows
+with them.
 
-Tests that need a live workspace are excluded by default and run with:
-
-```bash
-dotnet test --filter Category=Live
-```
-
-They require a Databricks profile and they create and destroy real resources. Read
-`docs/guides/live-testing.md` before running them against anything you care about.
+Tests tagged `Category=Live` need a real workspace and create real resources. None exist yet; the
+live verification done so far is recorded in [docs/compatibility.md](docs/compatibility.md).
 
 ## Standards the build enforces
 
@@ -38,10 +35,16 @@ about formatting before a human does.
 
 Two rules matter more than the rest:
 
-- **Never interpolate into SQL.** Statements are built through the parameterised path, including
-  catalog and schema identifiers. An analyzer rule fails the build otherwise.
+- **Never interpolate into SQL.** Passing an interpolated string to `TenantScopedStatement.Create`
+  does not compile. Values go in as `StatementParameter` arguments; catalog and schema come from the
+  tenant context and are validated as identifiers.
 - **Flow the `CancellationToken`.** Every Databricks call is network I/O. `CS1998` and `CA2016` are
   errors here.
+
+Anything touching tenant resolution, the query layer or authentication needs a case in the
+isolation suite, and you should break the thing it guards and watch it fail before trusting it. See
+[docs/guides/testing-isolation.md](docs/guides/testing-isolation.md) for why: one control in this
+repository already shipped with a test that passed while the control did nothing.
 
 ## Pull requests
 

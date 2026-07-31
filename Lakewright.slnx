@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Lakewright.Core/Lakewright.Core.csproj" />
+    <Project Path="src/Lakewright.Databricks/Lakewright.Databricks.csproj" />
+    <Project Path="src/Lakewright.Multitenancy/Lakewright.Multitenancy.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Lakewright.TenantIsolation.Tests/Lakewright.TenantIsolation.Tests.csproj" />
+  </Folder>
+</Solution>
