@@ -75,12 +75,19 @@ jobs:
       - name: Validate bundle against schema (no credentials)
         working-directory: databricks
         run: |
+          if [ ! -f databricks.yml ]; then
+            echo "No bundle yet; nothing to validate."
+            exit 0
+          fi
           pipx install check-jsonschema
           databricks bundle schema > /tmp/bundle.schema.json
           check-jsonschema --schemafile /tmp/bundle.schema.json databricks.yml
 
       - name: Validate against workspace
-        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+        if: |
+          hashFiles('databricks/databricks.yml') != ''
+          && (github.event_name == 'push'
+              || github.event.pull_request.head.repo.full_name == github.repository)
         working-directory: databricks
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
