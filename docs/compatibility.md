@@ -31,7 +31,7 @@ Last updated 2026-07-31.
 | Capability | Status | Date | Evidence |
 |---|---|---|---|
 | Entra ID token accepted as a Databricks bearer token (user principal) | **Verified** | 2026-07-31 | [spike 01](planning/spike-01-statement-execution.md) |
-| Entra ID token via **managed identity** (no user) | Documented | | Week-one spike, still open |
+| Entra ID token via **managed identity** (no user, no secret) | **Verified** | 2026-07-31 | [spike 04](planning/spike-04-managed-identity.md). Databricks resolved the caller as the managed identity; the identity needs no Azure RBAC role. |
 | Statement Execution with typed parameters | **Verified** | 2026-07-31 | [spike 01](planning/spike-01-statement-execution.md) |
 | Parameters resist injection payloads | **Verified** | 2026-07-31 | Value `acme'; DROP TABLE x; --` returned as a literal |
 | `EXTERNAL_LINKS` + `ARROW_STREAM` | **Verified** | 2026-07-31 | 200,000 rows, 3.26 MB retrieved |

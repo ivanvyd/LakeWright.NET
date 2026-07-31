@@ -26,7 +26,7 @@ The three assumptions that would invalidate the plan are tested before anything 
 |---|---|---|
 | Statement Execution through the client library | Does `Microsoft.Azure.Databricks.Client` support parameters, `EXTERNAL_LINKS` and `ARROW_STREAM`? | **Done.** Kill condition not triggered. [spike 01](docs/planning/spike-01-statement-execution.md) |
 | Interpolation guard | Can interpolated SQL be made a compile error? | **Done**, after the first attempt turned out to be inert. [spike 02](docs/planning/spike-02-interpolation-guard.md) |
-| Managed identity to Databricks | Does an Entra token work as a Databricks bearer token end to end? | **Partly.** Verified for a user principal; the managed-identity variant is untested. Kill condition stands: if it fails, the secretless claim is withdrawn rather than qualified. |
+| Managed identity to Databricks | Does an Entra token work as a Databricks bearer token end to end? | **Done.** A container with a user-assigned managed identity called the REST API with no stored secret; Databricks resolved the caller as the identity itself. ADR 0006 stands. [spike 04](docs/planning/spike-04-managed-identity.md) |
 | Free Edition service principals | Can a contributor authenticate as a service principal on Free Edition? Undocumented. | Open. Highest-risk assumption in the contributor story. |
 | `Microsoft.Extensions.AI.OpenAI` against Databricks | Does chat, streaming and tool calling round-trip? | **Done, partly.** Chat and tool calling work with no client code. Streaming fails: Databricks sends a malformed `usage` on every chunk. Module stays in v0.1; streaming needs a shim, and it is a well-evidenced upstream contribution. [spike 03](docs/planning/spike-03-openai-compatibility.md) |
 
