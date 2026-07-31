@@ -72,6 +72,14 @@ public sealed class LakewrightDbContext(DbContextOptions<LakewrightDbContext> op
 
             // Reconciliation scans for rows stuck without an external id.
             e.HasIndex(x => new { x.State, x.ClaimedAt });
+
+            // No row version here on purpose. Reconciliation and a slow-but-alive worker can both
+            // decide to act on the same row, and the fix for that is for reconciliation to claim
+            // atomically the way ClaimNextAsync does, not for every write to carry a token. An
+            // xmin token was tried and removed: the claim is a raw UPDATE, so the version the
+            // change tracker holds afterwards is read mid-statement and every subsequent write
+            // failed as a false conflict. Deferred to the reconciliation actor, which is where the
+            // contention actually is.
         });
 
         modelBuilder.Entity<AuditEvent>(e =>
