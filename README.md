@@ -62,15 +62,15 @@ Projects appear when there is code to put in them, so this grows over the milest
 src/
   Lakewright.Core/            tenancy contracts
   Lakewright.Databricks/      tenant-scoped Databricks SQL access
-  Lakewright.Multitenancy/    tenant model, resolution, EF Core
+  Lakewright.Multitenancy/    tenant model, resolution, operations, EF Core
 tests/
   Lakewright.TenantIsolation.Tests/   the suite the rest of it rests on
-docs/planning/                research, spikes and the plan
-docs/decisions/               architecture decision records
+databricks/                   Declarative Automation Bundle, dev and prod targets
+docs/                         see docs/README.md
 ```
 
-Still to come: the ASP.NET Core integration, observability, the Declarative Automation Bundle, and
-the Signalboard sample.
+Still to come: the ASP.NET Core integration, the operation worker, observability, and the
+Signalboard sample.
 
 ## Documentation
 

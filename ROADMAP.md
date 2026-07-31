@@ -62,8 +62,12 @@ what is already there.
 ### Weeks 5-6: operations and Databricks
 
 The operation record, the `SKIP LOCKED` claim loop, Statement Execution with `EXTERNAL_LINKS`, async
-job submission with `idempotency_token`, and the reconciliation pass for orphaned runs. Declarative
-Automation Bundle with dev and prod targets.
+job submission with `idempotency_token`, and the reconciliation pass for orphaned runs.
+
+The Declarative Automation Bundle with dev and prod targets is **done**: catalog schema and
+serverless warehouse, validated and deployed and destroyed against a real workspace. See
+[docs/guides/deploying-databricks.md](docs/guides/deploying-databricks.md). Jobs and pipelines join
+it when there is a sample for them to run.
 
 ### Week 7: the sample and the deployment
 
