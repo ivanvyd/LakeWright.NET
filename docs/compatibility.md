@@ -48,7 +48,8 @@ Last updated 2026-07-31.
 | Model serving: **streaming** via the stock OpenAI client | **Not supported** | 2026-07-31 | Databricks sends `usage` on every chunk with `completion_tokens` and `total_tokens` null; the OpenAI deserialiser requires numbers. Needs a shim. |
 | Output-token metering on a streaming call | **Not supported** | 2026-07-31 | `completion_tokens` is null throughout the stream |
 | MLflow tracing from .NET over OTLP | Documented | | |
-| Declarative Automation Bundles | Documented | | No bundle in the repository yet |
+| Declarative Automation Bundles: validate, deploy, summary, destroy | **Verified** | 2026-08-01 | CLI v1.10.0. Full lifecycle run against the workspace; dev mode prefixing observed. [Guide](guides/deploying-databricks.md) |
+| Creating a **catalog** via bundle or SQL on a Default Storage metastore | **Not supported** | 2026-08-01 | `INVALID_STATE: Metastore storage root URL does not exist`. Needs the UI or an explicit `MANAGED LOCATION`, so the catalog is a documented prerequisite. |
 
 ## Clouds
 

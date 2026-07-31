@@ -1,0 +1,65 @@
+# Declarative Automation Bundle (formerly Databricks Asset Bundles; renamed 2026-03-16).
+# The CLI command is still `databricks bundle`.
+#
+# This deploys the Databricks side of Lakewright: the catalog tenant schemas live in, and the
+# warehouse the application queries through. Tenant schemas themselves are NOT here. They are
+# created per tenant at provisioning time by the application, because a bundle describes a fixed
+# set of resources and tenants arrive at runtime. See ADR 0002.
+bundle:
+  name: lakewright
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Unity Catalog catalog holding every tenant schema for this environment.
+  warehouse_size:
+    description: Serverless warehouse size. 2X-Small is enough for the sample and for Free Edition.
+    default: 2X-Small
+  warehouse_auto_stop_minutes:
+    description: >-
+      Idle minutes before the warehouse stops. Serverless bills per second while running, so this
+      is the difference between a demo costing pennies and costing a weekend.
+    default: 10
+
+targets:
+  # `mode: development` prefixes resource names with your short name, tags them dev, pauses all
+  # schedules and marks pipelines development: true. The paused schedule is the behaviour that
+  # stops your personal copy of an hourly job running all weekend against a shared catalog.
+  dev:
+    mode: development
+    default: true
+    variables:
+      catalog: lakewright_dev
+      warehouse_auto_stop_minutes: 5
+
+  # `mode: production` additionally validates that every pipeline is development: false, and
+  # requires non-user-specific artifact and state paths. A bundle that deploys fine for you can
+  # therefore fail in CI, which is the point.
+  prod:
+    mode: production
+    variables:
+      catalog: lakewright_prod
+      warehouse_size: Small
+
+    workspace:
+      # Production mode rejects a user-specific path, and rightly: a bundle deployed to
+      # /Workspace/Users/<whoever-ran-CI> is a second copy of production that disappears when
+      # that person leaves.
+      # Not under /Workspace/Shared, which is writable by every workspace user: a production
+      # bundle root anyone can write to is a production bundle anyone can replace.
+      root_path: /Workspace/Applications/${bundle.name}/${bundle.target}
+
+    # Deploying as a named service principal rather than whoever ran the pipeline keeps the
+    # audit trail readable and stops resources being owned by someone who has left.
+    run_as:
+      service_principal_name: sp-lakewright-prod
+
+    # Groups only. If a single person needs access, make a group with one member, so the
+    # exception is visible in review instead of buried in a permissions list.
+    permissions:
+      - level: CAN_MANAGE
+        service_principal_name: sp-lakewright-prod
+      - level: CAN_MANAGE
+        group_name: lakewright-admins

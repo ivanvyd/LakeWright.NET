@@ -1,0 +1,21 @@
+resources:
+  sql_warehouses:
+    analytics:
+      name: lakewright-analytics
+      cluster_size: ${var.warehouse_size}
+      auto_stop_mins: ${var.warehouse_auto_stop_minutes}
+
+      # Serverless: no cluster to wait for, and it is the only compute Free Edition offers, so the
+      # contributor path and the reference deployment use the same shape.
+      enable_serverless_compute: true
+      warehouse_type: PRO
+
+      # One cluster. Scaling out is a per-tenant cost decision an adopter makes with their own
+      # numbers, and defaulting it higher spends their money to make a sample look fast.
+      min_num_clusters: 1
+      max_num_clusters: 1
+
+      tags:
+        custom_tags:
+          - key: project
+            value: lakewright
