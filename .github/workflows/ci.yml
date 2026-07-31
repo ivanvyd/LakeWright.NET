@@ -27,6 +27,14 @@ jobs:
       # whitespace-only drift that the analyzers do not.
       - run: dotnet format --verify-no-changes --no-restore
 
+      # Dependabot raises a PR; this fails the build. Without it a known-vulnerable
+      # transitive package ships while the bump PR waits for review.
+      - name: Fail on vulnerable packages
+        run: |
+          dotnet list package --vulnerable --include-transitive 2>&1 | tee vuln.txt
+          grep -q -E '>\s+\S+\s+\S+\s+\S+\s+(Moderate|High|Critical)' vuln.txt && exit 1
+          echo "no moderate-or-higher advisories"
+
   test:
     runs-on: ubuntu-latest
     steps:
