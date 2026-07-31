@@ -74,9 +74,15 @@ tested, against what, and when.
 
 ## Environment
 
-Databricks workspace for live verification: `lakewright-dev`, eastus2, premium SKU.
+Databricks workspace for live verification: `lakewright-dev`, eastus2, premium SKU,
+`https://adb-workspace.azuredatabricks.net`. Azure subscription
+`<subscription-id>` (Visual Studio Enterprise), resource group
+`rg-lakewright-dev`.
+
 Free Edition is the contributor baseline and may lack service principals; treat that as unverified
 until the week-one spike settles it.
+
+Compute costs real credits. Warehouses get auto-stop, and live tests clean up what they create.
 
 Never commit `.databrickscfg`, tokens, or `appsettings.Local.json`.
 
