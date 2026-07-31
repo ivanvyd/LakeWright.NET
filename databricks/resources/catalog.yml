@@ -1,0 +1,25 @@
+# The catalog is a prerequisite, not a bundle resource. Two reasons, one practical and one
+# organisational.
+#
+# Practical: on a metastore with Default Storage enabled, creating a catalog through the API fails
+# with "Metastore storage root URL does not exist" unless an explicit MANAGED LOCATION is supplied.
+# Measured against a real workspace; see docs/guides/deploying-databricks.md.
+#
+# Organisational: creating a catalog needs metastore-admin rights. A bundle that an application
+# team deploys on every merge should not be carrying that privilege, and in most organisations the
+# catalog is created once by whoever owns the metastore.
+#
+# Create it once, then let this bundle own what lives inside it:
+#   CREATE CATALOG IF NOT EXISTS lakewright_dev;
+resources:
+  schemas:
+    # Shared reference data every tenant reads and no tenant writes. Kept in its own schema rather
+    # than duplicated into each tenant's, so a correction lands once instead of N times, and so a
+    # tenant schema contains only that tenant's data.
+    #
+    # Tenant schemas are deliberately absent: they are created by the application when a tenant is
+    # provisioned, because tenants arrive at runtime and a bundle describes a fixed set.
+    reference:
+      catalog_name: ${var.catalog}
+      name: reference
+      comment: Cross-tenant reference data. Read-only to the application role.
