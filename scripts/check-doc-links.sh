@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Fails if any relative markdown link points at a file that does not exist.
+#
+# Documentation rots by link before it rots by content, and a compliance document referencing an
+# evidence artifact that was never written is the specific failure this catches: the SOC 2 mapping
+# pointed at docs/compliance/permissions.md for a while, and nothing noticed.
+set -uo pipefail
+
+missing=0
+checked=0
+
+for file in $(find . -name '*.md' -not -path './.git/*'); do
+  dir=$(dirname "$file")
+
+  # grep exits 1 on no matches, which is normal for a file with no links.
+  targets=$(grep -oE '\]\([^)#]+\.md[^)]*\)' "$file" 2>/dev/null | sed -E 's/^\]\(//; s/\)$//; s/#.*$//') || true
+  [ -z "$targets" ] && continue
+
+  while IFS= read -r target; do
+    case "$target" in
+      http*|'') continue ;;
+    esac
+    checked=$((checked + 1))
+    if [ ! -f "$dir/$target" ]; then
+      echo "MISSING: $target  (linked from $file)"
+      missing=$((missing + 1))
+    fi
+  done <<< "$targets"
+done
+
+if [ "$missing" -ne 0 ]; then
+  echo "$missing broken documentation link(s)."
+  exit 1
+fi
+
+echo "$checked relative documentation links, all resolve."

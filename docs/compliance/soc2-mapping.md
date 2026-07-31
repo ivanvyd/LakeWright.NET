@@ -38,7 +38,7 @@ credible.
 |---|---|---|
 | Tenant isolation | CC6.1, CC6.3 | Query layer that cannot build a statement without a resolved tenant context, and a context that only the resolver assembly can construct (`internal` plus `InternalsVisibleTo`). Evidence: the cross-tenant isolation suite as a required CI check, with results retained per run, plus a demonstration that it fails when isolation is removed. |
 | Authentication | CC6.1 | OIDC via `AddOpenIdConnect`. No local password store. Evidence: configuration under review, plus integration tests asserting unauthenticated requests are rejected. |
-| Authorization | CC6.1, CC6.3 | Policy-based authorization with a default `[Authorize]` policy at endpoint routing, so unprotected endpoints are opt-out rather than opt-in. Evidence: a permission matrix generated from code by a test into `docs/compliance/permissions.md`, so documentation cannot drift from behaviour. |
+| Authorization | CC6.1, CC6.3 | **Partial.** The role model exists (`MembershipRole`: Viewer, Member, Admin) and membership is resolved from the database, but nothing enforces roles yet because there is no HTTP surface to enforce them on. Arrives with the ASP.NET Core tier: a default `[Authorize]` policy at endpoint routing so unprotected endpoints are opt-out, and a permission matrix generated from code by a test so the documentation cannot drift from behaviour. Do not claim this control today. |
 | Audit logging | CC7.2, CC7.3 | `audit_events` written in the same transaction as the audited action. Three layers: an init-only entity, a change-tracker guard on every `SaveChanges` overload, and `REVOKE UPDATE, DELETE` from the application role so the database refuses what C# cannot see. Evidence: tests connecting **as the application role** assert `ExecuteDelete` and `ExecuteUpdate` fail with `insufficient_privilege` while insert and select still work. Note the deployment requirement: the application role must not own the tables, because an owner keeps privileges `REVOKE` does not remove. |
 | Encryption in transit | CC6.7 | HTTPS only, HSTS, TLS 1.2 minimum at ingress. Databricks REST and SQL over TLS by default. Evidence: a scheduled TLS configuration check whose output is retained. |
 | Encryption at rest | CC6.7, Confidentiality | Cloud provider storage encryption on Delta storage and the operational database. Evidence: an ADR stating explicitly what is *not* encrypted at application level and why. |
@@ -50,7 +50,23 @@ credible.
 | Incident response | CC7.3, CC7.4, CC7.5 | `SECURITY.md` with a private reporting channel and stated response expectations. GitHub security advisories as the coordinated disclosure mechanism. |
 | Vulnerability management | CC7.1, CC9.1 | Dependabot, CodeQL on push and pull request, `dotnet list package --vulnerable --include-transitive` as a failing gate, OpenSSF Scorecard weekly with SARIF into the Security tab. |
 | Monitoring and alerting | CC7.1, CC7.2 | OpenTelemetry traces and metrics, health checks, alerting on operation failure rate and warehouse queue depth. |
-| Data retention and deletion | Privacy, Confidentiality | Per-tenant deletion that removes the tenant schema and the operational rows in one documented procedure, with the result recorded as an audit event. |
+| Data retention and deletion | Privacy, Confidentiality | **Design only.** `OrganizationState.PendingDeletion` stops reads before anything is destroyed and is honoured by both resolution and the claim loop. The ordered procedure, classification and retention periods are in [data-handling.md](data-handling.md); the deletion itself is not implemented. |
+
+## Reading this table honestly
+
+Rows marked **Partial** or **Design only** are not controls yet. They are listed because leaving
+them out would make the table look complete, and a control an adopter believes they inherited and
+did not is worse than one they know they have to build.
+
+Current status, so it can be checked at a glance rather than read for:
+
+| Status | Rows |
+|---|---|
+| Implemented and evidenced by a test | Tenant isolation, authentication, audit logging, change management, encryption in transit |
+| Implemented, evidence is configuration | Secret management, encryption at rest |
+| Partial | Authorization, monitoring and alerting |
+| Design only | Access review, backup and restore, data retention and deletion |
+| Not started | Incident response beyond `SECURITY.md` |
 
 ## What this does not cover
 

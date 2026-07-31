@@ -74,14 +74,17 @@ the Signalboard sample.
 
 ## Documentation
 
+[docs/README.md](docs/README.md) is the index. The ones most people want:
+
 | Document | What it answers |
 |---|---|
 | [Product thesis](docs/planning/01-product-thesis.md) | What this is for, and the strongest argument against building it |
 | [Architecture](docs/planning/03-architecture.md) | The three planes, what lives where, and why |
 | [Tenant model](docs/planning/04-tenant-model.md) | The isolation decision matrix and the recommended default |
-| [Testing isolation](docs/guides/testing-isolation.md) | How the isolation suite is shown to fail when isolation is broken |
+| [Threat model](docs/security/threat-model.md) | What is protected, from what, and which threats are unmitigated |
 | [Compatibility](docs/compatibility.md) | Verified against a live workspace, versus taken from documentation |
-| [SOC 2 mapping](docs/compliance/soc2-mapping.md) | Which controls exist, and which are the adopter's problem |
+| [SOC 2 mapping](docs/compliance/soc2-mapping.md) | Which controls exist, which are partial, and which are the adopter's problem |
+| [Testing isolation](docs/guides/testing-isolation.md) | How the isolation suite is shown to fail when isolation is broken |
 | [Decisions](docs/decisions) | One record per load-bearing choice |
 
 ## Support boundary
