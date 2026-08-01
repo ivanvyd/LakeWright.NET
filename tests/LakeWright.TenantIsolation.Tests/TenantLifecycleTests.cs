@@ -2,6 +2,7 @@ using LakeWright.Core.Tenancy;
 using LakeWright.Multitenancy;
 using LakeWright.Multitenancy.Model;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Options;
 
 namespace LakeWright.TenantIsolation.Tests;
@@ -81,6 +82,67 @@ public class TenantLifecycleTests(PostgresFixture postgres)
         second.Id.ShouldBe(first.Id);
         (await db.Organizations.CountAsync(ct)).ShouldBe(1);
         (await db.AuditEvents.CountAsync(a => a.Action == AuditActions.TenantProvisioned, ct)).ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task A_provision_that_loses_the_race_is_answered_with_the_winner()
+    {
+        // Arrange — a competing request commits between this caller's lookup and its insert. The
+        // lookup alone cannot close that window, and the first version of this method had only the
+        // lookup: idempotent for a retry, and an exception for a race. Forced rather than raced,
+        // for the reason OperationIdempotencyTests documents — two tasks started together
+        // serialise, and the test passes with the constraint removed.
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        var connectionString = db.Database.GetConnectionString()!;
+
+        await using var competitor = PostgresFixture.ContextFor(connectionString);
+        await using var loser = PostgresFixture.ContextFor(
+            connectionString, new ProvisionDuringSave(competitor));
+
+        // Act — its lookup runs before the winner exists, so only the unique index can stop it.
+        var answered = await Lifecycle(loser).ProvisionAsync("Acme", "acme", "auth0|ops", ct);
+
+        // Assert — one tenant, and the loser was told about the winner rather than throwing.
+        answered.Slug.ShouldBe("acme");
+        (await db.Organizations.CountAsync(ct)).ShouldBe(1);
+
+        // And the losing call recorded nothing. Its audit row was queued before the insert failed;
+        // detaching the organization alone would have left it to be written by the next save,
+        // claiming a provisioning that did not happen. The winner here is inserted directly by the
+        // interceptor rather than through the lifecycle, so it writes no row of its own — which is
+        // what makes zero the right number.
+        (await db.AuditEvents.CountAsync(a => a.Action == AuditActions.TenantProvisioned, ct)).ShouldBe(0);
+    }
+
+    /// <summary>Commits a competing tenant while the context under test is saving its own.</summary>
+    private sealed class ProvisionDuringSave(LakeWrightDbContext competitor) : SaveChangesInterceptor
+    {
+        private bool _committed;
+
+        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (!_committed)
+            {
+                _committed = true;
+                var id = new TenantId(Guid.CreateVersion7());
+                competitor.Organizations.Add(new Organization
+                {
+                    Id = id,
+                    Name = "Acme",
+                    Slug = "acme",
+                    Schema = UnityCatalogIdentifier.SchemaForTenant(id),
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    State = OrganizationState.Active
+                });
+                await competitor.SaveChangesAsync(cancellationToken);
+            }
+
+            return result;
+        }
     }
 
     [Fact]

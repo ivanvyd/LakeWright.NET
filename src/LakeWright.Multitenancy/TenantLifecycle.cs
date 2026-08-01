@@ -3,6 +3,7 @@ using LakeWright.Core.Tenancy;
 using LakeWright.Multitenancy.Model;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Npgsql;
 
 namespace LakeWright.Multitenancy;
 
@@ -35,6 +36,12 @@ public sealed class TenantLifecycle(
     /// after a partial failure: the row commits, the schema creation times out, and the caller
     /// tries again. A second call must finish the job rather than collide on a unique index or
     /// mint a second tenant with the same name.
+    ///
+    /// The unique index on the slug is what enforces that, not the lookup. Two requests arriving
+    /// together both find nothing and both insert; one loses on the constraint and is answered
+    /// with the winner. The first version of this had the lookup and no catch, so it was
+    /// idempotent for a retry and threw for a race — the same defect this project had already
+    /// fixed once in <see cref="OperationStore.CreateAsync"/> and did not carry across.
     ///
     /// The row is written first and the schema second, then the state moves to
     /// <see cref="OrganizationState.Active"/>. That order is what makes the retry safe. Creating
@@ -72,7 +79,23 @@ public sealed class TenantLifecycle(
                 id, principalId, AuditActions.TenantProvisioned,
                 resourceType: nameof(Organization), resourceId: id.Value.ToString());
 
-            await db.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException e) when (IsUniqueViolation(e))
+            {
+                // Clearing the tracker rather than detaching the organization alone: its audit row
+                // is queued too, and leaving that behind would record a provisioning that lost.
+                db.ChangeTracker.Clear();
+
+                organization = await db.Organizations
+                    .SingleOrDefaultAsync(o => o.Slug == slug, cancellationToken);
+
+                // A unique violation with no row behind it means some other constraint failed, and
+                // reporting that as a race would hide it.
+                if (organization is null) { throw; }
+            }
         }
         else if (organization.State != OrganizationState.Provisioning)
         {
@@ -91,6 +114,9 @@ public sealed class TenantLifecycle(
 
         return organization;
     }
+
+    private static bool IsUniqueViolation(DbUpdateException e) =>
+        e.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
 
     /// <summary>
     /// Step 1 of deletion: stop serving the tenant, destroy nothing.
