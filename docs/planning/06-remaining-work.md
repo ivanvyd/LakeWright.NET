@@ -2,8 +2,27 @@
 
 Written 2026-08-01, against `main` at the Declarative Automation Bundle merge.
 
-Two parts: five blockers, four of which still need a human, and five milestones that do not. The blockers are first
-because three of them gate work in the second half, and one of them gets harder the longer it waits.
+Two parts: five blockers, four of which still need a human, and five milestones that do not. The
+blockers are first because three of them gate work in the second half, and one of them gets harder
+the longer it waits.
+
+**Everything still open, and where it is recorded.** This file is the detail; the point of the table
+is that nothing lives only in someone's head.
+
+| Open item | Recorded in | Blocked on |
+|---|---|---|
+| Databricks trademark position in writing | B2 below | An email only the maintainer can send. Every mitigation is already in place, so this is prudence rather than a gate |
+| `lakewright.dev` | B3 below | A payment method. Nothing depends on it |
+| Cost attribution in currency | [Threat model, T5](../security/threat-model.md) | A metastore-admin grant on `system.billing`, and the fact that the tenant reaches compute as a job parameter rather than a tag |
+| Per-tenant token metering | M4 below | The same grant — it belongs with cost attribution |
+| Offering the streaming shim upstream | [ADR 0009](../decisions/0009-a-separate-optional-ai-module.md) | Nothing but doing it. `LiveChatTests` holds the reproduction |
+| Reference deployment to Azure Container Apps | M5 below, [compatibility](../compatibility.md) | Billable resources someone has to decide to create. Until then nothing has been deployed and the matrix says so |
+| Observability wiring | [Getting started](../guides/getting-started.md#watching-it-in-production) | Nothing. The instruments exist and are tested; exporting them is the adopter's, and a reference setup goes with the deployment above |
+| Synthetic events and cost attribution in Signalboard | M5 below | The cost half shares T5's blocker |
+
+Nothing here is a surprise to the compatibility matrix. If this table and
+[compatibility.md](../compatibility.md) ever disagree, the matrix wins — it records what was
+executed, and this one records what is intended.
 
 ---
 
