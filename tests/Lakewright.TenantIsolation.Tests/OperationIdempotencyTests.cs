@@ -5,6 +5,7 @@ using Lakewright.Core.Tenancy;
 using Lakewright.Multitenancy;
 using Lakewright.Multitenancy.Model;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Hosting;
 using static Lakewright.TenantIsolation.Tests.TestApi;
 
@@ -44,27 +45,73 @@ public class OperationIdempotencyTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task Simultaneous_retries_produce_one_operation()
+    public async Task A_retry_that_loses_the_race_is_answered_with_the_winner()
     {
-        // Arrange — separate contexts, because one context serialises the writes and the test
-        // would pass without the unique index doing anything.
+        // Arrange — a competing request commits between this caller's lookup and its insert, which
+        // is the window the lookup alone cannot close. Forced rather than raced: two tasks started
+        // together serialise in practice, and an earlier version of this test passed with the
+        // unique index deleted, which is no test at all.
         var ct = TestContext.Current.CancellationToken;
         await using var db = await postgres.NewDatabaseAsync();
         await Seed(db, ct);
         var connectionString = db.Database.GetConnectionString()!;
 
-        await using var a = PostgresFixture.ContextFor(connectionString);
-        await using var b = PostgresFixture.ContextFor(connectionString);
+        await using var competitor = PostgresFixture.ContextFor(connectionString);
+        var winner = Pending("same-key");
 
-        // Act
-        var results = await Task.WhenAll(
-            new OperationStore(a).CreateAsync(Ctx(), Alice, "analysis", "same-key", ct),
-            new OperationStore(b).CreateAsync(Ctx(), Alice, "analysis", "same-key", ct));
+        await using var loser = PostgresFixture.ContextFor(
+            connectionString, new CommitDuringSave(competitor, winner));
 
-        // Assert — one row, and both callers were told about the same one.
-        results[0].Id.ShouldBe(results[1].Id);
+        // Act — the lookup finds nothing because the winner is not written yet, so only the
+        // constraint can stop the insert that follows.
+        var answered = await new OperationStore(loser)
+            .CreateAsync(Ctx(), Alice, "analysis", "same-key", ct);
+
+        // Assert
+        answered.Id.ShouldBe(winner.Id);
         (await db.Operations.CountAsync(ct)).ShouldBe(1);
     }
+
+    /// <summary>
+    /// Commits a competing operation while the context under test is saving its own.
+    /// </summary>
+    /// <remarks>
+    /// The only way to land inside the lookup-to-insert window on demand. Timing two tasks and
+    /// hoping is what let the earlier version of this test pass against a table with no unique
+    /// index at all.
+    /// </remarks>
+    private sealed class CommitDuringSave(LakewrightDbContext competitor, Operation winner)
+        : SaveChangesInterceptor
+    {
+        private bool _committed;
+
+        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (!_committed)
+            {
+                _committed = true;
+                competitor.Operations.Add(winner);
+                await competitor.SaveChangesAsync(cancellationToken);
+            }
+
+            return result;
+        }
+    }
+
+    private static Operation Pending(string clientRequestId) => new()
+    {
+        Id = Guid.CreateVersion7(),
+        OrganizationId = AcmeId,
+        PrincipalId = Alice,
+        Kind = "analysis",
+        State = OperationState.Pending,
+        IdempotencyKey = Guid.CreateVersion7().ToString("N"),
+        ClientRequestId = clientRequestId,
+        CreatedAt = DateTimeOffset.UtcNow
+    };
 
     [Fact]
     public async Task One_members_key_does_not_collide_with_anothers()

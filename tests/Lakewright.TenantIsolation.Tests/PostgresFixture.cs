@@ -1,5 +1,6 @@
 using Lakewright.Multitenancy;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Testcontainers.PostgreSql;
 
 namespace Lakewright.TenantIsolation.Tests;
@@ -47,10 +48,26 @@ public sealed class PostgresFixture : IAsyncLifetime
     /// A fresh context over an existing database. Concurrency tests need one connection each;
     /// sharing a context serialises them and the test passes without exercising anything.
     /// </summary>
-    public static LakewrightDbContext ContextFor(string connectionString) =>
-        new(new DbContextOptionsBuilder<LakewrightDbContext>()
-            .UseNpgsql(connectionString)
-            .Options);
+    /// <remarks>
+    /// The optional interceptor is how a test forces a race rather than hoping for one. Two tasks
+    /// started together still tend to serialise — the second reads after the first has committed —
+    /// so a test that merely runs them concurrently passes with the constraint under test removed.
+    /// An interceptor that writes the competing row during <c>SaveChanges</c> makes the collision
+    /// happen every time.
+    /// </remarks>
+    public static LakewrightDbContext ContextFor(
+        string connectionString,
+        IInterceptor? interceptor = null)
+    {
+        var builder = new DbContextOptionsBuilder<LakewrightDbContext>().UseNpgsql(connectionString);
+
+        if (interceptor is not null)
+        {
+            builder.AddInterceptors(interceptor);
+        }
+
+        return new LakewrightDbContext(builder.Options);
+    }
 
     /// <summary>
     /// Opens a second context against the same database as the restricted application role.
