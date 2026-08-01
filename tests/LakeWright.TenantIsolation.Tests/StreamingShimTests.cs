@@ -22,7 +22,7 @@ public class StreamingShimTests
         """data: {"id":"c1","choices":[{"delta":{},"index":0,"finish_reason":"stop"}],"usage":{"cache_read_input_tokens":0,"completion_tokens":16,"prompt_tokens":9,"total_tokens":25,"cache_creation_input_tokens":0}}""";
 
     private static string Repair(string line) =>
-        StreamingUsageRepairPolicy.RepairLineForTests(line);
+        StreamingUsageRepairPolicy.RepairLine(line);
 
     [Fact]
     public void An_incomplete_usage_object_is_removed_rather_than_zeroed()

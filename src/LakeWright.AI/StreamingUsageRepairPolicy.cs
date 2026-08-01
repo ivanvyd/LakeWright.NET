@@ -65,13 +65,7 @@ internal sealed class StreamingUsageRepairPolicy : PipelinePolicy
         message.Response.ContentStream = new SseUsageRepairStream(stream);
     }
 
-    /// <summary>The line-level repair, exposed so a test can drive it with a captured chunk.</summary>
-    /// <remarks>
-    /// Internal rather than public: the policy is the supported surface, and a caller reaching for
-    /// this is working around the pipeline rather than using it.
-    /// </remarks>
-    internal static string RepairLineForTests(string line) => RepairLine(line);
-
+    /// <summary>The line-level repair. Internal so the stream and the tests can both reach it.</summary>
     internal static string RepairLine(string line)
     {
         const string Prefix = "data: ";

@@ -16,8 +16,7 @@ namespace LakeWright.AI;
 /// <see cref="StreamingUsageRepairPolicy"/> corrects on the way out.
 ///
 /// Deliberately not part of <c>AddLakeWrightDatabricks</c>. A product that queries a warehouse and
-/// runs jobs has no reason to take a dependency on an AI client, and this is the module ADR 0008
-/// calls optional.
+/// runs jobs takes no dependency on an AI client or its transitive graph — ADR 0009.
 /// </remarks>
 public static class DatabricksChatClientExtensions
 {
