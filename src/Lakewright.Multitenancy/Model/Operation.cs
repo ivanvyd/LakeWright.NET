@@ -50,7 +50,18 @@ public sealed class Operation
 
     public DateTimeOffset? CompletedAt { get; set; }
 
-    /// <summary>Product-facing failure text. Never a raw platform message.</summary>
+    /// <summary>
+    /// Why the operation failed, in the platform's own wording.
+    /// </summary>
+    /// <remarks>
+    /// **This is not sanitised.** It carries the Databricks termination message or code verbatim,
+    /// because inventing our own wording for a platform failure loses the detail an operator needs.
+    ///
+    /// <see cref="State"/> is the product-facing half and is a closed set we own. This field is the
+    /// diagnostic half. An endpoint that returns operation status to a customer must decide what to
+    /// do with it rather than passing it through: an earlier version of this comment claimed the
+    /// field was already product-facing, which would have led exactly there.
+    /// </remarks>
     public string? Error { get; set; }
 
     public Organization? Organization { get; init; }

@@ -18,6 +18,9 @@ namespace Lakewright.TenantIsolation.Tests;
 [Collection(nameof(PostgresTests))]
 public class AuditLockdownTests(PostgresFixture postgres)
 {
+    private const string AppRole = "lakewright_app";
+    private const string AppPassword = "probe-password";
+
     private static readonly TenantId AcmeId = TenantId.Parse("0198f000-0000-7000-8000-0000000000c3");
 
     private static AuditEvent NewEvent() => new()
@@ -33,20 +36,20 @@ public class AuditLockdownTests(PostgresFixture postgres)
     [Fact]
     public async Task The_application_role_cannot_delete_an_audit_event_even_via_ExecuteDelete()
     {
+        // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var owner = await postgres.NewDatabaseAsync();
-        await DatabaseHardening.ApplyAsync(owner, "lakewright_app", "probe-password", ct);
-
+        await DatabaseHardening.ApplyAsync(owner, AppRole, AppPassword, ct);
         owner.AuditEvents.Add(NewEvent());
         await owner.SaveChangesAsync(ct);
+        await using var app = PostgresFixture.AsApplicationRole(owner, AppRole, AppPassword);
 
-        await using var app = PostgresFixture.AsApplicationRole(owner, "lakewright_app", "probe-password");
-
-        // This is the exact call the C# guard cannot intercept: it never touches the change
-        // tracker and never calls SaveChanges.
+        // Act — the exact call the C# guard cannot intercept: it never touches the change tracker
+        // and never calls SaveChanges.
         var refused = await Should.ThrowAsync<PostgresException>(
             async () => await app.AuditEvents.ExecuteDeleteAsync(ct));
 
+        // Assert
         refused.SqlState.ShouldBe(PostgresErrorCodes.InsufficientPrivilege);
         (await app.AuditEvents.CountAsync(ct)).ShouldBe(1);
     }
@@ -54,33 +57,37 @@ public class AuditLockdownTests(PostgresFixture postgres)
     [Fact]
     public async Task The_application_role_cannot_update_an_audit_event()
     {
+        // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var owner = await postgres.NewDatabaseAsync();
-        await DatabaseHardening.ApplyAsync(owner, "lakewright_app", "probe-password", ct);
-
+        await DatabaseHardening.ApplyAsync(owner, AppRole, AppPassword, ct);
         owner.AuditEvents.Add(NewEvent());
         await owner.SaveChangesAsync(ct);
+        await using var app = PostgresFixture.AsApplicationRole(owner, AppRole, AppPassword);
 
-        await using var app = PostgresFixture.AsApplicationRole(owner, "lakewright_app", "probe-password");
-
-        await Should.ThrowAsync<PostgresException>(
+        // Act
+        var refused = await Should.ThrowAsync<PostgresException>(
             async () => await app.AuditEvents.ExecuteUpdateAsync(
                 s => s.SetProperty(e => e.Action, "tampered"), ct));
+
+        // Assert
+        refused.SqlState.ShouldBe(PostgresErrorCodes.InsufficientPrivilege);
     }
 
     [Fact]
     public async Task The_application_role_can_still_read_and_append()
     {
-        // A lockdown that also breaks the intended path is not a lockdown, it is an outage.
+        // Arrange — a lockdown that also breaks the intended path is an outage, not a control.
         var ct = TestContext.Current.CancellationToken;
         await using var owner = await postgres.NewDatabaseAsync();
-        await DatabaseHardening.ApplyAsync(owner, "lakewright_app", "probe-password", ct);
+        await DatabaseHardening.ApplyAsync(owner, AppRole, AppPassword, ct);
+        await using var app = PostgresFixture.AsApplicationRole(owner, AppRole, AppPassword);
 
-        await using var app = PostgresFixture.AsApplicationRole(owner, "lakewright_app", "probe-password");
-
+        // Act
         app.AuditEvents.Add(NewEvent());
         await app.SaveChangesAsync(ct);
 
+        // Assert
         (await app.AuditEvents.CountAsync(ct)).ShouldBe(1);
     }
 }
