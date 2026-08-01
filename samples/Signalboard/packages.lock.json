@@ -72,9 +72,9 @@
       "lakewright.aspnetcore": {
         "type": "Project",
         "dependencies": {
-          "Lakewright.Core": "[1.0.0, )",
-          "Lakewright.Databricks": "[1.0.0, )",
-          "Lakewright.Multitenancy": "[1.0.0, )"
+          "LakeWright.Core": "[1.0.0, )",
+          "LakeWright.Databricks": "[1.0.0, )",
+          "LakeWright.Multitenancy": "[1.0.0, )"
         }
       },
       "lakewright.core": {
@@ -84,14 +84,14 @@
         "type": "Project",
         "dependencies": {
           "Azure.Core": "[1.44.1, )",
-          "Lakewright.Core": "[1.0.0, )",
+          "LakeWright.Core": "[1.0.0, )",
           "Microsoft.Azure.Databricks.Client": "[2.9.3, )"
         }
       },
       "lakewright.multitenancy": {
         "type": "Project",
         "dependencies": {
-          "Lakewright.Core": "[1.0.0, )",
+          "LakeWright.Core": "[1.0.0, )",
           "Microsoft.EntityFrameworkCore": "[10.0.10, )",
           "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.3, )"
         }

@@ -1,4 +1,4 @@
-# Lakewright.NET — Hosting & Reference Deployment
+# LakeWright.NET — Hosting & Reference Deployment
 
 Research date: **2026-07-31**. All pricing observed **2026-07-31, region East US, currency USD**, unless stated.
 
@@ -76,7 +76,7 @@ Idle billing (the cheap rate) is a *different* thing from scaled-to-zero, and th
 
 Source: https://learn.microsoft.com/azure/container-apps/billing#minimum-number-of-replicas-are-running
 
-> **Planning trap.** The "<0.01 vCPU" condition is easy to violate accidentally. A background `IHostedService` doing a periodic poll, a health-check timer, an OpenTelemetry metrics exporter on a 15s interval, or an EF Core connection-pool keepalive can each push a nominally-idle ASP.NET Core app over 0.01 vCPU and silently move the whole month to the **8× more expensive active rate**. If Lakewright.NET ships background jobs on by default, the always-warm cost estimate below is wrong. Either gate background work behind a flag that the demo profile disables, or budget at active rates.
+> **Planning trap.** The "<0.01 vCPU" condition is easy to violate accidentally. A background `IHostedService` doing a periodic poll, a health-check timer, an OpenTelemetry metrics exporter on a 15s interval, or an EF Core connection-pool keepalive can each push a nominally-idle ASP.NET Core app over 0.01 vCPU and silently move the whole month to the **8× more expensive active rate**. If LakeWright.NET ships background jobs on by default, the always-warm cost estimate below is wrong. Either gate background work behind a flag that the demo profile disables, or budget at active rates.
 
 Cold start guidance — Microsoft publishes mitigation advice but **no latency SLO or published number**: **[V]**
 
@@ -208,7 +208,7 @@ If the idle conditions are *not* met — background jobs keep CPU above 0.01 vCP
 
 Aspire 9.2+ adds `aspire publish` / `aspire deploy` with extensible publishers; for Azure specifically, `azd` remains the recommended path. **[R]** — https://aspire.dev/deployment/azure/container-apps/ (vendor doc, but secondary to Learn for version specifics; the 9.2 version boundary was not independently confirmed).
 
-**Recommendation for Lakewright.NET: adopt Aspire for local orchestration (F5 → app + Postgres + seeded Databricks config), but do NOT make `azd`/Aspire the only deployment path.** Reasons:
+**Recommendation for LakeWright.NET: adopt Aspire for local orchestration (F5 → app + Postgres + seeded Databricks config), but do NOT make `azd`/Aspire the only deployment path.** Reasons:
 1. Aspire's `azd` path provisions ACR by default, which contradicts the free-`ghcr.io` recommendation above and adds a cost line.
 2. Aspire's ACA generation is Azure-specific; making it the primary path silently violates the "must not be locked to one cloud" constraint.
 3. Aspire is a large concept to put in front of a contributor whose actual goal is "see the Databricks bits."
@@ -269,7 +269,7 @@ App Service **is** a legitimate choice — it supports managed identity and .NET
 
 ## 3. Databricks Apps as the host — ruled out
 
-**Verdict: Databricks Apps cannot host Lakewright.NET.** Two independent, each-sufficient blockers.
+**Verdict: Databricks Apps cannot host LakeWright.NET.** Two independent, each-sufficient blockers.
 
 ### 3.1 Blocker 1 — no .NET runtime
 
@@ -309,7 +309,7 @@ Horizontal scaling across instances exists but is in **Beta**. **[V]**
 
 ### 3.4 Where Databricks Apps *does* fit
 
-Not as the product, but potentially as a second, optional deliverable: an internal admin/ops console for the *operator* of a Lakewright.NET deployment (tenant onboarding, usage inspection, job status) — a population that genuinely all have Databricks accounts. That would be Python/Streamlit, not .NET, and should be scoped as a separate optional sample, not part of the core accelerator. Worth one sentence in the README to pre-empt "why don't you use Databricks Apps?", which will otherwise be the most common question the project receives.
+Not as the product, but potentially as a second, optional deliverable: an internal admin/ops console for the *operator* of a LakeWright.NET deployment (tenant onboarding, usage inspection, job status) — a population that genuinely all have Databricks accounts. That would be Python/Streamlit, not .NET, and should be scoped as a separate optional sample, not part of the core accelerator. Worth one sentence in the README to pre-empt "why don't you use Databricks Apps?", which will otherwise be the most common question the project receives.
 
 ---
 
@@ -415,7 +415,7 @@ Only the **Go SDK**, **Terraform provider**, and **Databricks CLI** implement Az
 
 There is no official Databricks SDK for .NET at all. Combined with the above, this means:
 
-**Lakewright.NET must implement token acquisition itself — and that is an advantage, not a problem.** The implementation is a `TokenCredential` plus an `HttpClient` `DelegatingHandler`, perhaps 30 lines, and it lands the project in a strictly better position than the Python and Java SDKs. "Secret-free managed-identity auth to Databricks, which the official Python and Java SDKs still don't do" is a genuine, checkable differentiator for the README.
+**LakeWright.NET must implement token acquisition itself — and that is an advantage, not a problem.** The implementation is a `TokenCredential` plus an `HttpClient` `DelegatingHandler`, perhaps 30 lines, and it lands the project in a strictly better position than the Python and Java SDKs. "Secret-free managed-identity auth to Databricks, which the official Python and Java SDKs still don't do" is a genuine, checkable differentiator for the README.
 
 ### 5.4 Portability — AWS, GCP, Kubernetes
 

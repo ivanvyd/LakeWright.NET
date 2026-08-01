@@ -2,7 +2,7 @@
 
 ## What this document does and does not claim
 
-Lakewright.NET implements technical controls that map to the SOC 2 Trust Services Criteria. It
+LakeWright.NET implements technical controls that map to the SOC 2 Trust Services Criteria. It
 cannot itself hold a SOC 2 report.
 
 SOC 2 is an examination of controls **at a service organization**. It applies to an organisation,

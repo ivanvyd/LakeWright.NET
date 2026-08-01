@@ -34,7 +34,7 @@ jobs:
       - name: Generate SBOM
         run: |
           dotnet tool install --global CycloneDX
-          dotnet CycloneDX Lakewright.slnx -o artifacts -f sbom.cyclonedx.json --json
+          dotnet CycloneDX LakeWright.slnx -o artifacts -f sbom.cyclonedx.json --json
 
       # Provenance is only meaningful because Directory.Build.props sets
       # Deterministic and ContinuousIntegrationBuild: the artifact can be rebuilt

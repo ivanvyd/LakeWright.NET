@@ -1,7 +1,7 @@
 using System.Security.Claims;
-using Lakewright.Core.Tenancy;
-using Lakewright.Multitenancy;
-using Lakewright.Multitenancy.Model;
+using LakeWright.Core.Tenancy;
+using LakeWright.Multitenancy;
+using LakeWright.Multitenancy.Model;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -83,7 +83,7 @@ public static class DemoTenants
     public static async Task SeedDemoTenantsAsync(this IServiceProvider services)
     {
         await using var scope = services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<LakewrightDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<LakeWrightDbContext>();
 
         await CreateSchemaAsync(db);
 
@@ -130,7 +130,7 @@ public static class DemoTenants
     /// A product uses migrations. A sample wants one command and no migration history to explain,
     /// so it asks EF for the tables directly.
     /// </remarks>
-    private static async Task CreateSchemaAsync(LakewrightDbContext db)
+    private static async Task CreateSchemaAsync(LakeWrightDbContext db)
     {
         var creator = db.GetService<IRelationalDatabaseCreator>();
 

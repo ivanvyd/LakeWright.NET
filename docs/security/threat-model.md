@@ -79,24 +79,37 @@ roles is a deployment requirement, not something code can enforce.
 
 A tenant, or a bug, drives unbounded Databricks compute.
 
-**Currently unmitigated.** Warehouse auto-stop limits the blast radius and nothing else does. Per-
-tenant quotas and query cost ceilings are on the roadmap. This is the largest open gap in this
-document and it is listed rather than implied.
+**Partly mitigated.** `OperationWorker:MaxInFlightPerTenant` caps how many operations one tenant can
+have running at once, across every worker, which is a ceiling on the compute a runaway loop can buy
+before anyone notices. Warehouse auto-stop bounds the idle half. Evidence:
+`OperationClaimTests.A_tenant_at_its_ceiling_is_skipped_rather_than_failed`.
+
+What is still missing is a budget in currency. That needs Databricks billing data, which arrives
+hours after the compute is spent — too late to stop anything in flight, and useful only for alerting
+and chargeback after the fact. A concurrency ceiling is the control that acts in time; a spend
+ceiling is the control an auditor asks for, and this project has the first and not the second.
+
+Nothing here caps the *cost of one query*. A single operation against a large warehouse is bounded
+only by the run timeout.
 
 ### T6. Denial of service against the operation queue
 
-One tenant fills the queue and starves the rest. The claim loop is strict oldest-first across all
-tenants with no fairness rule, and a worker processes one operation end to end — it polls a run to
-completion before claiming the next.
+One tenant fills the queue and starves the rest.
 
-**Currently unmitigated, and now quantified.** A performance review put numbers on it: with three
-replicas, one tenant submitting four long-running operations occupies every slot, and the others
-wait up to the run timeout, which defaults to two hours. Concurrency is capped at one operation per
-process, so the only lever today is more replicas.
+**Mitigated.** The claim loop was strict oldest-first, and a performance review quantified what that
+cost: with three replicas, one tenant submitting four long-running operations occupied every slot
+and the others waited up to the run timeout, two hours by default.
 
-Two changes close it, both on the roadmap with M2: a bounded set of in-flight polls so one process
-can track many operations, and a per-tenant cap in the claim query so a backlog cannot monopolise
-every slot.
+Candidates are now ordered by how many operations that tenant already holds in flight, then by age,
+so a tenant holding none is served before a tenant holding two however long the second has waited.
+Within one tenant it stays oldest-first. `MaxInFlightPerTenant` caps the rest. Evidence:
+`OperationClaimTests.One_tenants_backlog_does_not_starve_another`, which fails when the ordering
+reverts to age alone.
+
+One limit remains: a worker still polls a run to completion before claiming the next, so throughput
+per process is one operation. That is a scaling characteristic rather than a fairness one — adding
+replicas raises the ceiling and no tenant can monopolise them — but it means a deployment sized for
+its steady state will queue during a burst.
 
 ### T7. Supply chain
 

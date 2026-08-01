@@ -21,7 +21,7 @@ Both are Python/TypeScript-shaped. Neither has a .NET on-ramp. That is where the
 
 ### Summary table
 
-| Product | Databricks source? | Per-tenant multi-tenancy / RLS | Price (observed 2026-07-31) | .NET SDK | Replaces or complements Lakewright.NET? |
+| Product | Databricks source? | Per-tenant multi-tenancy / RLS | Price (observed 2026-07-31) | .NET SDK | Replaces or complements LakeWright.NET? |
 |---|---|---|---|---|---|
 | **Cube** (cube.dev) | Yes (documented data source) | Yes — multi-tenant by design, RLS + pre-aggregations | Free tier; **$40/dev/mo** Starter; **$80/dev/mo** Premium; Explorer **$40/user/mo**, Viewer **$20/user/mo**; Enterprise custom | **No** — REST/GraphQL/SQL APIs only | **Complements.** It is a semantic/data tier, not an app tier. A .NET app can consume its REST API. |
 | **Preset / Apache Superset** | Yes | Superset: guest tokens + RLS, DIY. Preset: workspace-per-customer, managed | Preset Team **$49/mo** (entry); Superset OSS free | **No** | Complements/overlaps on the chart tier. Superset OSS multi-tenancy is explicitly DIY. |
@@ -98,7 +98,7 @@ This is a *very* aggressive commercial position against Luzmo (€995/mo), GoodD
 
 **Reference implementations [VERIFIED — https://github.com/databricks-solutions/aibi-dashboards-external-embedding]:** Flask backend + React/Vite frontend. 7 stars, 13 commits. The in-doc samples are **Python and JavaScript only**. **No .NET sample exists anywhere.**
 
-**Implication for Lakewright.NET:** the dashboard-embedding feature is *solved by the platform*. An accelerator cannot claim to invent it. What it *can* do is ship the step-2-to-4 token-exchange broker as tested, DI-registered, `IHttpClientFactory`-based C# — including the non-obvious `authorization_details` JSON round-trip that the samples show but do not explain. That is a genuine but small piece of work: call it 200–400 lines.
+**Implication for LakeWright.NET:** the dashboard-embedding feature is *solved by the platform*. An accelerator cannot claim to invent it. What it *can* do is ship the step-2-to-4 token-exchange broker as tested, DI-registered, `IHttpClientFactory`-based C# — including the non-obvious `authorization_details` JSON round-trip that the samples show but do not explain. That is a genuine but small piece of work: call it 200–400 lines.
 
 ### 2b. Databricks Apps
 
@@ -113,7 +113,7 @@ Corroborated **[VERIFIED — https://docs.databricks.com/aws/en/dev-tools/databr
 - Billing: "Apps are billed per hour of compute time while running, based on provisioned capacity." No public per-unit figure on the docs page or the pricing page (JS-rendered) **[VERIFIED absence, 2026-07-31]**
 - **2026 additions [VERIFIED — https://www.databricks.com/blog/enabling-governed-vibe-coding-enterprise-apps-databricks and Summit coverage]:** **AppKit** (TypeScript/Node+React SDK, Apache-2.0, 88 stars, https://github.com/databricks/appkit), **App Spaces** (governance boundary for groups of apps), **Genie App Builder**, and **serverless micro apps** that scale to zero.
 
-**Read this carefully:** Databricks is *actively investing* in a first-party app framework — and it chose **TypeScript**. AppKit is the shape Lakewright.NET would occupy, in a different language, with a vendor behind it.
+**Read this carefully:** Databricks is *actively investing* in a first-party app framework — and it chose **TypeScript**. AppKit is the shape LakeWright.NET would occupy, in a different language, with a vendor behind it.
 
 ### 2c. Genie embedding
 
@@ -239,7 +239,7 @@ What does exist:
                             |         Marketplace Apps (Public Preview)
    Delta Sharing /          |         Genie Conversation API (Preview)
    OpenSharing              |
-                            |    << Lakewright.NET sits here-ish,
+                            |    << LakeWright.NET sits here-ish,
                             |       app tier, Databricks-native,
                             |       .NET-only >>
    ---------------------------------------------------------> APP TIER
@@ -257,7 +257,7 @@ What does exist:
                    GENERIC / AGNOSTIC
 ```
 
-**The quadrant Lakewright.NET claims — app tier × Databricks-native × .NET — is genuinely unoccupied.** Nothing else is in it. But an empty quadrant is not automatically a valuable one, and the map has two crowding pressures pointing straight at it:
+**The quadrant LakeWright.NET claims — app tier × Databricks-native × .NET — is genuinely unoccupied.** Nothing else is in it. But an empty quadrant is not automatically a valuable one, and the map has two crowding pressures pointing straight at it:
 
 - **From above-right:** Databricks itself, with AppKit and Marketplace Apps, is building out exactly this quadrant — in TypeScript, with a vendor's resources.
 - **From bottom-right:** ABP and friends own .NET SaaS scaffolding. If lakehouse-backed .NET SaaS ever becomes a real market, adding a Databricks module is a quarter of work for them, not a rewrite.

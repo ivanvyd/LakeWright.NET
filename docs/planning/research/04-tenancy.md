@@ -1,6 +1,6 @@
 # 04 — Multi-Tenant Isolation on Databricks
 
-Research for **Lakewright.NET**. Compiled 2026-07-31. Every claim below carries a URL. Doc dates are recorded where the page exposes them (Microsoft Learn mirrors of the Databricks docs expose `ms.date` / `updated_at`; docs.databricks.com generally does not).
+Research for **LakeWright.NET**. Compiled 2026-07-31. Every claim below carries a URL. Doc dates are recorded where the page exposes them (Microsoft Learn mirrors of the Databricks docs expose `ms.date` / `updated_at`; docs.databricks.com generally does not).
 
 **Status legend**
 - **[VERIFIED]** — read from a primary source this session, URL given.
@@ -30,7 +30,7 @@ Consequence for us: the **current docs and the current limits tables use the wor
 - Announcement: https://www.databricks.com/blog/introducing-new-databricks-partner-program-and-well-architected-framework-isvs-and-data (2026-02-10)
 - Framework site: https://databrickslabs.github.io/partner-architecture/ — self-described as "The definitive architecture guide for technology partners to create world-class products, integrations, and data shares on the Databricks Data Intelligence Platform."
 - Three partner archetypes: **Connected ISV Partners** ("Connect your product to the lakehouse"), **Data Collaboration Partners**, and **Built-On ISV Partners** ("Build your Product on Databricks").
-- "Built-On" is defined in the announcement as: *"solutions built on top of Databricks, with Databricks serving as the foundational implementation behind the partner's own front-end/API/intellectual property."* That is exactly Lakewright.NET's shape.
+- "Built-On" is defined in the announcement as: *"solutions built on top of Databricks, with Databricks serving as the foundational implementation behind the partner's own front-end/API/intellectual property."* That is exactly LakeWright.NET's shape.
 
 **Older ISV best-practices PDF** — https://assets.docs.databricks.com/_extras/documents/best-practices-building-isv-integrations.pdf
 Title metadata reads `[For External] Best Practices - Building ISV Integrations - V(2.6.1)`, dated **2024-06-19**. Could not extract body text (binary PDF, no local PDF renderer available in this environment). Given the 2024 date it predates ABAC policies, query tags, OAuth token federation and Databricks Apps user authorization — treat as stale and do not cite it for mechanics.
@@ -156,7 +156,7 @@ The `PATCH 2/s` account SCIM limit is the practical brake on bulk tenant/group o
 - `GET /api/2.1/unity-catalog/resource-quotas/{parent_securable_type}/{parent_full_name}/{quota_name}` — "Returns accurate counts within 30 minutes of creation operations."
 - `GET /api/2.1/unity-catalog/resource-quotas/all-resource-quotas` — "Unlike `GetQuotas`, `ListQuotas` has no SLA on the freshness of counts."
 
-Both require account-admin authorization. Worth wiring into Lakewright.NET as a preflight check before tenant provisioning.
+Both require account-admin authorization. Worth wiring into LakeWright.NET as a preflight check before tenant provisioning.
 
 ---
 
@@ -382,7 +382,7 @@ https://learn.microsoft.com/en-us/azure/databricks/dev-tools/databricks-apps/aut
 - Workspace admins can allowlist which scopes developers may request; **None** disables user authorization entirely.
 - Status: **Public Preview**, and a workspace admin must enable it.
 
-**Applicability to Lakewright.NET:** this is the *Databricks-hosted* app runtime. An externally-hosted ASP.NET app does not receive `x-forwarded-access-token`. To replicate the pattern outside Databricks Apps you need §4.2.
+**Applicability to LakeWright.NET:** this is the *Databricks-hosted* app runtime. An externally-hosted ASP.NET app does not receive `x-forwarded-access-token`. To replicate the pattern outside Databricks Apps you need §4.2.
 
 ### 4.2 OAuth token federation — the external-app path
 
@@ -533,7 +533,7 @@ Other operational facts from that page:
 - "New columns may be added to existing system tables at any time" — enable schema evolution if you copy them.
 - "System table queries that are not sufficiently selective return the following error: `System Table query returned too much data. Please repeat query with more selective predicates.`"
 
-**Practical consequence for Lakewright.NET:** system tables cannot back a live in-product usage meter or a real-time quota enforcer. They are a **daily batch billing source**. If the product needs near-real-time per-tenant usage display, Lakewright.NET must maintain its own counter in the app tier (e.g. record `statement_id` + duration + bytes from the Statement Execution API response at query time) and reconcile against `system.billing.usage` on a daily job.
+**Practical consequence for LakeWright.NET:** system tables cannot back a live in-product usage meter or a real-time quota enforcer. They are a **daily batch billing source**. If the product needs near-real-time per-tenant usage display, LakeWright.NET must maintain its own counter in the app tier (e.g. record `statement_id` + duration + bytes from the Statement Execution API response at query time) and reconcile against `system.billing.usage` on a daily job.
 
 Retention summary for tables we care about: `billing.usage` 365d, `query.history` 365d, `access.audit` 365d, `compute.node_timeline` 90d, `billing.list_prices` indefinite, `access.workspaces_latest` indefinite.
 
@@ -598,7 +598,7 @@ Retention summary for tables we care about: `billing.usage` 365d, `query.history
 
 ---
 
-## 7. Recommendation for Lakewright.NET
+## 7. Recommendation for LakeWright.NET
 
 1. **Default model: schema-per-tenant in a small number of catalogs**, with tenancy enforced in the .NET query layer (a mandatory catalog/schema resolution step keyed off the authenticated tenant), plus per-tenant SPNs where an audit/grant boundary is required. Catalog-per-tenant as an upgrade tier for tenants who demand it, bounded at ~300 (DR) / 1,000 (raisable).
 2. **Do not build the isolation story on row filters with a shared service principal.** Cite §3.2. If we want UC-enforced tenancy, we need per-tenant identity on the connection, and that is a deliberate, costly architectural choice with a 10,000-principal ceiling.

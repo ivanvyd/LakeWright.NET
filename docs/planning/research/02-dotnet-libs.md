@@ -1,4 +1,4 @@
-# Lakewright.NET Research — 02: Existing .NET ↔ Databricks Connectivity
+# LakeWright.NET Research — 02: Existing .NET ↔ Databricks Connectivity
 
 **Researcher:** R02 (dotnet-libs)
 **Date of research:** 2026-07-31
@@ -47,7 +47,7 @@ Source: <https://www.nuget.org/packages?q=databricks> (37 results) plus targeted
 - **`Databricks.Sdk`** (or any official Databricks-owned SDK package) — **does not exist**. NuGet query `Databricks.Sdk` returns 5 hits, all Zerobus/Reveal packages, none an official SDK. **[VERIFIED]**
 - **`DataBricks.Client`** as a standalone package — **does not exist**. The query returns `Microsoft.Azure.Databricks.Client` and two Zerobus packages only. **[VERIFIED]**
 - **`Azure.ResourceManager.Databricks`** — **does not exist on NuGet**. Confirmed three ways: `nuget.org/packages/Azure.ResourceManager.Databricks/` → HTTP 404; `api.nuget.org/v3-flatcontainer/azure.resourcemanager.databricks/index.json` → HTTP 404; search API `q=resourcemanager databricks` → `totalHits: 0`. **[VERIFIED]**
-  - **Implication:** ARM control-plane management of Azure Databricks *workspace resources* from .NET has no first-party typed package. You would use the generic `Azure.ResourceManager` `ArmClient` with generic resource operations, or call the ARM REST API directly. Note this is workspace *provisioning*, not data-plane work — likely out of scope for Lakewright.NET anyway.
+  - **Implication:** ARM control-plane management of Azure Databricks *workspace resources* from .NET has no first-party typed package. You would use the generic `Azure.ResourceManager` `ArmClient` with generic resource operations, or call the ARM REST API directly. Note this is workspace *provisioning*, not data-plane work — likely out of scope for LakeWright.NET anyway.
 - **Simba drivers on NuGet** — no Simba/Databricks ODBC driver is distributed via NuGet. ODBC drivers are OS-level installs. **[VERIFIED — not present in the 37-result search]**
 
 ### 1.3 Supply-chain caution
@@ -96,7 +96,7 @@ Source: <https://learn.microsoft.com/en-us/azure/databricks/integrations/odbc/au
 
 Databricks now ships an **open-source JDBC driver**: [databricks/databricks-jdbc](https://github.com/databricks/databricks-jdbc), **Apache-2.0**, active (`pushed_at` 2026-07-30, 37 stars, 39 open issues, not archived). It implements OAuth, CloudFetch, and UC volume ingestion.
 
-This is strategically interesting as a **reference implementation** — it is the Apache-licensed, first-party answer to "how should a client talk to Databricks SQL" — but it is **Java and not consumable from .NET**. Value to Lakewright.NET is as a spec to read, not a dependency.
+This is strategically interesting as a **reference implementation** — it is the Apache-licensed, first-party answer to "how should a client talk to Databricks SQL" — but it is **Java and not consumable from .NET**. Value to LakeWright.NET is as a spec to read, not a dependency.
 
 ---
 
@@ -152,7 +152,7 @@ The ADBC driver *is* the Thrift route — it speaks the Spark/Databricks Thrift 
 
 ## 4. `Microsoft.Azure.Databricks.Client` — honest assessment
 
-This is the closest existing thing to what Lakewright.NET would build, so it gets the deepest look.
+This is the closest existing thing to what LakeWright.NET would build, so it gets the deepest look.
 
 ### 4.1 Facts **[VERIFIED]**
 
@@ -253,7 +253,7 @@ Releases **[VERIFIED]**: **v2.3.1 on 2026-02-13** (stable; binaries for **.NET 8
 
 **Honest reading:** alive but on life support. The 2022→2025 gap, and the fact that 2026 activity is almost entirely one Microsoft engineer doing build-infrastructure maintenance (pipeline migrations, feed routing, TFM additions) rather than feature work, says this is **maintenance mode**, not active product development. Note also that the earlier documentation *was* archived (Microsoft stopped updating the .NET for Apache Spark docs around 2023-08-30) **[RECALLED — surfaced by web search, not independently confirmed]**, which is almost certainly the origin of the widespread "it's archived" claim.
 
-**Relevance to Lakewright.NET: low.** It is a UDF/driver programming model for running .NET code *inside* Spark, not a connectivity library. It does not help a .NET SaaS backend talk to Databricks. **Do not build on it.**
+**Relevance to LakeWright.NET: low.** It is a UDF/driver programming model for running .NET code *inside* Spark, not a connectivity library. It does not help a .NET SaaS backend talk to Databricks. **Do not build on it.**
 
 ---
 
