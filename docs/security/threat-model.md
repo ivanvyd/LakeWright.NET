@@ -85,10 +85,18 @@ document and it is listed rather than implied.
 
 ### T6. Denial of service against the operation queue
 
-One tenant fills the queue and starves the rest. The claim loop is FIFO across all tenants with no
-fairness rule.
+One tenant fills the queue and starves the rest. The claim loop is strict oldest-first across all
+tenants with no fairness rule, and a worker processes one operation end to end — it polls a run to
+completion before claiming the next.
 
-**Currently unmitigated.** Per-tenant concurrency limits are on the roadmap.
+**Currently unmitigated, and now quantified.** A performance review put numbers on it: with three
+replicas, one tenant submitting four long-running operations occupies every slot, and the others
+wait up to the run timeout, which defaults to two hours. Concurrency is capped at one operation per
+process, so the only lever today is more replicas.
+
+Two changes close it, both on the roadmap with M2: a bounded set of in-flight polls so one process
+can track many operations, and a per-tenant cap in the claim query so a backlog cannot monopolise
+every slot.
 
 ### T7. Supply chain
 

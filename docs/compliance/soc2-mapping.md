@@ -37,12 +37,12 @@ credible.
 | Control | Criteria | Implementation and evidence artifact |
 |---|---|---|
 | Tenant isolation | CC6.1, CC6.3 | Query layer that cannot build a statement without a resolved tenant context, and a context that only the resolver assembly can construct (`internal` plus `InternalsVisibleTo`). Evidence: the cross-tenant isolation suite as a required CI check, with results retained per run, plus a demonstration that it fails when isolation is removed. |
-| Authentication | CC6.1 | OIDC via `AddOpenIdConnect`. No local password store. Evidence: configuration under review, plus integration tests asserting unauthenticated requests are rejected. |
+| Authentication | CC6.1 | **Not started.** There is no web tier, so there is no `AddOpenIdConnect`, no `[Authorize]`, and no unauthenticated-request test. The design (provider-neutral OIDC, no local password store) is in ADR 0006 and arrives with M2. Do not claim this control today. |
 | Authorization | CC6.1, CC6.3 | **Partial.** The role model exists (`MembershipRole`: Viewer, Member, Admin) and membership is resolved from the database, but nothing enforces roles yet because there is no HTTP surface to enforce them on. Arrives with the ASP.NET Core tier: a default `[Authorize]` policy at endpoint routing so unprotected endpoints are opt-out, and a permission matrix generated from code by a test so the documentation cannot drift from behaviour. Do not claim this control today. |
 | Audit logging | CC7.2, CC7.3 | `audit_events` written in the same transaction as the audited action. Three layers: an init-only entity, a change-tracker guard on every `SaveChanges` overload, and `REVOKE UPDATE, DELETE` from the application role so the database refuses what C# cannot see. Evidence: tests connecting **as the application role** assert `ExecuteDelete` and `ExecuteUpdate` fail with `insufficient_privilege` while insert and select still work. Note the deployment requirement: the application role must not own the tables, because an owner keeps privileges `REVOKE` does not remove. |
-| Encryption in transit | CC6.7 | HTTPS only, HSTS, TLS 1.2 minimum at ingress. Databricks REST and SQL over TLS by default. Evidence: a scheduled TLS configuration check whose output is retained. |
-| Encryption at rest | CC6.7, Confidentiality | Cloud provider storage encryption on Delta storage and the operational database. Evidence: an ADR stating explicitly what is *not* encrypted at application level and why. |
-| Secret management | CC6.1, CC6.6 | No long-lived Databricks credentials. Managed identity on Azure, OIDC federation in CI. See ADR 0006. Evidence: absence of secrets in configuration, plus push protection and secret scanning on the repository. |
+| Encryption in transit | CC6.7 | **Partial.** Databricks REST and SQL run over TLS by default, and that half needs no code. The ingress half (HTTPS only, HSTS, TLS 1.2 minimum) has nothing to configure yet because there is no ingress. The scheduled TLS check that would evidence it does not exist; it arrives with M2. |
+| Encryption at rest | CC6.7, Confidentiality | Cloud provider storage encryption on Delta storage and the operational database, both provider-managed by default. No application-level column encryption, deliberately — see [data-handling.md](data-handling.md#encryption) for what that covers and what it does not. There is no ADR on this; an earlier version of this row cited one that was never written. |
+| Secret management | CC6.1, CC6.6 | No long-lived Databricks credentials: managed identity on Azure, OIDC federation in CI. ADR 0006, proved end to end in [spike 04](../planning/spike-04-managed-identity.md). Evidence: the absence of secrets in configuration and a clean history scan. Push protection and secret scanning are **not yet enabled** — they need the repository to be public, which is blocker B4. |
 | Change management | CC8.1 | Every change through a pull request with review, required status checks, and a linear audited history. Architecture changes require an ADR. Evidence: the Git history and branch protection settings. |
 | Access provisioning and deprovisioning | CC6.1, CC6.2, CC6.3 | Identity lives in the IdP; group-based role assignment. The architecture deliberately has no local user store to go stale, so joiner/mover/leaver is the IdP's lifecycle. Evidence: documented as an architectural constraint. |
 | Access review | CC6.2, CC6.3 | Scheduled extract of users by tenant by role with last-login, joined against `system.access.audit` for actual usage. Sign-off recorded with reviewer identity and timestamp. |
@@ -62,11 +62,14 @@ Current status, so it can be checked at a glance rather than read for:
 
 | Status | Rows |
 |---|---|
-| Implemented and evidenced by a test | Tenant isolation, authentication, audit logging, change management, encryption in transit |
-| Implemented, evidence is configuration | Secret management, encryption at rest |
-| Partial | Authorization, monitoring and alerting |
-| Design only | Access review, backup and restore, data retention and deletion |
-| Not started | Incident response beyond `SECURITY.md` |
+| Implemented and evidenced by a test | Tenant isolation, audit logging |
+| Implemented, evidence is configuration or history | Change management, secret management (the architecture; the GitHub settings are still B4), encryption at rest |
+| Partial | Authorization, encryption in transit, vulnerability management (CodeQL and Scorecard are gated off while the repository is private), monitoring and alerting |
+| Design only | Access review, backup and restore, data retention and deletion, logical access provisioning |
+| Not started | Authentication, incident response beyond `SECURITY.md` |
+
+Every row in the table above appears in this summary. Two were missing from an earlier version, which
+is exactly the failure an at-a-glance table is supposed to prevent.
 
 ## What this does not cover
 

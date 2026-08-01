@@ -53,8 +53,9 @@ is written here, before the features it protects.
   every lookup filters on the tenant. A caller holding another tenant's operation id gets null,
   indistinguishable from one that does not exist.
 
-The claim loop and the reconciliation query now exist. Still open: the `BackgroundService` that runs
-them, and the reconciliation *actor* that matches orphaned rows to Databricks runs.
+**Done.** The claim loop, the `BackgroundService`, the Jobs submitter and the reconciliation actor
+all landed, verified against a live workspace by `Category=Live` tests. Still open: nothing hosts the
+worker as a running process, which arrives with the application tier in M2.
 
 **When the reconciliation actor is built it must claim atomically**, the same way `ClaimNextAsync`
 does, rather than reading with `FindOrphanedForReconciliationAsync` and writing later. A slow-but-

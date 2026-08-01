@@ -1,3 +1,4 @@
+using System.Globalization;
 using Lakewright.Core.Tenancy;
 using Lakewright.Databricks;
 using Lakewright.Multitenancy.Model;
@@ -82,23 +83,39 @@ public sealed partial class OperationWorker(
 
         if (await store.ClaimNextAsync(cancellationToken) is { } claimed)
         {
-            await ProcessAsync(store, submitter, claimed, cancellationToken);
+            await SubmitAndPollAsync(store, submitter, claimed, isReconciliation: false, cancellationToken);
             return true;
         }
 
         if (await store.ClaimOrphanForReconciliationAsync(_options.ReconciliationGracePeriod, cancellationToken) is { } orphan)
         {
-            await ReconcileAsync(store, submitter, orphan, cancellationToken);
+            await SubmitAndPollAsync(store, submitter, orphan, isReconciliation: true, cancellationToken);
             return true;
         }
 
         return false;
     }
 
-    private async Task ProcessAsync(
+    /// <summary>
+    /// Submits an operation and polls it to a terminal state.
+    /// </summary>
+    /// <remarks>
+    /// One method for both a first submission and a reconciliation, because the steps are
+    /// identical. They were two near-copies, and the risk that fixes a review found: a change to
+    /// the tenant-inactive branch or the failure handling applied to one and forgotten in the
+    /// other, with nothing to catch the divergence.
+    ///
+    /// Reconciliation differs only in wording. Re-submitting an orphan with its original
+    /// idempotency key returns the run that key already started rather than starting a second one,
+    /// so the mechanics are the same call. If it fails, the operation is marked failed rather than
+    /// retried forever: the deduplication window is undocumented, and a key whose run was deleted
+    /// errors permanently.
+    /// </remarks>
+    private async Task SubmitAndPollAsync(
         OperationStore store,
         IJobSubmitter submitter,
         Operation operation,
+        bool isReconciliation,
         CancellationToken cancellationToken)
     {
         // Reads the organization's stored schema rather than deriving it. See
@@ -116,69 +133,37 @@ public sealed partial class OperationWorker(
         }
 
         var run = TenantScopedJobRun.Create(tenant, _options.JobId, operation.IdempotencyKey);
-
         var outcome = await submitter.SubmitAsync(run, cancellationToken);
 
         if (outcome is not RunOutcome.Submitted submitted)
         {
-            var reason = outcome is RunOutcome.Failed f ? f.Reason : outcome.GetType().Name;
+            var detail = outcome is RunOutcome.Failed failed ? failed.Reason : outcome.GetType().Name;
+            var reason = isReconciliation ? $"Could not reconcile: {detail}" : detail;
+
             LogFailed(operation.Id, reason);
-            await store.CompleteAsync(operation.OrganizationId, operation.Id, OperationState.Failed, reason, cancellationToken);
+            await store.CompleteAsync(
+                operation.OrganizationId, operation.Id, OperationState.Failed, reason, cancellationToken);
             return;
         }
 
         // The crash-critical write. Everything between submitting above and this returning is the
         // window reconciliation exists to close.
-        await store.RecordExternalIdAsync(tenant, operation.Id, submitted.RunId.ToString(System.Globalization.CultureInfo.InvariantCulture), cancellationToken);
-        LogSubmitted(operation.Id, operation.OrganizationId, submitted.RunId);
+        await store.RecordExternalIdAsync(
+            tenant,
+            operation.Id,
+            submitted.RunId.ToString(CultureInfo.InvariantCulture),
+            cancellationToken);
+
+        if (isReconciliation)
+        {
+            LogReconciled(operation.Id, submitted.RunId);
+        }
+        else
+        {
+            LogSubmitted(operation.Id, operation.OrganizationId, submitted.RunId);
+        }
 
         await PollAsync(store, submitter, operation, submitted.RunId, cancellationToken);
-    }
-
-    /// <summary>
-    /// Re-submits an orphan with its original idempotency key.
-    /// </summary>
-    /// <remarks>
-    /// Databricks returns the run the key already started rather than starting a second one, so
-    /// this both discovers the lost run id and is safe if no run was ever created. If it fails, the
-    /// operation is marked failed rather than retried forever: the deduplication window is
-    /// undocumented, and a key whose run was deleted errors permanently.
-    /// </remarks>
-    private async Task ReconcileAsync(
-        OperationStore store,
-        IJobSubmitter submitter,
-        Operation orphan,
-        CancellationToken cancellationToken)
-    {
-        var tenant = await store.ResolveClaimedTenantAsync(
-            orphan.OrganizationId, _tenancy.Catalog, cancellationToken);
-
-        if (tenant is null)
-        {
-            await store.CompleteAsync(
-                orphan.OrganizationId, orphan.Id, OperationState.Cancelled,
-                "The organization is no longer active.", cancellationToken);
-            return;
-        }
-
-        var run = TenantScopedJobRun.Create(tenant, _options.JobId, orphan.IdempotencyKey);
-
-        var outcome = await submitter.SubmitAsync(run, cancellationToken);
-
-        if (outcome is not RunOutcome.Submitted submitted)
-        {
-            var reason = outcome is RunOutcome.Failed f
-                ? $"Could not reconcile: {f.Reason}"
-                : "Could not reconcile.";
-            LogFailed(orphan.Id, reason);
-            await store.CompleteAsync(orphan.OrganizationId, orphan.Id, OperationState.Failed, reason, cancellationToken);
-            return;
-        }
-
-        await store.RecordExternalIdAsync(tenant, orphan.Id, submitted.RunId.ToString(System.Globalization.CultureInfo.InvariantCulture), cancellationToken);
-        LogReconciled(orphan.Id, submitted.RunId);
-
-        await PollAsync(store, submitter, orphan, submitted.RunId, cancellationToken);
     }
 
     private async Task PollAsync(

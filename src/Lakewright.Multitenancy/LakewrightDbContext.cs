@@ -70,8 +70,19 @@ public sealed class LakewrightDbContext(DbContextOptions<LakewrightDbContext> op
             // A second run for the same key is the duplicate-submission bug this exists to stop.
             e.HasIndex(x => x.IdempotencyKey).IsUnique();
 
-            // Reconciliation scans for rows stuck without an external id.
+            // Reconciliation scans for rows stuck without an external id, ordered by ClaimedAt,
+            // which is the trailing column here, so it reads straight from the index.
             e.HasIndex(x => new { x.State, x.ClaimedAt });
+
+            // The claim query orders by CreatedAt, which the index above does not cover, so
+            // Postgres sorted every pending row on every claim. Measured against Postgres 17:
+            // 25.6ms at a 50,000-row backlog, and 141.7ms at 300,000 with the sort spilling 13.5MB
+            // to disk — paid by every worker on every claim, worst exactly while recovering from an
+            // incident. Partial, so it stays small no matter how large the table grows: rows leave
+            // the index as soon as they are claimed.
+            e.HasIndex(x => x.CreatedAt)
+                .HasFilter($"\"State\" = {(int)OperationState.Pending} AND \"ClaimedAt\" IS NULL")
+                .HasDatabaseName("IX_operations_claimable");
 
             // No row version here on purpose. Reconciliation and a slow-but-alive worker can both
             // decide to act on the same row, and the fix for that is for reconciliation to claim
@@ -108,10 +119,9 @@ public sealed class LakewrightDbContext(DbContextOptions<LakewrightDbContext> op
     ///
     /// It does <em>not</em> catch <c>ExecuteUpdate</c> or <c>ExecuteDelete</c>, which run straight
     /// against the database and never call any of these methods, nor raw SQL. An earlier version of
-    /// this comment claimed otherwise, and a security review disproved it. Closing that gap needs
-    /// <c>REVOKE UPDATE, DELETE ON audit_events</c> from the application role, which belongs in the
-    /// migration rather than here. Tracked in the roadmap; until it lands, the append-only
-    /// guarantee holds for the change tracker and not for the connection.
+    /// this comment claimed otherwise, and a security review disproved it. That gap is closed at the database instead, by
+    /// <see cref="DatabaseHardening"/>, which grants the application role select and insert on
+    /// <c>audit_events</c> and nothing else.
     ///
     /// Every save overload is covered, because they are independent virtual methods: overriding
     /// only the async one left <c>SaveChanges()</c> and the two-argument async overload open.
