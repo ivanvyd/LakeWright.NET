@@ -8,8 +8,8 @@
   <ItemGroup Label="Databricks">
     <!-- Verified against a live workspace in docs/planning/spike-01-statement-execution.md:
          parameterised statements, EXTERNAL_LINKS and ARROW_STREAM all work. -->
-    <PackageVersion Include="Azure.Core" Version="1.44.1" />
-    <PackageVersion Include="Azure.Identity" Version="1.13.1" />
+    <PackageVersion Include="Azure.Core" Version="1.60.0" />
+    <PackageVersion Include="Azure.Identity" Version="1.21.0" />
     <PackageVersion Include="Microsoft.Azure.Databricks.Client" Version="2.9.3" />
   </ItemGroup>
 
@@ -22,8 +22,8 @@
 
   <ItemGroup Label="Extensions">
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
-    <PackageVersion Include="Microsoft.Extensions.Diagnostics.Testing" Version="10.1.0" />
-    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.1.0" />
+    <PackageVersion Include="Microsoft.Extensions.Diagnostics.Testing" Version="10.8.0" />
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.8.0" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.10" />
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
     <!-- Pinned above the transitive 2.0.0 that Microsoft.AspNetCore.OpenApi resolves:
