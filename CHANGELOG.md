@@ -18,6 +18,12 @@ note.
   The only DDL this library issues and the only statement it sends without a `TenantContext`, so
   it is a narrow interface a caller has to reach for deliberately.
 - `IJobSubmitter.CancelRunAsync`. **Migration:** a custom implementation needs the new member.
+- `LakeWright.AI`: `AddDatabricksChatClient` registers Databricks model serving as an `IChatClient`
+  (M4). Optional, and deliberately not part of `AddLakeWrightDatabricks` — a product that queries a
+  warehouse has no reason to take an AI dependency.
+- A streaming shim. Databricks attaches `usage` to every streaming chunk with `completion_tokens`
+  and `total_tokens` null, which the OpenAI deserialiser refuses. The policy strips the incomplete
+  object rather than zeroing it, because zeros deserialise and then lie.
 
 ### Fixed
 

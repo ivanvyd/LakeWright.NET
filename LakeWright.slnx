@@ -4,6 +4,7 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/LakeWright.AspNetCore/LakeWright.AspNetCore.csproj" />
+    <Project Path="src/LakeWright.AI/LakeWright.AI.csproj" />
     <Project Path="src/LakeWright.Core/LakeWright.Core.csproj" />
     <Project Path="src/LakeWright.Databricks/LakeWright.Databricks.csproj" />
     <Project Path="src/LakeWright.Multitenancy/LakeWright.Multitenancy.csproj" />
