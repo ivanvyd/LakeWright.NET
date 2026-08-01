@@ -54,9 +54,14 @@ public class PermissionMatrixTests
             .StartAsync(ct);
 
         // Act
-        var generated = Render(host.Services.GetRequiredService<EndpointDataSource>());
+        var endpoints = host.Services.GetRequiredService<EndpointDataSource>();
+        var generated = Render(endpoints);
 
-        // Assert
+        // Assert — a route under the tenant prefix with no role policy is the footgun this suite
+        // exists to catch. Rendering it as a documented row would make the gap look intentional.
+        Unprotected(endpoints).ShouldBeEmpty(
+            "every tenant-scoped endpoint needs a TenantPolicies value; the fallback policy asks "
+            + "only for an authenticated user, which any member of any role satisfies");
         var committed = File.Exists(MatrixPath)
             ? await File.ReadAllTextAsync(MatrixPath, ct)
             : string.Empty;
@@ -68,6 +73,16 @@ public class PermissionMatrixTests
                 $"{MatrixPath} was stale and has been regenerated. Review the diff and commit it.");
         }
     }
+
+    private static IReadOnlyList<string> Unprotected(EndpointDataSource endpoints) =>
+        [.. endpoints.Endpoints
+            .OfType<RouteEndpoint>()
+            .Where(e => e.RoutePattern.RawText?.Contains(
+                TenantResolutionMiddleware.RouteValue, StringComparison.Ordinal) == true)
+            .Where(e => !e.Metadata
+                .OfType<Microsoft.AspNetCore.Authorization.IAuthorizeData>()
+                .Any(a => Rank.ContainsKey(a.Policy ?? string.Empty)))
+            .Select(e => e.DisplayName ?? e.RoutePattern.RawText ?? "?")];
 
     private static string Normalise(string value) =>
         value.Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd();
@@ -81,10 +96,11 @@ public class PermissionMatrixTests
                 Route = "/" + e.RoutePattern.RawText?.TrimStart('/'),
                 Methods = string.Join(", ",
                     e.Metadata.GetMetadata<HttpMethodMetadata>()?.HttpMethods ?? ["ANY"]),
-                Policy = e.Metadata
+                Policies = e.Metadata
                     .OfType<Microsoft.AspNetCore.Authorization.IAuthorizeData>()
                     .Select(a => a.Policy)
-                    .FirstOrDefault(p => !string.IsNullOrEmpty(p)) ?? "(fallback: authenticated)"
+                    .Where(p => !string.IsNullOrEmpty(p))
+                    .ToArray()
             })
             .OrderBy(r => r.Route, StringComparer.Ordinal)
             .ThenBy(r => r.Methods, StringComparer.Ordinal);
@@ -105,14 +121,30 @@ public class PermissionMatrixTests
 
         foreach (var row in rows)
         {
-            sb.AppendLine($"| {row.Methods} | `{row.Route}` | {Describe(row.Policy)} |");
+            sb.AppendLine($"| {row.Methods} | `{row.Route}` | {Describe(Floor(row.Policies))} |");
         }
 
         sb.AppendLine();
-        sb.AppendLine("Endpoints with no explicit policy fall back to requiring an authenticated user, so a");
-        sb.AppendLine("new endpoint is protected by omission rather than exposed by it.");
+        sb.AppendLine("Every tenant-scoped endpoint carries an explicit role policy, and the route group");
+        sb.AppendLine("carries Viewer as a floor so one added without a policy of its own still requires");
+        sb.AppendLine("membership at a role rather than merely an authenticated caller.");
         return sb.ToString();
     }
+
+    /// <summary>The strictest policy on an endpoint, since every one of them must be satisfied.</summary>
+    private static string Floor(IReadOnlyCollection<string?> policies) =>
+        Rank.Keys.Where(policies.Contains).OrderByDescending(p => Rank[p]).FirstOrDefault()
+        ?? policies.FirstOrDefault()
+        ?? NoPolicy;
+
+    private static readonly Dictionary<string, int> Rank = new(StringComparer.Ordinal)
+    {
+        [TenantPolicies.Viewer] = 0,
+        [TenantPolicies.Member] = 1,
+        [TenantPolicies.Admin] = 2
+    };
+
+    private const string NoPolicy = "(none)";
 
     private static string Describe(string policy) => policy switch
     {

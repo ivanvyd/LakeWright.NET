@@ -13,5 +13,6 @@ before authorization is consulted.
 | POST | `/organizations/{organizationId}/operations/` | Member |
 | GET | `/organizations/{organizationId}/operations/{operationId:guid}` | Viewer |
 
-Endpoints with no explicit policy fall back to requiring an authenticated user, so a
-new endpoint is protected by omission rather than exposed by it.
+Every tenant-scoped endpoint carries an explicit role policy, and the route group
+carries Viewer as a floor so one added without a policy of its own still requires
+membership at a role rather than merely an authenticated caller.

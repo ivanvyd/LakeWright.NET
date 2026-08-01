@@ -28,7 +28,14 @@ public static class OperationEndpoints
 
         var group = routes
             .MapGroup($"/organizations/{{{TenantResolutionMiddleware.RouteValue}}}/operations")
-            .WithTags("Operations");
+            .WithTags("Operations")
+
+            // The floor for anything added to this group later. Without it, an endpoint that
+            // forgets its own RequireAuthorization falls through to the application's fallback
+            // policy, which asks only for an authenticated user — so a Viewer would reach an
+            // action meant for an Admin. Tenant resolution does not help there: it checks
+            // membership, not role, so a Viewer at that organization resolves fine.
+            .RequireAuthorization(TenantPolicies.Viewer);
 
         group.MapPost("/", StartAsync)
             .RequireAuthorization(TenantPolicies.Member)
