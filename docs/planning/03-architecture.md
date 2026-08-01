@@ -72,8 +72,8 @@ GET /operations/{id}     -> product-facing state, never a raw Databricks state
 
 **The failure this design exists to prevent:** a worker that crashes between submitting to Databricks
 and recording the run ID. Without a recorded ID the operation is orphaned, and the retry submits a
-second run. `idempotency_token` bounds the damage; a reconciliation pass that matches orphaned
-operations to runs by tag closes it. This is the case the integration test suite covers, because it
+second run. Reconciliation closes it by re-submitting with the original `idempotency_token`, which returns the
+run that token already started. This is the case the integration test suite covers, because it
 is invisible to every happy-path test.
 
 **Platform states are open-ended.** Databricks documents job run states as extensible. An exhaustive
@@ -110,7 +110,7 @@ No long-lived secrets in the reference deployment.
 |---|---|---|
 | Runtime | .NET 10 | None. |
 | Frontend | Blazor Web App, Interactive Server, Static SSR for content | Smaller contributor pool and a thinner component ecosystem, in exchange for one language, a trivial auth story, and no Node toolchain in CI. |
-| Multitenancy | Finbuckle.MultiTenant | A dependency, versus a hand-rolled resolver that would grow into the same thing worse. |
+| Multitenancy | Hand-rolled | Finbuckle.MultiTenant was the plan and was not taken: tenancy here resolves from the application database and hands out a `TenantContext` that only the resolver can construct, which is not the shape Finbuckle models. Roughly 200 lines, and the type-system guarantee in ADR 0002 depends on owning them. |
 | Background work | `BackgroundService` + Postgres `FOR UPDATE SKIP LOCKED` | No Hangfire or MassTransit licensing exposure, no extra infrastructure, at the cost of writing the claim loop. The operation record is a domain entity we need regardless. |
 | Local orchestration | .NET Aspire, optional | `docker compose up` plus `dotnet run` must always work. Aspire is a convenience layer, never the only path, or it becomes a contributor tax. |
 | Testing | xUnit v3, Testcontainers, WireMock.Net | None significant. |

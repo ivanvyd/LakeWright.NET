@@ -10,6 +10,12 @@ note.
 
 ### Added
 
+- Asynchronous operations end to end (ADR 0005): a Lakeflow Jobs submitter, an `OperationWorker`
+  `BackgroundService` that claims, submits, records, polls and completes, and a reconciliation pass
+  that recovers a run orphaned by a worker crash. Reconciliation re-submits with the original
+  idempotency token rather than searching by tag, because the Jobs API does not expose the token on
+  a run.
+- `Category=Live` tests exercising the Databricks clients against a real workspace, excluded from CI.
 - `Lakewright.Core`: `TenantId`, `TenantContext` and the resolver contract. `TenantContext` has no
   public constructor, so holding one means a membership check ran.
 - `Lakewright.Databricks`: `TenantScopedStatement`, typed `StatementParameter` factories, and
@@ -53,6 +59,10 @@ Found by an adversarial review of the first implementation, before any release.
 
 ### Fixed
 
+- Every successful Databricks query returned zero rows. The statement executor defaulted to
+  `EXTERNAL_LINKS` while reading `DataArray`, which only `INLINE` populates. Inline is now the
+  default with a row limit, and an external-link result is a distinct `LargeResult` outcome rather
+  than a `Success` with an empty row list. Found by the first live test, invisible to unit tests.
 - `--locked-mode` inside an XML comment made `Directory.Build.props` unloadable, so no project
   built.
 - The bundle CI job pointed at a directory git cannot track, failing before its own guard ran.

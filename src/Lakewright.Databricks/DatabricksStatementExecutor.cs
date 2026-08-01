@@ -11,11 +11,17 @@ namespace Lakewright.Databricks;
 /// </summary>
 public sealed partial class DatabricksStatementExecutor : IStatementExecutor
 {
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Databricks rejected a statement request for tenant {TenantId}")]
-    private partial void LogRequestRejected(Exception exception, Core.Tenancy.TenantId? tenantId);
+    // These log identifiers and codes, never free text. The client's exception message is the raw
+    // HTTP response body, and a Databricks error message can quote the value that caused it — a
+    // rejected parameter, a malformed literal — so both are tenant data. The threat model says
+    // logging never includes parameter values; an earlier version of these templates broke that.
+    // The detail still reaches the caller on StatementOutcome.Failure, where it is the caller's
+    // decision what to do with it.
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Databricks rejected a statement request for tenant {TenantId} (HTTP {StatusCode})")]
+    private partial void LogRequestRejected(Core.Tenancy.TenantId? tenantId, int statusCode);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Statement {StatementId} for tenant {TenantId} ended {State}: {ErrorCode} {ErrorMessage}")]
-    private partial void LogStatementFailed(string? statementId, Core.Tenancy.TenantId? tenantId, StatementExecutionState? state, string errorCode, string? errorMessage);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Statement {StatementId} for tenant {TenantId} ended {State}: {ErrorCode}")]
+    private partial void LogStatementFailed(string? statementId, Core.Tenancy.TenantId? tenantId, StatementExecutionState? state, string errorCode);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Statement {StatementId} returned unrecognised state {State}; treating as pending")]
     private partial void LogUnrecognisedState(string? statementId, StatementExecutionState? state);
@@ -59,10 +65,19 @@ public sealed partial class DatabricksStatementExecutor : IStatementExecutor
                 Type = p.Type
             })],
 
-            // INLINE hard-fails at 25 MiB and cancels the statement rather than truncating,
-            // so it is not a safe default for anything a tenant can influence the size of.
-            Disposition = SqlStatementDisposition.EXTERNAL_LINKS,
-            Format = StatementFormat.ARROW_STREAM,
+            // INLINE returns rows in the response; EXTERNAL_LINKS returns presigned URLs and
+            // leaves DataArray null. Getting this pair wrong is how the first version returned
+            // zero rows for every successful query, so disposition and format move together.
+            Disposition = _options.Disposition,
+            Format = _options.Disposition == SqlStatementDisposition.INLINE
+                ? StatementFormat.JSON_ARRAY
+                : StatementFormat.ARROW_STREAM,
+
+            // INLINE hard-fails at 25 MiB and cancels the statement rather than truncating, so a
+            // row limit is what keeps an interactive query from dying instead of degrading.
+            RowLimit = _options.Disposition == SqlStatementDisposition.INLINE
+                ? _options.InlineRowLimit
+                : null,
             WaitTimeout = _options.WaitTimeout,
             OnWaitTimeout = SqlStatementOnWaitTimeout.CONTINUE
         };
@@ -75,7 +90,7 @@ public sealed partial class DatabricksStatementExecutor : IStatementExecutor
         catch (ClientApiException ex)
         {
             // The request itself was rejected: unknown warehouse, bad auth, malformed body.
-            LogRequestRejected(ex, statement.Tenant.TenantId);
+            LogRequestRejected(statement.Tenant.TenantId, (int)ex.StatusCode);
             return new StatementOutcome.Failure("REQUEST_REJECTED", ex.Message, null, IsTransient: false);
         }
 
@@ -127,7 +142,7 @@ public sealed partial class DatabricksStatementExecutor : IStatementExecutor
             case StatementExecutionState.CANCELED:
                 var error = response.Status?.Error;
                 var code = error?.ErrorCode.ToString() ?? state.ToString() ?? "UNKNOWN";
-                LogStatementFailed(response.StatementId, tenantId, state, code, error?.Message);
+                LogStatementFailed(response.StatementId, tenantId, state, code);
                 return new StatementOutcome.Failure(
                     code,
                     error?.Message ?? $"Statement ended in state {state}.",
@@ -143,18 +158,29 @@ public sealed partial class DatabricksStatementExecutor : IStatementExecutor
         }
     }
 
-    private static StatementOutcome.Success Succeeded(StatementExecution response)
+    private static StatementOutcome Succeeded(StatementExecution response)
     {
         var columns = response.Manifest?.Schema?.Columns?.Select(c => c.Name).ToArray() ?? [];
+        var totalRows = response.Manifest?.TotalRowCount ?? 0;
+
+        // EXTERNAL_LINKS leaves DataArray null and puts the rows behind presigned URLs. Reporting
+        // that as a Success with an empty row list would be indistinguishable from a query that
+        // genuinely matched nothing.
+        var links = response.Result?.ExternalLinks?.ToArray() ?? [];
+        if (links.Length > 0)
+        {
+            return new StatementOutcome.LargeResult(
+                columns,
+                [.. links.Select(l => new Uri(l.ExternalLink))],
+                totalRows,
+                response.StatementId);
+        }
+
         var rows = response.Result?.DataArray?
             .Select(IReadOnlyList<string?> (r) => r.ToArray())
             .ToArray() ?? [];
 
-        return new StatementOutcome.Success(
-            columns,
-            rows,
-            response.Manifest?.TotalRowCount ?? rows.Length,
-            response.StatementId);
+        return new StatementOutcome.Success(columns, rows, totalRows, response.StatementId);
     }
 
     private static bool IsTransient(StatementExecutionErrorCode? code) => code switch

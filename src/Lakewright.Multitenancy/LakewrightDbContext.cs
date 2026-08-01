@@ -108,10 +108,9 @@ public sealed class LakewrightDbContext(DbContextOptions<LakewrightDbContext> op
     ///
     /// It does <em>not</em> catch <c>ExecuteUpdate</c> or <c>ExecuteDelete</c>, which run straight
     /// against the database and never call any of these methods, nor raw SQL. An earlier version of
-    /// this comment claimed otherwise, and a security review disproved it. Closing that gap needs
-    /// <c>REVOKE UPDATE, DELETE ON audit_events</c> from the application role, which belongs in the
-    /// migration rather than here. Tracked in the roadmap; until it lands, the append-only
-    /// guarantee holds for the change tracker and not for the connection.
+    /// this comment claimed otherwise, and a security review disproved it. That gap is closed at the database instead, by
+    /// <see cref="DatabaseHardening"/>, which grants the application role select and insert on
+    /// <c>audit_events</c> and nothing else.
     ///
     /// Every save overload is covered, because they are independent virtual methods: overriding
     /// only the async one left <c>SaveChanges()</c> and the two-argument async overload open.

@@ -44,14 +44,6 @@ public sealed class PostgresFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// Opens a second context against the same database as the restricted application role.
-    /// </summary>
-    /// <remarks>
-    /// The owner of a table keeps privileges that <c>REVOKE</c> does not remove, so a lockdown
-    /// tested while connected as the owner passes without proving anything. These tests connect as
-    /// the role the application actually uses.
-    /// </remarks>
-    /// <summary>
     /// A fresh context over an existing database. Concurrency tests need one connection each;
     /// sharing a context serialises them and the test passes without exercising anything.
     /// </summary>
@@ -60,6 +52,14 @@ public sealed class PostgresFixture : IAsyncLifetime
             .UseNpgsql(connectionString)
             .Options);
 
+    /// <summary>
+    /// Opens a second context against the same database as the restricted application role.
+    /// </summary>
+    /// <remarks>
+    /// The owner of a table keeps privileges that <c>REVOKE</c> does not remove, so a lockdown
+    /// tested while connected as the owner passes without proving anything. These tests connect as
+    /// the role the application actually uses.
+    /// </remarks>
     public static LakewrightDbContext AsApplicationRole(
         LakewrightDbContext owner,
         string role,
