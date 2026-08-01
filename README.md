@@ -5,10 +5,11 @@ The build kit for multi-tenant .NET SaaS on Databricks.
 An opinionated reference architecture and a small set of reusable components for teams that sell
 analytics to customers who are not themselves Databricks customers.
 
-> **Status: early. The tenancy core exists; the product around it does not.**
-> The tenant model, the tenant-scoped Databricks query layer and the isolation suite are
-> implemented and tested. There is no web application, no bundle and no sample yet, so there is
-> nothing to run end to end. The milestone is in [ROADMAP.md](ROADMAP.md), and
+> **Status: early. The engine exists; the product around it does not.**
+> Implemented and tested: the tenant model, the tenant-scoped Databricks query layer, the
+> asynchronous operation worker with crash reconciliation, and the Declarative Automation Bundle.
+> Missing: the web application and the sample, so there is still no user-facing thing to run, and
+> nothing hosts the worker as a process yet. The milestone is in [ROADMAP.md](ROADMAP.md), and
 > [docs/compatibility.md](docs/compatibility.md) records exactly what has been verified against a
 > live workspace and what has not.
 
@@ -69,8 +70,8 @@ databricks/                   Declarative Automation Bundle, dev and prod target
 docs/                         see docs/README.md
 ```
 
-Still to come: the ASP.NET Core integration, the operation worker, observability, and the
-Signalboard sample.
+Still to come: the ASP.NET Core integration that hosts the worker and serves the API, observability,
+and the Signalboard sample.
 
 ## Documentation
 

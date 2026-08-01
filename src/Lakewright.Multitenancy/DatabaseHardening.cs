@@ -60,7 +60,14 @@ public static class DatabaseHardening
         await db.Database.ExecuteSqlRawAsync(
             $"""
              GRANT USAGE ON SCHEMA public TO {applicationRole};
-             GRANT SELECT, INSERT, UPDATE, DELETE ON organizations, memberships, operations TO {applicationRole};
+
+             -- DELETE only on organizations. Deleting a tenant removes that row and the foreign
+             -- keys cascade to memberships and operations, so the application never needs to
+             -- delete from those directly. Granting it anyway would leave a mis-scoped admin
+             -- endpoint able to strip another tenant's memberships without ever touching the
+             -- organizations row. Verified that the cascade fires without the extra grants.
+             GRANT SELECT, INSERT, UPDATE, DELETE ON organizations TO {applicationRole};
+             GRANT SELECT, INSERT, UPDATE ON memberships, operations TO {applicationRole};
 
              -- The whole point. Insert and read only; no route to amend history.
              REVOKE ALL ON audit_events FROM {applicationRole};

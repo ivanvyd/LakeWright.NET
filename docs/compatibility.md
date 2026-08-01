@@ -5,7 +5,7 @@ What has been run against a real system, what has only been read in documentatio
 Anything not listed as **Verified** should be treated as unverified regardless of how confident the
 surrounding prose sounds.
 
-Last updated 2026-07-31.
+Last updated 2026-08-01, after the asynchronous operations work landed.
 
 ## Legend
 
@@ -39,7 +39,9 @@ Last updated 2026-07-31.
 | Failed statement returns rather than throws | **Verified** | 2026-07-31 | `State=FAILED`, `Manifest` and `Result` null |
 | `GetResultChunk`, multi-chunk reads | Unverified | | Test result fit in one chunk |
 | Statement read-once semantics, 1 hour expiry | Documented | | |
-| Jobs API, `idempotency_token` | Documented | | Not yet exercised |
+| Jobs API: submit, poll to a terminal state | **Verified** | 2026-08-01 | `LiveDatabricksTests`, against a real job |
+| `idempotency_token` returns the original run on re-submission | **Verified** | 2026-08-01 | The whole reconciliation design rests on this, and it had only been proved against a fake until now |
+| Statement rows returned inline | **Verified** | 2026-08-01 | Also caught the bug where an `EXTERNAL_LINKS` default left every successful query with zero rows |
 | Unity Catalog row filters with a **shared** service principal | **Not supported** | | `session_user()` returns the principal, not the end user. This is why isolation lives in the query layer. [ADR 0002](decisions/0002-enforce-tenant-isolation-in-the-query-layer.md) |
 | On-behalf-of user tokens for an externally hosted app | **Not supported** | | Exists only for Databricks Apps via `x-forwarded-access-token` |
 | Databricks Apps as host for a customer-facing product | **Not supported** | | Anonymous access unsupported; every user must exist in the host's account. [ADR 0001](decisions/0001-host-the-application-outside-databricks.md) |
@@ -74,7 +76,9 @@ Last updated 2026-07-31.
 
 ## Known gaps
 
-- No ASP.NET Core integration, no bundle, no sample application, no operation worker.
-- Live integration tests exist only as the spikes above.
+- No ASP.NET Core integration and no sample application. The operation worker exists but nothing
+  hosts it as a running process yet, so it is exercised one iteration at a time by tests.
+- Live integration tests: `Category=Live` in the isolation suite, plus the four spikes. They are
+  excluded from CI because they need a workspace and cost money.
 - `dependency-review`, CodeQL and Scorecard are gated off while the repository is private, because
   they need Advanced Security there. They start running when it goes public.
