@@ -16,8 +16,7 @@ public class OperationOwnershipTests(PostgresFixture postgres)
     private static readonly TenantId AcmeId = TenantId.Parse("0198f000-0000-7000-8000-0000000000d1");
     private static readonly TenantId GlobexId = TenantId.Parse("0198f000-0000-7000-8000-0000000000d2");
 
-    private static TenantContext Ctx(TenantId id) =>
-        TenantContextFactory.ForTenant(id, "analytics");
+    private static TenantContext Ctx(TenantId id) => TenantContextFactory.ForTenant(id, "analytics");
 
     private static async Task<LakewrightDbContext> SeedAsync(PostgresFixture postgres)
     {
@@ -44,16 +43,17 @@ public class OperationOwnershipTests(PostgresFixture postgres)
     [Fact]
     public async Task An_operation_is_invisible_to_another_tenant()
     {
+        // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres);
         var store = new OperationStore(db);
-
         var acmeOperation = await store.CreateAsync(Ctx(AcmeId), "auth0|alice", "analysis", ct);
 
-        // Globex knows the id. That is the realistic case: ids leak through logs, support
+        // Act — Globex knows the id. That is the realistic case: ids leak through logs, support
         // tickets and browser history. Knowing one must not be enough.
         var seenByGlobex = await store.FindAsync(Ctx(GlobexId), acmeOperation.Id, ct);
 
+        // Assert
         seenByGlobex.ShouldBeNull();
         (await store.FindAsync(Ctx(AcmeId), acmeOperation.Id, ct)).ShouldNotBeNull();
     }
@@ -61,15 +61,17 @@ public class OperationOwnershipTests(PostgresFixture postgres)
     [Fact]
     public async Task A_missing_operation_is_indistinguishable_from_one_you_may_not_see()
     {
+        // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres);
         var store = new OperationStore(db);
-
         var acmeOperation = await store.CreateAsync(Ctx(AcmeId), "auth0|alice", "analysis", ct);
 
+        // Act
         var notYours = await store.FindAsync(Ctx(GlobexId), acmeOperation.Id, ct);
         var doesNotExist = await store.FindAsync(Ctx(GlobexId), Guid.CreateVersion7(), ct);
 
+        // Assert — identical, so a caller cannot use the response to discover that an id is real.
         notYours.ShouldBeNull();
         doesNotExist.ShouldBeNull();
     }
@@ -77,17 +79,19 @@ public class OperationOwnershipTests(PostgresFixture postgres)
     [Fact]
     public async Task Recording_an_external_id_for_another_tenants_operation_is_refused()
     {
+        // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres);
         var store = new OperationStore(db);
-
         var acmeOperation = await store.CreateAsync(Ctx(AcmeId), "auth0|alice", "analysis", ct);
 
-        await Should.ThrowAsync<InvalidOperationException>(
+        // Act
+        var refused = await Should.ThrowAsync<InvalidOperationException>(
             async () => await store.RecordExternalIdAsync(
                 Ctx(GlobexId), acmeOperation.Id, "statement-123", ct));
 
-        // And the row is untouched.
+        // Assert — refused, and the row is untouched.
+        refused.Message.ShouldContain("does not belong to tenant");
         var reloaded = await store.FindAsync(Ctx(AcmeId), acmeOperation.Id, ct);
         reloaded!.ExternalId.ShouldBeNull();
         reloaded.State.ShouldBe(OperationState.Pending);
@@ -96,10 +100,10 @@ public class OperationOwnershipTests(PostgresFixture postgres)
     [Fact]
     public async Task Idempotency_keys_are_unique_so_a_retry_cannot_start_a_second_run()
     {
+        // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres);
         var store = new OperationStore(db);
-
         var first = await store.CreateAsync(Ctx(AcmeId), "auth0|alice", "analysis", ct);
 
         db.Operations.Add(new Operation
@@ -113,6 +117,11 @@ public class OperationOwnershipTests(PostgresFixture postgres)
             CreatedAt = DateTimeOffset.UtcNow
         });
 
-        await Should.ThrowAsync<DbUpdateException>(async () => await db.SaveChangesAsync(ct));
+        // Act
+        var refused = await Should.ThrowAsync<DbUpdateException>(
+            async () => await db.SaveChangesAsync(ct));
+
+        // Assert — enforced by a unique index rather than by application logic.
+        refused.ShouldNotBeNull();
     }
 }

@@ -14,7 +14,7 @@ namespace Lakewright.Multitenancy;
 /// tenant's results with an identifier from a log line.
 ///
 /// Two methods are deliberately system-scoped and say so at their own definitions:
-/// <see cref="ClaimNextAsync"/> and <see cref="FindOrphanedForReconciliationAsync"/>. They run in
+/// <see cref="ClaimNextAsync"/> and <see cref="ClaimOrphanForReconciliationAsync"/>. They run in
 /// the worker, outside any request, and serve every tenant. Nothing else may be added to that list
 /// without the same explicit note, because a blanket guarantee in this comment that two of the
 /// methods do not honour is worse than no comment.
@@ -146,6 +146,34 @@ public sealed class OperationStore(LakewrightDbContext db)
         return claimed.FirstOrDefault();
     }
 
+    /// <summary>
+    /// Builds the tenant context for an operation the worker has already claimed, reading the
+    /// organization's stored schema.
+    /// </summary>
+    /// <remarks>
+    /// System-scoped, like the two claim methods: the worker acts for every tenant and has no
+    /// request principal to check membership against. Possession of a claimed row is the
+    /// authorisation, and the row's tenant came from a resolved context at creation time.
+    ///
+    /// It reads <see cref="Organization.Schema"/> rather than deriving it from the tenant id. The
+    /// worker did derive it in the first version, which quietly defeated the reason that column
+    /// exists: a tenant whose stored schema ever diverges from the naming convention would have had
+    /// every background job pointed at the wrong schema, and schema names are globally unique, so
+    /// the wrong schema may well belong to another tenant.
+    /// </remarks>
+    public async Task<TenantContext?> ResolveClaimedTenantAsync(
+        TenantId tenantId,
+        string catalog,
+        CancellationToken cancellationToken)
+    {
+        var schema = await db.Organizations
+            .Where(o => o.Id == tenantId && o.State == OrganizationState.Active)
+            .Select(o => o.Schema)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return schema is null ? null : TenantContextFactory.ForTenant(tenantId, catalog, schema);
+    }
+
     /// <summary>Marks a claimed operation as finished.</summary>
     /// <remarks>
     /// Takes the owning tenant and filters on it, even though today's only caller is the worker
@@ -160,35 +188,75 @@ public sealed class OperationStore(LakewrightDbContext db)
         string? error,
         CancellationToken cancellationToken)
     {
-        var operation = await db.Operations
-            .SingleOrDefaultAsync(
-                o => o.Id == operationId && o.OrganizationId == tenantId,
-                cancellationToken)
-            ?? throw new InvalidOperationException(
-                $"Operation {operationId} does not belong to tenant {tenantId}.");
+        // Guarded on the current state so a second completer is a no-op rather than a blind
+        // overwrite. Reconciliation can claim a row a slow-but-alive worker is still processing, in
+        // which case both reach here; the first one to arrive wins and the second changes nothing.
+        var updated = await db.Operations
+            .Where(o => o.Id == operationId
+                     && o.OrganizationId == tenantId
+                     && o.CompletedAt == null)
+            .ExecuteUpdateAsync(
+                s => s.SetProperty(o => o.State, state)
+                      .SetProperty(o => o.Error, error)
+                      .SetProperty(o => o.CompletedAt, DateTimeOffset.UtcNow),
+                cancellationToken);
 
-        operation.State = state;
-        operation.Error = error;
-        operation.CompletedAt = DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync(cancellationToken);
+        if (updated == 0 && !await db.Operations
+                .AnyAsync(o => o.Id == operationId && o.OrganizationId == tenantId, cancellationToken))
+        {
+            throw new InvalidOperationException(
+                $"Operation {operationId} does not belong to tenant {tenantId}.");
+        }
     }
 
     /// <summary>
-    /// Operations that were submitted but whose external identifier was never written, older than
-    /// <paramref name="olderThan"/>.
+    /// Claims one operation that was claimed but never given an external identifier, and whose
+    /// grace period has elapsed. Returns null when there is nothing to reconcile.
     /// </summary>
     /// <remarks>
+    /// These are the rows left by a worker that died between submitting to Databricks and recording
+    /// the run id. The run may exist; nothing local knows its id.
+    ///
+    /// This claims atomically rather than reading a list and writing later. A read-then-write lets
+    /// reconciliation and a slow-but-alive worker both act on one row, and the later write silently
+    /// undoes the earlier. Re-stamping <c>ClaimedAt</c> is the claim: it takes the row out of the
+    /// orphan window for another grace period, so a second reconciler passes over it.
+    ///
+    /// Honours organization lifecycle for the same reason <see cref="ClaimNextAsync"/> does. This
+    /// join was missing in the first version, so reconciliation would happily re-submit a job for a
+    /// tenant suspended while its worker was down — the one case where re-submission is most likely,
+    /// because a suspension and a crashed worker often share a cause.
+    ///
     /// Deliberately not tenant-scoped: reconciliation is a system job, not a tenant action, and it
-    /// runs outside any request. It is the one query here without a tenant filter, which is why it
-    /// is named for what it is.
+    /// runs outside any request.
     /// </remarks>
-    public Task<List<Operation>> FindOrphanedForReconciliationAsync(
-        DateTimeOffset olderThan,
-        CancellationToken cancellationToken) =>
-        db.Operations
-            .Where(o => o.ExternalId == null
-                     && o.State == OperationState.Pending
-                     && o.ClaimedAt != null
-                     && o.ClaimedAt < olderThan)
+    public async Task<Operation?> ClaimOrphanForReconciliationAsync(
+        TimeSpan gracePeriod,
+        CancellationToken cancellationToken)
+    {
+        var cutoff = DateTimeOffset.UtcNow - gracePeriod;
+
+        var claimed = await db.Operations
+            .FromSql($"""
+                UPDATE operations o
+                SET "ClaimedAt" = now()
+                WHERE o."Id" = (
+                    SELECT c."Id" FROM operations c
+                    JOIN organizations org ON org."Id" = c."OrganizationId"
+                    WHERE c."State" = {(int)OperationState.Pending}
+                      AND c."ExternalId" IS NULL
+                      AND c."ClaimedAt" IS NOT NULL
+                      AND c."ClaimedAt" < {cutoff}
+                      AND org."State" = {(int)OrganizationState.Active}
+                    ORDER BY c."ClaimedAt"
+                    FOR UPDATE OF c SKIP LOCKED
+                    LIMIT 1
+                )
+                RETURNING o.*
+                """)
+            .AsNoTracking()
             .ToListAsync(cancellationToken);
+
+        return claimed.FirstOrDefault();
+    }
 }
