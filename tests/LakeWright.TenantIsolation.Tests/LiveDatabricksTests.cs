@@ -55,7 +55,7 @@ public class LiveDatabricksTests
 
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSingleton<TokenCredential>(new DefaultAzureCredential());
+        services.AddSingleton<TokenCredential>(LiveCredential.Create());
         services.AddLakeWrightDatabricks(configuration);
 
         var provider = services.BuildServiceProvider();
