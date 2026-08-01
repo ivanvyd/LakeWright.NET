@@ -184,23 +184,45 @@ public sealed class OperationStore(LakewrightDbContext db, AuditLog audit, TimeP
     /// and claimed after it was suspended would keep spending Databricks compute for a tenant whose
     /// access was cut off, so the claim joins organizations and takes only active ones. The
     /// request-time resolver has the same rule; this is the asynchronous half of it.
+    ///
+    /// <b>Fair, not oldest-first.</b> Ordering purely by age let one tenant hold every worker: a
+    /// performance review measured three replicas fully occupied by one tenant's four long
+    /// operations, with everyone else waiting up to the two-hour run timeout (threat T6). Candidates
+    /// are now ordered by how many operations that tenant already has in flight, then by age, so a
+    /// tenant with none is served before a tenant with two no matter who queued first. Within one
+    /// tenant it is still oldest-first, which is the property a customer notices.
+    ///
+    /// <b>Capped per tenant.</b> <paramref name="maxInFlightPerTenant"/> is a ceiling on how much
+    /// Databricks compute one tenant can hold at once (threat T5). It is a concurrency limit rather
+    /// than a currency budget: it bounds the blast radius of a runaway loop without needing billing
+    /// data that arrives hours late. A tenant at its cap is skipped, not failed — its work waits.
     /// </remarks>
-    public async Task<Operation?> ClaimNextAsync(CancellationToken cancellationToken)
+    public async Task<Operation?> ClaimNextAsync(int maxInFlightPerTenant, CancellationToken cancellationToken)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxInFlightPerTenant, 1);
+
         // Both states are interpolated, which FromSql turns into parameters rather than text.
         // A literal 0 here would silently start claiming a different state if the enum is ever
         // reordered, with nothing to catch it: the raw SQL does not see the enum at all.
         var claimed = await db.Operations
             .FromSql($"""
+                WITH in_flight AS (
+                    SELECT "OrganizationId", COUNT(*) AS held
+                    FROM operations
+                    WHERE "ClaimedAt" IS NOT NULL AND "CompletedAt" IS NULL
+                    GROUP BY "OrganizationId"
+                )
                 UPDATE operations o
                 SET "ClaimedAt" = now()
                 WHERE o."Id" = (
                     SELECT c."Id" FROM operations c
                     JOIN organizations org ON org."Id" = c."OrganizationId"
+                    LEFT JOIN in_flight f ON f."OrganizationId" = c."OrganizationId"
                     WHERE c."State" = {(int)OperationState.Pending}
                       AND c."ClaimedAt" IS NULL
                       AND org."State" = {(int)OrganizationState.Active}
-                    ORDER BY c."CreatedAt"
+                      AND COALESCE(f.held, 0) < {maxInFlightPerTenant}
+                    ORDER BY COALESCE(f.held, 0), c."CreatedAt"
                     FOR UPDATE OF c SKIP LOCKED
                     LIMIT 1
                 )

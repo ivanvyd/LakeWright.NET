@@ -150,7 +150,7 @@ public class OperationWorkerTests(PostgresFixture postgres)
             var created = await store.CreateAsync(Ctx(), "auth0|alice", "analysis", clientRequestId: null, ct);
             idempotencyKey = created.IdempotencyKey;
 
-            var claimed = await store.ClaimNextAsync(ct);
+            var claimed = await store.ClaimNextAsync(maxInFlightPerTenant: 100, ct);
             await submitter.SubmitAsync(
                 TenantScopedJobRun.Create(Ctx(), JobId, claimed!.IdempotencyKey), ct);
         }
@@ -192,7 +192,7 @@ public class OperationWorkerTests(PostgresFixture postgres)
             var store = scope.ServiceProvider.GetRequiredService<OperationStore>();
             await store.CreateAsync(Ctx(), "auth0|alice", "analysis", clientRequestId: null, ct);
 
-            var claimed = await store.ClaimNextAsync(ct);
+            var claimed = await store.ClaimNextAsync(maxInFlightPerTenant: 100, ct);
             var submitted = (RunOutcome.Submitted)await submitter.SubmitAsync(
                 TenantScopedJobRun.Create(Ctx(), JobId, claimed!.IdempotencyKey), ct);
 

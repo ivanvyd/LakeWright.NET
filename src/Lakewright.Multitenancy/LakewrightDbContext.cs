@@ -80,6 +80,14 @@ public sealed class LakewrightDbContext(DbContextOptions<LakewrightDbContext> op
                 .HasFilter("\"ClientRequestId\" IS NOT NULL")
                 .HasDatabaseName("IX_operations_client_request");
 
+            // Every claim counts what each tenant already holds, to order fairly and to enforce
+            // the per-tenant ceiling. Partial, because in-flight rows are a small and roughly
+            // constant slice however large the table grows: a row enters when claimed and leaves
+            // when completed.
+            e.HasIndex(x => x.OrganizationId)
+                .HasFilter("\"ClaimedAt\" IS NOT NULL AND \"CompletedAt\" IS NULL")
+                .HasDatabaseName("IX_operations_in_flight");
+
             // Reconciliation scans for rows stuck without an external id, ordered by ClaimedAt,
             // which is the trailing column here, so it reads straight from the index.
             e.HasIndex(x => new { x.State, x.ClaimedAt });

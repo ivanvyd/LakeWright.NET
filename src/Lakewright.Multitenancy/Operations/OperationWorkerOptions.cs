@@ -23,6 +23,20 @@ public sealed class OperationWorkerOptions
     /// </remarks>
     public TimeSpan ReconciliationGracePeriod { get; set; } = TimeSpan.FromMinutes(5);
 
+    /// <summary>
+    /// How many operations one tenant may have in flight at once, across every worker.
+    /// </summary>
+    /// <remarks>
+    /// The ceiling on what a single tenant can spend on Databricks compute at any moment, and the
+    /// reason one tenant's backlog cannot occupy every worker (threats T5 and T6). A concurrency
+    /// limit rather than a currency budget: billing data arrives hours after the compute is bought,
+    /// which is too late to stop a runaway loop.
+    ///
+    /// Work over the cap waits rather than failing. A tenant that queues a hundred operations still
+    /// gets all hundred, just not all at once.
+    /// </remarks>
+    public int MaxInFlightPerTenant { get; set; } = 4;
+
     /// <summary>Give up polling a run after this long and mark the operation failed.</summary>
     public TimeSpan RunTimeout { get; set; } = TimeSpan.FromHours(2);
 

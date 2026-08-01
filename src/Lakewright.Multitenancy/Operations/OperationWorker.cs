@@ -84,7 +84,7 @@ public sealed partial class OperationWorker(
         var store = scope.ServiceProvider.GetRequiredService<OperationStore>();
         var submitter = scope.ServiceProvider.GetRequiredService<IJobSubmitter>();
 
-        if (await store.ClaimNextAsync(cancellationToken) is { } claimed)
+        if (await store.ClaimNextAsync(_options.MaxInFlightPerTenant, cancellationToken) is { } claimed)
         {
             await SubmitAndPollAsync(store, submitter, claimed, isReconciliation: false, cancellationToken);
             return true;

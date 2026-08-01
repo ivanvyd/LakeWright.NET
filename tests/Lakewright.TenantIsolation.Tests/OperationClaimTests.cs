@@ -18,7 +18,24 @@ public class OperationClaimTests(PostgresFixture postgres)
     private static readonly TimeSpan AlreadyOrphaned = TimeSpan.FromMinutes(-5);
     private static readonly TimeSpan NotYetOrphaned = TimeSpan.FromMinutes(5);
 
+    private static readonly TenantId GlobexId = TenantId.Parse("0198f000-0000-7000-8000-0000000000e2");
+
     private static TenantContext Ctx() => TenantContextFactory.ForTenant(AcmeId, "analytics");
+
+    private static async Task AddTenantAsync(LakewrightDbContext db, TenantId id, CancellationToken ct)
+    {
+        db.Organizations.Add(new Organization
+        {
+            Id = id,
+            Name = "Globex",
+            Slug = "globex",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Schema = UnityCatalogIdentifier.SchemaForTenant(id),
+            State = OrganizationState.Active
+        });
+
+        await db.SaveChangesAsync(ct);
+    }
 
     private static async Task<LakewrightDbContext> SeedAsync(PostgresFixture postgres, int operations)
     {
@@ -44,6 +61,73 @@ public class OperationClaimTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task One_tenants_backlog_does_not_starve_another()
+    {
+        // Arrange — Acme queues five operations, then Globex queues one, last. Strict oldest-first
+        // hands all five to the workers before Globex is looked at, which is threat T6: a
+        // performance review measured three replicas fully occupied by one tenant while everyone
+        // else waited up to the two-hour run timeout.
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await SeedAsync(postgres, operations: 5);
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
+        await AddTenantAsync(db, GlobexId, ct);
+        await store.CreateAsync(
+            TenantContextFactory.ForTenant(GlobexId, "analytics"), "auth0|bob", "analysis", null, ct);
+
+        // Act — two claims, which under oldest-first would both be Acme's.
+        var first = await store.ClaimNextAsync(maxInFlightPerTenant: 100, ct);
+        var second = await store.ClaimNextAsync(maxInFlightPerTenant: 100, ct);
+
+        // Assert — the second goes to the tenant holding nothing, despite being queued last.
+        first.ShouldNotBeNull().OrganizationId.ShouldBe(AcmeId);
+        second.ShouldNotBeNull().OrganizationId.ShouldBe(GlobexId);
+    }
+
+    [Fact]
+    public async Task A_tenant_at_its_ceiling_is_skipped_rather_than_failed()
+    {
+        // Arrange — Acme is capped at one in flight and has three queued; Globex has one.
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await SeedAsync(postgres, operations: 3);
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
+        await AddTenantAsync(db, GlobexId, ct);
+        await store.CreateAsync(
+            TenantContextFactory.ForTenant(GlobexId, "analytics"), "auth0|bob", "analysis", null, ct);
+
+        // Act
+        var first = await store.ClaimNextAsync(maxInFlightPerTenant: 1, ct);
+        var second = await store.ClaimNextAsync(maxInFlightPerTenant: 1, ct);
+        var third = await store.ClaimNextAsync(maxInFlightPerTenant: 1, ct);
+
+        // Assert — one each, then nothing claimable, with Acme's other two still waiting rather
+        // than failed. A ceiling that dropped work would be a worse bug than the one it fixes.
+        first.ShouldNotBeNull().OrganizationId.ShouldBe(AcmeId);
+        second.ShouldNotBeNull().OrganizationId.ShouldBe(GlobexId);
+        third.ShouldBeNull();
+        (await db.Operations.CountAsync(o => o.ClaimedAt == null, ct)).ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task Completing_work_frees_the_ceiling_for_the_next_operation()
+    {
+        // Arrange — the cap counts what is in flight, so it must release on completion. Counting
+        // claims instead would let one tenant burn through its ceiling once and stop forever.
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await SeedAsync(postgres, operations: 2);
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
+        var held = await store.ClaimNextAsync(maxInFlightPerTenant: 1, ct);
+
+        // Act
+        var whileHeld = await store.ClaimNextAsync(maxInFlightPerTenant: 1, ct);
+        await store.CompleteAsync(AcmeId, held!.Id, OperationState.Succeeded, null, ct);
+        var afterCompleting = await store.ClaimNextAsync(maxInFlightPerTenant: 1, ct);
+
+        // Assert
+        whileHeld.ShouldBeNull();
+        afterCompleting.ShouldNotBeNull();
+    }
+
+    [Fact]
     public async Task Claiming_returns_null_when_there_is_nothing_pending()
     {
         // Arrange
@@ -52,7 +136,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
 
         // Act
-        var claimed = await store.ClaimNextAsync(ct);
+        var claimed = await store.ClaimNextAsync(maxInFlightPerTenant: 100, ct);
 
         // Assert
         claimed.ShouldBeNull();
@@ -67,8 +151,8 @@ public class OperationClaimTests(PostgresFixture postgres)
         var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
 
         // Act
-        var first = await store.ClaimNextAsync(ct);
-        var second = await store.ClaimNextAsync(ct);
+        var first = await store.ClaimNextAsync(maxInFlightPerTenant: 100, ct);
+        var second = await store.ClaimNextAsync(maxInFlightPerTenant: 100, ct);
 
         // Assert
         first.ShouldNotBeNull();
@@ -99,7 +183,7 @@ public class OperationClaimTests(PostgresFixture postgres)
             await using var db = PostgresFixture.ContextFor(connectionString);
             var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
 
-            while (await store.ClaimNextAsync(ct) is { } operation)
+            while (await store.ClaimNextAsync(maxInFlightPerTenant: 100, ct) is { } operation)
             {
                 claimed.Add(operation.Id);
             }
@@ -124,10 +208,10 @@ public class OperationClaimTests(PostgresFixture postgres)
         await db.SaveChangesAsync(ct);
 
         // Act
-        var whileSuspended = await store.ClaimNextAsync(ct);
+        var whileSuspended = await store.ClaimNextAsync(maxInFlightPerTenant: 100, ct);
         acme.State = OrganizationState.Active;
         await db.SaveChangesAsync(ct);
-        var afterReinstating = await store.ClaimNextAsync(ct);
+        var afterReinstating = await store.ClaimNextAsync(maxInFlightPerTenant: 100, ct);
 
         // Assert — reinstating makes the queued work runnable again rather than losing it.
         whileSuspended.ShouldBeNull();
@@ -143,7 +227,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
         var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
-        await store.ClaimNextAsync(ct);
+        await store.ClaimNextAsync(maxInFlightPerTenant: 100, ct);
         var acme = await db.Organizations.FindAsync([AcmeId], ct);
         acme!.State = OrganizationState.Suspended;
         await db.SaveChangesAsync(ct);
@@ -192,7 +276,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
         var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
-        var claimed = await store.ClaimNextAsync(ct);
+        var claimed = await store.ClaimNextAsync(maxInFlightPerTenant: 100, ct);
 
         // Act
         await store.CompleteAsync(AcmeId, claimed!.Id, OperationState.Succeeded, null, ct);
@@ -212,7 +296,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
         var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
-        var claimed = await store.ClaimNextAsync(ct);
+        var claimed = await store.ClaimNextAsync(maxInFlightPerTenant: 100, ct);
 
         // Act
         var refused = await Should.ThrowAsync<InvalidOperationException>(
@@ -233,7 +317,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
         var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
-        var claimed = await store.ClaimNextAsync(ct);
+        var claimed = await store.ClaimNextAsync(maxInFlightPerTenant: 100, ct);
 
         // Act
         var tooSoon = await store.ClaimOrphanForReconciliationAsync(NotYetOrphaned, ct);
@@ -255,7 +339,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
         var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
-        await store.ClaimNextAsync(ct);
+        await store.ClaimNextAsync(maxInFlightPerTenant: 100, ct);
 
         // Act
         var first = await store.ClaimOrphanForReconciliationAsync(AlreadyOrphaned, ct);
@@ -276,7 +360,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
         var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
-        var claimed = await store.ClaimNextAsync(ct);
+        var claimed = await store.ClaimNextAsync(maxInFlightPerTenant: 100, ct);
         await store.RecordExternalIdAsync(Ctx(), claimed!.Id, "994455", ct);
 
         // Act
@@ -298,7 +382,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
         var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
-        var claimed = await store.ClaimNextAsync(ct);
+        var claimed = await store.ClaimNextAsync(maxInFlightPerTenant: 100, ct);
         await store.RecordExternalIdAsync(Ctx(), claimed!.Id, "994455", ct);
 
         // Act
