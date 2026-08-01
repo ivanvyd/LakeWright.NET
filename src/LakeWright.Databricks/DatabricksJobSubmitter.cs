@@ -20,6 +20,9 @@ public sealed partial class DatabricksJobSubmitter(
     [LoggerMessage(Level = LogLevel.Warning, Message = "Databricks rejected a job submission for tenant {TenantId}, job {JobId} (HTTP {StatusCode})")]
     private partial void LogSubmitRejected(Core.Tenancy.TenantId tenantId, long jobId, int statusCode);
 
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Cancelling run {RunId} was rejected with {StatusCode}")]
+    private partial void LogCancelRejected(long runId, int statusCode);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Run {RunId} reported unrecognised lifecycle state {State}; treating as running")]
     private partial void LogUnrecognisedState(long runId, RunStatusState state);
 
@@ -45,6 +48,21 @@ public sealed partial class DatabricksJobSubmitter(
             // No run id: either nothing started, or something started and we cannot learn its id.
             // Reconciliation resolves the difference by re-submitting the same idempotency key.
             return new RunOutcome.Failed(null, ex.Message, IsTransient: false);
+        }
+    }
+
+    public async Task CancelRunAsync(long runId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await client.Jobs.RunsCancel(runId, cancellationToken);
+        }
+        catch (ClientApiException e)
+        {
+            // The caller has already given up on this run; a cancel that fails because the run is
+            // already terminal, or gone, changes nothing it would do differently. Logged rather
+            // than thrown so the abandonment still completes.
+            LogCancelRejected(runId, (int)e.StatusCode);
         }
     }
 
