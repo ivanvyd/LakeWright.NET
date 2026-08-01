@@ -1,11 +1,11 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/ivanvyd/lakewright-dotnet/security/advisories/new
+    url: https://github.com/ivanvyd/LakeWright.NET/security/advisories/new
     about: Report privately. Never in a public issue.
   - name: Question or idea
-    url: https://github.com/ivanvyd/lakewright-dotnet/discussions
+    url: https://github.com/ivanvyd/LakeWright.NET/discussions
     about: Discussions are the right place before a feature proposal.
   - name: What is verified, and what is not
-    url: https://github.com/ivanvyd/lakewright-dotnet/blob/main/docs/compatibility.md
+    url: https://github.com/ivanvyd/LakeWright.NET/blob/main/docs/compatibility.md
     about: Check the compatibility matrix before reporting that something does not work.

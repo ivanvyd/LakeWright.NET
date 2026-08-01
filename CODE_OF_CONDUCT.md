@@ -36,7 +36,7 @@ This Code of Conduct applies within all community spaces, and also applies when 
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement through [GitHub's private report form](https://github.com/ivanvyd/lakewright-dotnet/security/advisories/new) or by emailing the maintainer address listed on the [@ivanvyd](https://github.com/ivanvyd) GitHub profile with `CONDUCT` in the subject. All complaints will be reviewed and investigated promptly and fairly.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement through [GitHub's private report form](https://github.com/ivanvyd/LakeWright.NET/security/advisories/new) or by emailing the maintainer address listed on the [@ivanvyd](https://github.com/ivanvyd) GitHub profile with `CONDUCT` in the subject. All complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the reporter of any incident.
 

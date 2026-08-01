@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Report privately through GitHub's [private vulnerability reporting](https://github.com/ivanvyd/lakewright-dotnet/security/advisories/new).
+Report privately through GitHub's [private vulnerability reporting](https://github.com/ivanvyd/LakeWright.NET/security/advisories/new).
 Do not open a public issue for a suspected vulnerability.
 
 If that is unavailable to you, email the maintainer address listed on the GitHub profile with
