@@ -5,7 +5,8 @@ What has been run against a real system, what has only been read in documentatio
 Anything not listed as **Verified** should be treated as unverified regardless of how confident the
 surrounding prose sounds.
 
-Last updated 2026-08-01, after the asynchronous operations work landed.
+Last updated 2026-08-01, after the live tests were rewired to exercise the shipping credential
+path rather than a hand-built client.
 
 ## Legend
 
@@ -31,15 +32,16 @@ Last updated 2026-08-01, after the asynchronous operations work landed.
 | Capability | Status | Date | Evidence |
 |---|---|---|---|
 | Entra ID token accepted as a Databricks bearer token (user principal) | **Verified** | 2026-07-31 | [spike 01](planning/spike-01-statement-execution.md) |
+| `TokenCredential` as the shipping credential, through `AddLakeWrightDatabricks` | **Verified** | 2026-08-01 | `LiveDatabricksTests` registers `DefaultAzureCredential` and resolves `IStatementExecutor` and `IJobSubmitter` from the container, so the options binding, the startup validation and the credential are all on the path. No token is passed in. The SDK requests `2ff814a6-3304-4ab8-85cb-cd0e6f879c1d/.default`. |
 | Entra ID token via **managed identity** (no user, no secret) | **Verified** | 2026-07-31 | [spike 04](planning/spike-04-managed-identity.md). Databricks resolved the caller as the managed identity; the identity needs no Azure RBAC role. |
-| Statement Execution with typed parameters | **Verified** | 2026-07-31 | [spike 01](planning/spike-01-statement-execution.md) |
-| Parameters resist injection payloads | **Verified** | 2026-07-31 | Value `acme'; DROP TABLE x; --` returned as a literal |
+| Statement Execution with typed parameters | **Verified** | 2026-08-01 | `LiveDatabricksTests`, through the registered executor. Previously 2026-07-31 via [spike 01](planning/spike-01-statement-execution.md), before the credential changed. |
+| Parameters resist injection payloads | **Verified** | 2026-08-01 | Value `acme'; DROP TABLE x; --` returned as a literal |
 | `EXTERNAL_LINKS` + `ARROW_STREAM` | **Verified** | 2026-07-31 | 200,000 rows, 3.26 MB retrieved |
 | Presigned link rejects the `Authorization` header | **Verified** | 2026-07-31 | HTTP 400 from Azure blob |
-| Failed statement returns rather than throws | **Verified** | 2026-07-31 | `State=FAILED`, `Manifest` and `Result` null |
+| Failed statement returns rather than throws | **Verified** | 2026-08-01 | Surfaces as `StatementOutcome.Failure` with `BAD_REQUEST`, not as an empty success |
 | `GetResultChunk`, multi-chunk reads | Unverified | | Test result fit in one chunk |
 | Statement read-once semantics, 1 hour expiry | Documented | | |
-| Jobs API: submit, poll to a terminal state | **Verified** | 2026-08-01 | `LiveDatabricksTests`, against a real job |
+| Jobs API: submit, poll to a terminal state | **Verified** | 2026-08-01 | `LiveDatabricksTests`, against a real job, through the registered `IJobSubmitter` |
 | `idempotency_token` returns the original run on re-submission | **Verified** | 2026-08-01 | The whole reconciliation design rests on this, and it had only been proved against a fake until now |
 | Statement rows returned inline | **Verified** | 2026-08-01 | Also caught the bug where an `EXTERNAL_LINKS` default left every successful query with zero rows |
 | Unity Catalog row filters with a **shared** service principal | **Not supported** | | `session_user()` returns the principal, not the end user. This is why isolation lives in the query layer. [ADR 0002](decisions/0002-enforce-tenant-isolation-in-the-query-layer.md) |

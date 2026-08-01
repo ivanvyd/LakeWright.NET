@@ -18,13 +18,15 @@ dotnet build -c Release                                  # warnings are errors
 dotnet test -c Release --filter "Category!=Live"         # default suite, no external services
 dotnet test -c Release --filter "Category=TenantIsolation"
 dotnet format --verify-no-changes
-docker compose up -d                                     # Postgres, mock Databricks, OIDC
+cd samples/Signalboard && docker compose up               # the sample and its database
 ```
 
-Live tests need a workspace and are opt-in:
+Live tests need a workspace and are opt-in. They authenticate with `DefaultAzureCredential`, so
+`az login` is the setup; no token is pasted in:
 
 ```bash
-dotnet test -c Release --filter "Category=Live"
+az login
+DATABRICKS_HOST=https://... LAKEWRIGHT_WAREHOUSE_ID=... LAKEWRIGHT_JOB_ID=... LAKEWRIGHT_CATALOG=... dotnet test -c Release --filter "Category=Live"
 ```
 
 Databricks assets:

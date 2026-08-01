@@ -1,8 +1,11 @@
+using Azure.Core;
+using Azure.Identity;
+using LakeWright.AspNetCore;
 using LakeWright.Core.Jobs;
 using LakeWright.Core.Tenancy;
 using LakeWright.Databricks;
-using Microsoft.Azure.Databricks.Client;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 namespace LakeWright.TenantIsolation.Tests;
@@ -33,8 +36,32 @@ public class LiveDatabricksTests
         ?? throw new InvalidOperationException(
             $"{name} is required for Category=Live tests. See the remarks on {nameof(LiveDatabricksTests)}.");
 
-    private static DatabricksClient CreateClient() =>
-        DatabricksClient.CreateClient(Require("DATABRICKS_HOST"), Require("DATABRICKS_TOKEN"));
+    /// <summary>
+    /// The clients an adopter gets, wired the way the guide tells them to wire it.
+    /// </summary>
+    /// <remarks>
+    /// <c>ValidateOnStart</c> runs here through <see cref="IStartupValidator"/>, so a missing
+    /// warehouse id fails this the way it would fail an application booting.
+    /// </remarks>
+    private static ServiceProvider Registered()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Databricks:WorkspaceUrl"] = Require("DATABRICKS_HOST"),
+                ["Databricks:WarehouseId"] = Require("LAKEWRIGHT_WAREHOUSE_ID")
+            })
+            .Build();
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<TokenCredential>(new DefaultAzureCredential());
+        services.AddLakeWrightDatabricks(configuration);
+
+        var provider = services.BuildServiceProvider();
+        provider.GetRequiredService<IStartupValidator>().Validate();
+        return provider;
+    }
 
     /// <summary>The schema the bundle creates, so these tests need no setup beyond a deployed bundle.</summary>
     private const string ReferenceSchema = "reference";
@@ -45,21 +72,14 @@ public class LiveDatabricksTests
     private static TenantContext Tenant() =>
         TenantContextFactory.ForTenant(LiveTenantId, Require("LAKEWRIGHT_CATALOG"), ReferenceSchema);
 
-    private static DatabricksStatementExecutor Executor(DatabricksClient client) =>
-        new(client,
-            Options.Create(new DatabricksOptions
-            {
-                WorkspaceUrl = Require("DATABRICKS_HOST"),
-                WarehouseId = Require("LAKEWRIGHT_WAREHOUSE_ID")
-            }),
-            NullLogger<DatabricksStatementExecutor>.Instance);
-
     [Fact]
     public async Task A_parameterised_statement_binds_values_rather_than_interpolating_them()
     {
         // Arrange — the payload is the point: if it were interpolated it would change the statement.
         var ct = TestContext.Current.CancellationToken;
-        using var client = CreateClient();
+        await using var provider = Registered();
+        await using var scope = provider.CreateAsyncScope();
+        var executor = scope.ServiceProvider.GetRequiredService<IStatementExecutor>();
         var statement = TenantScopedStatement.Create(
             Tenant(),
             "SELECT :tenant AS tenant, :n + 1 AS bumped",
@@ -67,7 +87,7 @@ public class LiveDatabricksTests
             StatementParameter.Int("n", 41));
 
         // Act
-        var outcome = await Executor(client).ExecuteAsync(statement, ct);
+        var outcome = await executor.ExecuteAsync(statement, ct);
 
         // Assert
         var success = outcome.ShouldBeOfType<StatementOutcome.Success>();
@@ -82,12 +102,14 @@ public class LiveDatabricksTests
         // Arrange — the client returns rather than throws for this, so an unwrapped caller would
         // read a failed query as "no data". That translation is what StatementOutcome exists for.
         var ct = TestContext.Current.CancellationToken;
-        using var client = CreateClient();
+        await using var provider = Registered();
+        await using var scope = provider.CreateAsyncScope();
         var statement = TenantScopedStatement.Create(
             Tenant(), "SELECT * FROM definitely_not_a_table_lakewright");
 
         // Act
-        var outcome = await Executor(client).ExecuteAsync(statement, ct);
+        var outcome = await scope.ServiceProvider.GetRequiredService<IStatementExecutor>()
+            .ExecuteAsync(statement, ct);
 
         // Assert
         var failure = outcome.ShouldBeOfType<StatementOutcome.Failure>();
@@ -102,8 +124,9 @@ public class LiveDatabricksTests
         // suite proves it against a fake that was written to behave this way; this proves Databricks
         // actually does.
         var ct = TestContext.Current.CancellationToken;
-        using var client = CreateClient();
-        var submitter = new DatabricksJobSubmitter(client, NullLogger<DatabricksJobSubmitter>.Instance);
+        await using var provider = Registered();
+        await using var scope = provider.CreateAsyncScope();
+        var submitter = scope.ServiceProvider.GetRequiredService<IJobSubmitter>();
         var jobId = long.Parse(Require("LAKEWRIGHT_JOB_ID"), System.Globalization.CultureInfo.InvariantCulture);
         var run = TenantScopedJobRun.Create(Tenant(), jobId, Guid.CreateVersion7().ToString("N"));
 
