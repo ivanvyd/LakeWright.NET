@@ -24,6 +24,31 @@ Nothing here is a surprise to the compatibility matrix. If this table and
 [compatibility.md](../compatibility.md) ever disagree, the matrix wins — it records what was
 executed, and this one records what is intended.
 
+### What nobody has checked
+
+The table above is work someone chose not to do yet. This is the other kind: things nobody has
+measured, so the honest answer to "is it right?" is that we do not know.
+
+- **There is no coverage measurement.** No collector is referenced, so `--collect:"XPlat Code
+  Coverage"` produces nothing and the suite reports a pass count rather than a proportion. That is
+  not academic: `LakeWright.AI` shipped on 2026-08-01 with only its line transform covered by a test
+  CI runs, and a review caught it rather than a number. The same gap could exist elsewhere now and
+  nothing would say so. Adding a collector is the cheapest way to stop guessing.
+- **No independent human has read this code.** Every pull request has been opened and merged by the
+  maintainer with zero approvals. The reviews have been thorough and adversarial, and they have all
+  been briefed by the person whose work they reviewed, who then chose what to act on.
+- **Nothing has ever been deployed.** Every claim is verified locally or against a development
+  workspace. The managed-identity path in a hosted process rests on
+  [spike 04](spike-04-managed-identity.md) alone, and the ingress half of encryption in transit has
+  nothing to configure because there is no ingress.
+- **Nothing is load-tested.** Fair claim ordering and the per-tenant ceiling are proven by tests over
+  small data and by one review's measurements. Neither has run under real concurrency, and the
+  numbers in [the threat model](../security/threat-model.md) come from reasoning about the queue
+  rather than from watching it.
+- **The streaming shim depends on undocumented behaviour.** Databricks may change the payload
+  without notice, in either direction. `LiveChatTests` fails loudly if the bug disappears; nothing
+  warns if it changes shape instead.
+
 ---
 
 ## Blockers
