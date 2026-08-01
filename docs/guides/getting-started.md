@@ -9,8 +9,8 @@ workspace.
 You need Docker and the .NET 10 SDK. You do **not** need a Databricks account.
 
 ```bash
-git clone https://github.com/ivanvyd/lakewright-dotnet
-cd lakewright-dotnet/samples/Signalboard
+git clone https://github.com/ivanvyd/LakeWright.NET
+cd LakeWright.NET/samples/Signalboard
 docker compose up
 ```
 
