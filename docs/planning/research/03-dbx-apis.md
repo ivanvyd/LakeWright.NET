@@ -1,11 +1,11 @@
-﻿# Databricks API Surface & Operational Gotchas for a .NET SaaS Backend
+# Databricks API Surface & Operational Gotchas for a .NET SaaS Backend
 
 **Research date:** 2026-07-31
 **Scope:** The precise REST API surface a .NET SaaS backend (Lakewright.NET) would call, plus operational limits and gotchas.
 **Method:** Every claim below was read from a live docs page during this session unless explicitly marked otherwise.
 
 **Legend**
-- **[V]** VERIFIED â€” read from a live docs page this session, URL given.
+- **[V]** VERIFIED — read from a live docs page this session, URL given.
 - **[V-search]** VERIFIED via search-result excerpt of a primary doc page (docs.databricks.com / learn.microsoft.com), but the full page was not rendered. Slightly weaker than [V].
 - **[UNDOC]** Not documented anywhere I could find. Stated as undocumented, not guessed.
 - **[INFER]** My inference from verified facts. Flagged explicitly; not a doc claim.
@@ -16,7 +16,7 @@
 
 ## 1. OAuth
 
-### 1.1 M2M â€” service principal client credentials
+### 1.1 M2M — service principal client credentials
 
 **[V]** https://docs.databricks.com/aws/en/dev-tools/auth/oauth-m2m
 
@@ -26,11 +26,11 @@
 | Account token endpoint | `https://accounts.cloud.databricks.com/oidc/accounts/<account-id>/v1/token` |
 | Grant | `grant_type=client_credentials` |
 | Scope | `scope=all-apis` |
-| Client auth | HTTP Basic â€” `--user "$CLIENT_ID:$CLIENT_SECRET"` |
+| Client auth | HTTP Basic — `--user "$CLIENT_ID:$CLIENT_SECRET"` |
 | Response | `access_token`, `token_type: "Bearer"`, `expires_in: 3600` |
 | **Access token lifetime** | **1 hour (3600 s)** |
 | OAuth secret max lifetime | **730 days** (set at creation; secret shown once) |
-| Refresh semantics | None â€” client_credentials has no refresh token. Re-request. |
+| Refresh semantics | None — client_credentials has no refresh token. Re-request. |
 
 Quoted: *"The `all-apis` scope requests an OAuth access token that allows the service principal to call any Databricks REST API it has permission to access."*
 
@@ -38,11 +38,11 @@ Quoted: *"The `all-apis` scope requests an OAuth access token that allows the se
 
 **Role assumption (Public Preview):** add `assume_group=<group-id>` to a **workspace-level** token request to scope the token to a group. Not supported for account-level tokens. **[V]**
 
-**Secret creation path:** Settings â†’ Identity and access â†’ Service principals â†’ (select SP) â†’ Secrets â†’ Generate secret. Lifetime up to 730 days. Both **account admins and workspace admins** can do this; account admins can alternatively use the account console (User management â†’ SP â†’ Credentials & secrets). **[V-search]** https://docs.databricks.com/aws/en/admin/users-groups/manage-service-principals
+**Secret creation path:** Settings → Identity and access → Service principals → (select SP) → Secrets → Generate secret. Lifetime up to 730 days. Both **account admins and workspace admins** can do this; account admins can alternatively use the account console (User management → SP → Credentials & secrets). **[V-search]** https://docs.databricks.com/aws/en/admin/users-groups/manage-service-principals
 
 > **Gotcha for Lakewright.NET:** the client_credentials access token is 1 hour with no refresh token. Any HTTP client must cache the token and refresh proactively (e.g. at T-5min), not react to a 401. The Databricks SDK for .NET does this for you; a hand-rolled `HttpClient` does not.
 
-### 1.2 U2M â€” authorization code + PKCE
+### 1.2 U2M — authorization code + PKCE
 
 **[V]** https://docs.databricks.com/aws/en/dev-tools/auth/oauth-u2m
 
@@ -55,19 +55,19 @@ Quoted: *"The `all-apis` scope requests an OAuth access token that allows the se
 
 **Authorization request params:** `client_id` (`databricks-cli` for built-in tooling; custom OAuth apps use their own), `redirect_uri`, `response_type=code`, `state`, `code_challenge`, `code_challenge_method=S256`, `scope=all-apis+offline_access`. Optional `assume_group=<group-id>`.
 
-**Token exchange params:** `client_id`, `grant_type=authorization_code`, `scope=all-apis offline_access`, `redirect_uri`, `code_verifier` (**43â€“128 chars**, charset `Aâ€“Z aâ€“z 0â€“9 -._~`), `code`.
+**Token exchange params:** `client_id`, `grant_type=authorization_code`, `scope=all-apis offline_access`, `redirect_uri`, `code_verifier` (**43–128 chars**, charset `A–Z a–z 0–9 -._~`), `code`.
 
 **Lifetimes:** *"Each access token is valid for one hour, after which a new token is automatically requested."* Response includes `refresh_token`.
 
 **Security gotcha, quoted:** revoking consent **does not** invalidate existing tokens; applications can continue using refresh tokens *"until those tokens expire."* Refresh-token absolute lifetime: **[UNDOC]**.
 
-**Scopes:** `all-apis` and `offline_access` are documented on this page. `sql`, `openid`, `profile`, `email` are referenced elsewhere in Databricks docs but are **not** specified on this page â€” treat as **[UNDOC]** for exact semantics.
+**Scopes:** `all-apis` and `offline_access` are documented on this page. `sql`, `openid`, `profile`, `email` are referenced elsewhere in Databricks docs but are **not** specified on this page — treat as **[UNDOC]** for exact semantics.
 
 **Custom OAuth app registration:** the page states you must use a custom app's `client_id` instead of `databricks-cli`, but gives **no registration procedure** and **draws no confidential-vs-public client distinction** on this page. **[UNDOC]** at this level of detail.
 
-### 1.3 Workload identity federation / OIDC â€” **secretless**
+### 1.3 Workload identity federation / OIDC — **secretless**
 
-This is the headline answer to "can an Azure Container App or GitHub Actions federate in without a stored client secret?" â€” **yes**, two independent mechanisms.
+This is the headline answer to "can an Azure Container App or GitHub Actions federate in without a stored client secret?" — **yes**, two independent mechanisms.
 
 #### (a) Databricks-native OIDC token exchange
 
@@ -81,11 +81,11 @@ This is the headline answer to "can an Azure Container App or GitHub Actions fed
 | `subject_token_type` | `urn:ietf:params:oauth:token-type:jwt` |
 | `subject_token` | the federated JWT from your IdP |
 | `scope` | `all-apis` |
-| `client_id` | service principal UUID â€” **required only for service-principal federation policies**, omitted for account-wide policies |
+| `client_id` | service principal UUID — **required only for service-principal federation policies**, omitted for account-wide policies |
 | **Client secret** | **Not needed for either method.** |
 | Response | `access_token`, `scope: all-apis`, `token_type: Bearer`, `expires_in` |
 
-**Token lifetime, quoted:** *"The resulting Databricks OAuth token has the same expiration (`exp`) claim as the JWT provided in the `subject_token` parameter."* â€” i.e. the Databricks token inherits the IdP token's expiry, it is **not** a flat 1 hour.
+**Token lifetime, quoted:** *"The resulting Databricks OAuth token has the same expiration (`exp`) claim as the JWT provided in the `subject_token` parameter."* — i.e. the Databricks token inherits the IdP token's expiry, it is **not** a flat 1 hour.
 
 **Federation policy config** **[V]** https://docs.databricks.com/aws/en/dev-tools/auth/oauth-federation-policy
 - Required: **Issuer URL** (`iss` claim), **Subject** (defaults to `sub`), **Audiences** (`aud`; defaults to your Databricks account ID).
@@ -98,13 +98,13 @@ This is the headline answer to "can an Azure Container App or GitHub Actions fed
 
 **GitHub Actions specifics** **[V]** https://docs.databricks.com/aws/en/dev-tools/auth/provider-github: issuer is `https://token.actions.githubusercontent.com`; you set env vars `DATABRICKS_AUTH_TYPE: github-oidc`, `DATABRICKS_HOST`, `DATABRICKS_CLIENT_ID` and the SDK/CLI performs the exchange internally. **Answer: yes, GitHub Actions federates in with no stored secret.**
 
-#### (b) Azure managed identity â†’ Entra ID token (Azure only)
+#### (b) Azure managed identity → Entra ID token (Azure only)
 
 **[V]** https://learn.microsoft.com/en-us/azure/databricks/dev-tools/auth/azure-mi-auth and https://learn.microsoft.com/en-us/azure/databricks/dev-tools/auth/aad-token-manual
 
 Azure Databricks accepts a **Microsoft Entra ID access token directly as a Databricks bearer token**. No Databricks secret, no federation policy.
 
-- **Azure Databricks resource ID: `2ff814a6-3304-4ab8-85cb-cd0e6f879c1d`** â€” quoted as *"the standard identifier for Azure Databricks across all Azure environments."*
+- **Azure Databricks resource ID: `2ff814a6-3304-4ab8-85cb-cd0e6f879c1d`** — quoted as *"the standard identifier for Azure Databricks across all Azure environments."*
 - MSAL scope string: `2ff814a6-3304-4ab8-85cb-cd0e6f879c1d/.default`
 - CLI: `az account get-access-token --resource 2ff814a6-3304-4ab8-85cb-cd0e6f879c1d`
 - Use: `Authorization: Bearer <entra-token>` against e.g. `https://<instance>/api/2.0/clusters/list`
@@ -112,21 +112,21 @@ Azure Databricks accepts a **Microsoft Entra ID access token directly as a Datab
 - Works for **both** workspace-level and account-level APIs (separate config profiles: `azure_use_msi = true` plus `azure_workspace_resource_id` for workspace, `account_id` for account).
 - Entra ID access tokens *"expire within one hour"*; elsewhere the same page says *"expire after 60-90 minutes by default."*
 - Escape hatch if the SP is not yet in the workspace but holds Azure `Contributor`/`Owner` on the workspace resource: send `X-Databricks-Azure-SP-Management-Token` + `X-Databricks-Azure-Workspace-Resource-Id` headers alongside the bearer token. After first authentication *"the service principal becomes a workspace admin."*
-- The page's worked example uses an Azure **VM**, not Container Apps. **[INFER]** Container Apps supports user-assigned managed identity and the IMDS endpoint identically, so the same flow applies â€” but the docs do not name Container Apps, so this is inference, not a documented claim.
+- The page's worked example uses an Azure **VM**, not Container Apps. **[INFER]** Container Apps supports user-assigned managed identity and the IMDS endpoint identically, so the same flow applies — but the docs do not name Container Apps, so this is inference, not a documented claim.
 
-**Note:** the Azure MI page makes **no mention of the federation-policy mechanism** â€” it is a separate, Azure-specific path. Two valid secretless routes exist on Azure; the Entra route is simpler and is the one `azure_use_msi` uses.
+**Note:** the Azure MI page makes **no mention of the federation-policy mechanism** — it is a separate, Azure-specific path. Two valid secretless routes exist on Azure; the Entra route is simpler and is the one `azure_use_msi` uses.
 
 ### 1.4 On-behalf-of / acting AS an end user against Unity Catalog
 
 **[V]** https://docs.databricks.com/aws/en/dev-tools/databricks-apps/auth
 
-There **is** an on-behalf-of-user mechanism, but it is **scoped to Databricks Apps** â€” apps hosted *inside* Databricks. It is **not** a general OAuth token-exchange an external .NET service can invoke.
+There **is** an on-behalf-of-user mechanism, but it is **scoped to Databricks Apps** — apps hosted *inside* Databricks. It is **not** a general OAuth token-exchange an external .NET service can invoke.
 
 - Called *"user authorization"* or *"on-behalf-of-user authorization."* **Public Preview.** Workspace admin must enable it.
-- Databricks forwards the user's access token to the app in the **`x-forwarded-access-token`** HTTP header. (Other `X-Forwarded-*` headers are not enumerated on this page â€” **[UNDOC]**.)
-- *"Databricks enforces all permissions based on the user's existing Unity Catalog policies"* â€” **row filters and column masks apply automatically.**
+- Databricks forwards the user's access token to the app in the **`x-forwarded-access-token`** HTTP header. (Other `X-Forwarded-*` headers are not enumerated on this page — **[UNDOC]**.)
+- *"Databricks enforces all permissions based on the user's existing Unity Catalog policies"* — **row filters and column masks apply automatically.**
 - Requires explicit user consent on first access.
-- **Scopes** declared in `user_api_scopes` in `databricks.yml`. Documented examples: `sql`, `dashboards.genie`, `serving.serving-endpoints`, `files`/`file.files`, `genie`, `iam.access-control:read`, `iam.current-user:read` (default). **A complete authoritative scope list is not published on this page â€” [UNDOC].**
+- **Scopes** declared in `user_api_scopes` in `databricks.yml`. Documented examples: `sql`, `dashboards.genie`, `serving.serving-endpoints`, `files`/`file.files`, `genie`, `iam.access-control:read`, `iam.current-user:read` (default). **A complete authoritative scope list is not published on this page — [UNDOC].**
 - Databricks **blocks** access outside approved scopes even if the user personally has permission.
 - Contrast: **app authorization** gives the app a dedicated service principal via injected `DATABRICKS_CLIENT_ID` / `DATABRICKS_CLIENT_SECRET` env vars; limitation quoted: *"All users who interact with the app share the same permissions."*
 - Stated limitation: users **can't revoke** consent once granted. Token lifetime/refresh for the forwarded token: **[UNDOC]**.
@@ -154,12 +154,12 @@ There **is** an on-behalf-of-user mechanism, but it is **scoped to Databricks Ap
 
 `warehouse_id` (required), `statement` (required), `catalog`, `schema`, `parameters[]`, `format`, `disposition`, `wait_timeout`, `on_wait_timeout`, `row_limit`, `byte_limit`, `query_tags[]`.
 
-### 2.3 wait_timeout â€” sync vs async
+### 2.3 wait_timeout — sync vs async
 
 - Format: string, `"<x>s"`.
-- **Range: 5â€“50 seconds inclusive.**
+- **Range: 5–50 seconds inclusive.**
 - **Default: 10 seconds.**
-- `"0s"` â†’ returns statement ID and status **immediately** (pure async).
+- `"0s"` → returns statement ID and status **immediately** (pure async).
 - Default behaviour: **statement keeps running after the timeout**. Set `"on_wait_timeout":"CANCEL"` to cancel instead.
 - On timeout the response is just `{"statement_id": "...", "status": {"state": "PENDING"}}`.
 
@@ -171,7 +171,7 @@ There **is** an on-behalf-of-user mechanism, but it is **scoped to Databricks Ap
 
 | disposition | Size limit | Formats |
 |---|---|---|
-| `INLINE` (default) | **25 MiB** â€” exceeding it returns a failure status and **the statement is canceled** | `JSON_ARRAY` only |
+| `INLINE` (default) | **25 MiB** — exceeding it returns a failure status and **the statement is canceled** | `JSON_ARRAY` only |
 | `EXTERNAL_LINKS` | **100 GiB** **[V-search]**; results beyond are truncated (`truncated: true` in manifest) | `JSON`, `CSV`, `ARROW_STREAM` |
 
 **External link expiry: short-lived, `<= 15 minutes`** **[V-search]**; each `external_link` carries an `expiration` timestamp. **[V]**
@@ -198,7 +198,7 @@ Result: `chunk_index`, `data_array` (INLINE) or `external_links[]`, `row_count`,
 - **Results are only available for one hour after success.** **[V-search]**
 - `STATEMENT_TIMEOUT` SQL config: **0 to 172800 seconds (2 days)**, system default **172800 s (2 days)**. **[V-search]** https://docs.databricks.com/aws/en/sql/language-manual/parameters/statement_timeout
 
-### 2.8 Parameterized statements â€” the SQL-injection defense
+### 2.8 Parameterized statements — the SQL-injection defense
 
 This is the precise syntax. Named parameters prefixed with `:` in the statement, matched by `name` in a `parameters` array.
 
@@ -216,10 +216,10 @@ This is the precise syntax. Named parameters prefixed with `:` in the statement,
 }
 ```
 
-- Fields: **`name`** (required, no colon in the array â€” the colon appears only in the statement text), **`value`** (required), **`type`** (optional).
+- Fields: **`name`** (required, no colon in the array — the colon appears only in the statement text), **`value`** (required), **`type`** (optional).
 - **`type` defaults to `STRING` when omitted.**
-- Types demonstrated in docs: `DECIMAL(18,2)`, `DATE`, `INT`, `STRING`. The docs describe these as examples; **the exhaustive supported-type list lives only on the JS-rendered API reference â€” [UNDOC]** from static pages. **[INFER]** it is the Databricks SQL type system, but do not rely on that without checking.
-- Note `LIMIT :row_limit` is parameterizable â€” parameters are not restricted to WHERE-clause values.
+- Types demonstrated in docs: `DECIMAL(18,2)`, `DATE`, `INT`, `STRING`. The docs describe these as examples; **the exhaustive supported-type list lives only on the JS-rendered API reference — [UNDOC]** from static pages. **[INFER]** it is the Databricks SQL type system, but do not rely on that without checking.
+- Note `LIMIT :row_limit` is parameterizable — parameters are not restricted to WHERE-clause values.
 
 Databricks' own words **[V]**: *"Databricks strongly recommends that you use parameters as a best practice for your SQL statements... Parameterized queries help protect against SQL injections attacks by handling input arguments separately from the rest of your SQL code and interpreting these arguments as literal values."*
 
@@ -227,9 +227,9 @@ Databricks' own words **[V]**: *"Databricks strongly recommends that you use par
 
 ### 2.9 Other limits
 
-- `row_limit` / `byte_limit` â†’ set `truncated: true` when exceeded.
+- `row_limit` / `byte_limit` → set `truncated: true` when exceeded.
 - `query_tags`: array of `{"key","value"}` for cost attribution; surfaces in `system.query.history`. **Public Preview.**
-- **Concurrency limit per warehouse for this API: [UNDOC].** The resource-limits page has **no row for `/sql/statements`** at all (see Â§4). Related warehouse behaviour **[V-search]** https://docs.databricks.com/aws/en/compute/sql-warehouse/warehouse-behavior: classic/pro warehouses have a fixed limit of **one cluster per 10 concurrent queries**; a warehouse is always upscaled if a query waits **5 minutes** in the queue; downscale after **15 minutes** of low load. Serverless uses Intelligent Workload Management instead.
+- **Concurrency limit per warehouse for this API: [UNDOC].** The resource-limits page has **no row for `/sql/statements`** at all (see §4). Related warehouse behaviour **[V-search]** https://docs.databricks.com/aws/en/compute/sql-warehouse/warehouse-behavior: classic/pro warehouses have a fixed limit of **one cluster per 10 concurrent queries**; a warehouse is always upscaled if a query waits **5 minutes** in the queue; downscale after **15 minutes** of low load. Serverless uses Intelligent Workload Management instead.
 - SQL warehouses per workspace: **1,000**. **[V]** (resource limits table)
 
 ### 2.10 Access control
@@ -242,13 +242,13 @@ Caller needs `CAN USE` on the warehouse plus Unity Catalog / table-ACL permissio
 
 ### 3.1 Current version: 2.2
 
-**[V]** https://docs.databricks.com/aws/en/reference/jobs-api-2-2-updates â€” paths are `/api/2.2/jobs/...`. 2.0 and 2.1 still exist (2.1 is now labelled "Jobs (legacy) API" in the reference).
+**[V]** https://docs.databricks.com/aws/en/reference/jobs-api-2-2-updates — paths are `/api/2.2/jobs/...`. 2.0 and 2.1 still exist (2.1 is now labelled "Jobs (legacy) API" in the reference).
 
 Changes in 2.2 vs 2.1:
 - **Token-based pagination.** `next_page_token` in responses; `page_token` as a query param, e.g. `/api/2.2/jobs/get?job_id=11223344&page_token=Z29...E=`.
-- **Arrays capped at 100 elements per response** â€” `tasks`, `parameters`, `job_clusters`, `environments`.
+- **Arrays capped at 100 elements per response** — `tasks`, `parameters`, `job_clusters`, `environments`.
 - Pagination **newly added** to `jobs/get` and `jobs/getrun` (it already existed on `jobs/list`, `jobs/listruns`).
-- **Root-level `has_more` removed** from List jobs/runs â€” use presence of `next_page_token` instead.
+- **Root-level `has_more` removed** from List jobs/runs — use presence of `next_page_token` instead.
 - **Job queueing is enabled by default in 2.2** (in 2.0/2.1 it required `queue: true`). Set `queue: false` to disable.
 - `jobs/getrun` gains `only_latest` query param (latest retry/repair attempts only).
 - `ForEach` tasks return an `iterations` array of nested task runs; paginated when >100.
@@ -271,12 +271,12 @@ Changes in 2.2 vs 2.1:
 **`result_state`** **[V-search]**: `SUCCESS`, `FAILED`, `TIMEDOUT`, `CANCELED`, `MAXIMUM_CONCURRENT_RUNS_REACHED`, `UPSTREAM_CANCELED`, `UPSTREAM_FAILED`, `EXCLUDED`, `SUCCESS_WITH_FAILURES`, `DISABLED`.
 
 Availability rules **[V-search]**:
-- `TERMINATED` + had a task â†’ result state **guaranteed** available.
-- `PENDING` / `RUNNING` / `SKIPPED` â†’ result state **not** available.
-- `TERMINATING` / `INTERNAL_ERROR` â†’ available **if** the run had a task and managed to start it.
+- `TERMINATED` + had a task → result state **guaranteed** available.
+- `PENDING` / `RUNNING` / `SKIPPED` → result state **not** available.
+- `TERMINATING` / `INTERNAL_ERROR` → available **if** the run had a task and managed to start it.
 - Once available, the result state **never changes**.
 
-> **.NET gotcha:** because Databricks explicitly reserves the right to add states, a `switch` over these enums must have a non-throwing default (or map unknown â†’ "unknown/still-running"), the opposite of the usual exhaustiveness rule. Model them as a closed enum + `Unknown` fallback, not a `never` check.
+> **.NET gotcha:** because Databricks explicitly reserves the right to add states, a `switch` over these enums must have a non-throwing default (or map unknown → "unknown/still-running"), the opposite of the usual exhaustiveness rule. Model them as a closed enum + `Unknown` fallback, not a `never` check.
 
 UI-level statuses (for reference, not API values) **[V]**: Queued, Pending, Running, Skipped, Succeeded, Succeeded with failures, Failed, Timed Out, Canceling, Canceled. Individual tasks can also be `Disabled`.
 
@@ -287,17 +287,17 @@ UI-level statuses (for reference, not API values) **[V]**: Queued, Pending, Runn
 > *"An optional token to guarantee the idempotency of job run requests. If a run with the provided token already exists, the request does not create a new run but returns the ID of the existing run instead. If a run with the provided token is deleted, an error is returned. If you specify the idempotency token, upon failure you can retry until the request succeeds. Databricks guarantees that exactly one run is launched with that idempotency token. This token must have at most 64 characters."*
 
 - Field name: **`idempotency_token`**. Max **64 characters**.
-- **Dedup window: [UNDOC].** The docs state no time period. Widely-repeated community claims of "one hour" are **not** in the primary docs; do not design around a specific window. Note the doc's own caveat that a *deleted* run with that token produces an **error**, not a new run â€” so tokens are not safely reusable across time.
+- **Dedup window: [UNDOC].** The docs state no time period. Widely-repeated community claims of "one hour" are **not** in the primary docs; do not design around a specific window. Note the doc's own caveat that a *deleted* run with that token produces an **error**, not a new run — so tokens are not safely reusable across time.
 
 ### 3.5 Job parameters
 
-`run-now` and `runs/submit` accept job/task parameters (`job_parameters`, plus task-type-specific `notebook_params`, `python_params`, `jar_params`, `spark_submit_params`). Exact per-field schema lives on the JS-rendered reference â€” **[UNDOC]** at field level from static docs.
+`run-now` and `runs/submit` accept job/task parameters (`job_parameters`, plus task-type-specific `notebook_params`, `python_params`, `jar_params`, `spark_submit_params`). Exact per-field schema lives on the JS-rendered reference — **[UNDOC]** at field level from static docs.
 
 ### 3.6 Polling vs push
 
-**Rate limits directly constrain polling** â€” see Â§4. `/jobs/runs/get` is the most generous at **100 req/s per workspace**; `/jobs/runs/list` is **30 req/s**.
+**Rate limits directly constrain polling** — see §4. `/jobs/runs/get` is the most generous at **100 req/s per workspace**; `/jobs/runs/list` is **30 req/s**.
 
-**Push alternatives â€” three exist:**
+**Push alternatives — three exist:**
 
 **(a) HTTP webhooks / notification destinations** **[V]** https://learn.microsoft.com/en-us/azure/databricks/jobs/notifications
 
@@ -325,12 +325,12 @@ Payload shape (verbatim example):
 Constraints:
 - **Max 3 system destinations per notification event type**, per job or task.
 - HTTPS enforced; destination must use SSL certs signed by a trusted CA. **[V-search]**
-- Job-level notifications are **not** sent when failed tasks are retried â€” use task notifications for that.
+- Job-level notifications are **not** sent when failed tasks are retried — use task notifications for that.
 - Notification destinations are configured by an **admin** in workspace admin settings, not per-app. There is a Notification Destinations API (`docs.databricks.com/api/workspace/notificationdestinations`).
 - Slack/Teams message content is explicitly unstable: *"You should not implement clients or processing that depend on the specific content or formatting of these messages."* **Use a user-defined webhook if you need a stable schema.**
 - A 5th UI event, **streaming backlog**, exists but has **no listed `event_type` webhook code** in the table.
 
-**(b) System tables** â€” `system.lakeflow` schema holds job/task run records account-wide; joinable with billing tables. **[V]** (jobs/monitor page). Queried via SQL, i.e. via the Statement Execution API. Latency: **[UNDOC]**.
+**(b) System tables** — `system.lakeflow` schema holds job/task run records account-wide; joinable with billing tables. **[V]** (jobs/monitor page). Queried via SQL, i.e. via the Statement Execution API. Latency: **[UNDOC]**.
 
 **(c) Run history retention:** **60 days** for both jobs and pipelines. Runs list UI start-time filter covers only the **last 48 hours**. **[V]**
 
@@ -351,7 +351,7 @@ Constraints:
 
 ### 4.1 Documented API rate limits
 
-**[V]** https://learn.microsoft.com/en-us/azure/databricks/resources/limits (page updated 2026-07-28) â€” full table read. Mirror: https://docs.databricks.com/aws/en/resources/limits
+**[V]** https://learn.microsoft.com/en-us/azure/databricks/resources/limits (page updated 2026-07-28) — full table read. Mirror: https://docs.databricks.com/aws/en/resources/limits
 
 All are **requests per second per workspace** unless noted. "Fixed = No" means an increase can be requested via your account team.
 
@@ -414,10 +414,10 @@ All are **requests per second per workspace** unless noted. "Fixed = No" means a
 
 ### 4.2 Throttling response and retry guidance
 
-- **HTTP 429 Too Many Requests** â€” *"Request is rejected due to throttling."* **[V-search]**
+- **HTTP 429 Too Many Requests** — *"Request is rejected due to throttling."* **[V-search]**
 - Foundation Model APIs: *"When a rate limit is exceeded, the service returns an HTTP 429 (Too Many Requests) response. Clients should implement retry logic with exponential backoff."* **[V-search]** https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis/limits
 - **`Retry-After` header: [UNDOC].** I found **no** Databricks documentation stating that a `Retry-After` header is returned on 429. Do not depend on it; use exponential backoff with jitter and treat `Retry-After` as an opportunistic optimisation if present.
-- Rate-limiter caveat, quoted (FMAPI): *"The rate limiter is designed for low latency, which means concurrent requests are not checked ahead of time. The system records usage after a response is sent, so if several requests arrive at the same moment, they can all go through before usage is counted."* â€” bursts can overshoot the nominal limit.
+- Rate-limiter caveat, quoted (FMAPI): *"The rate limiter is designed for low latency, which means concurrent requests are not checked ahead of time. The system records usage after a response is sent, so if several requests arrive at the same moment, they can all go through before usage is counted."* — bursts can overshoot the nominal limit.
 
 ### 4.3 Error response shape and error_code taxonomy
 
@@ -429,16 +429,16 @@ Error body shape **[V-search]**:
 | HTTP | `error_code` values documented |
 |---|---|
 | 400 | `BAD_REQUEST`, `INVALID_PARAMETER_VALUE`, `MALFORMED_REQUEST` |
-| 401 | (unauthenticated â€” *"The request does not have valid authentication credentials for the operation."*) |
-| 403 | `PERMISSION_DENIED` â€” *"Caller does not have permission to execute the specified operation."* Also `FEATURE_DISABLED`. |
-| 404 | `RESOURCE_DOES_NOT_EXIST` â€” *"Operation was performed on a resource that does not exist."* |
+| 401 | (unauthenticated — *"The request does not have valid authentication credentials for the operation."*) |
+| 403 | `PERMISSION_DENIED` — *"Caller does not have permission to execute the specified operation."* Also `FEATURE_DISABLED`. |
+| 404 | `RESOURCE_DOES_NOT_EXIST` — *"Operation was performed on a resource that does not exist."* |
 | 429 | (throttling) |
 | 500 | `INTERNAL_ERROR` |
 | 503 | (service unavailable) |
 
 Real-world 403 example **[V-search]**: `{"error_code": "PERMISSION_DENIED", "message": "User \"my-spn\" does not have Manage Run or Owner or Admin permissions on job 246372968680205"}`
 
-**Caveat:** this taxonomy is assembled from per-endpoint error tables on the JS-rendered API reference pages plus search excerpts. **Databricks does not publish a single canonical `error_code` enum page.** The list above is the documented subset, not proven exhaustive. There is a separate, unrelated *SQL* error-condition catalogue at https://docs.databricks.com/aws/en/error-messages/error-classes (SQLSTATE-style conditions surfaced inside failed statements) â€” do not confuse the two.
+**Caveat:** this taxonomy is assembled from per-endpoint error tables on the JS-rendered API reference pages plus search excerpts. **Databricks does not publish a single canonical `error_code` enum page.** The list above is the documented subset, not proven exhaustive. There is a separate, unrelated *SQL* error-condition catalogue at https://docs.databricks.com/aws/en/error-messages/error-classes (SQLSTATE-style conditions surfaced inside failed statements) — do not confuse the two.
 
 > **.NET design note:** parse `error_code` as a string, not an enum. Retry on 429, 500, 503 and on transient 5xx; never retry 400/403/404. For `/jobs/run-now`, combine retry with `idempotency_token`.
 
@@ -448,7 +448,7 @@ Real-world 403 example **[V-search]**: `{"error_code": "PERMISSION_DENIED", "mes
 
 ### 5.1 Metadata listing APIs
 
-**[V]** from the credential-vending page and CLI docs, the UC REST surface is under `/api/2.1/unity-catalog/` (volumes credentials at `/api/2.0/`). Catalogs/schemas/tables list endpoints follow `GET /api/2.1/unity-catalog/catalogs`, `/schemas`, `/tables`. **The exact query-parameter sets (`catalog_name`, `schema_name`, `max_results`, `page_token`, `include_browse`, `omit_columns`) live only on the JS-rendered reference pages â€” [UNDOC]** from static docs; confirm against `docs.databricks.com/api/workspace/catalogs|schemas|tables` in a browser before coding.
+**[V]** from the credential-vending page and CLI docs, the UC REST surface is under `/api/2.1/unity-catalog/` (volumes credentials at `/api/2.0/`). Catalogs/schemas/tables list endpoints follow `GET /api/2.1/unity-catalog/catalogs`, `/schemas`, `/tables`. **The exact query-parameter sets (`catalog_name`, `schema_name`, `max_results`, `page_token`, `include_browse`, `omit_columns`) live only on the JS-rendered reference pages — [UNDOC]** from static docs; confirm against `docs.databricks.com/api/workspace/catalogs|schemas|tables` in a browser before coding.
 
 UC objects follow the **three-level namespace `catalog.schema.object`**. **[V-search]**
 
@@ -465,8 +465,8 @@ UC objects follow the **three-level namespace `catalog.schema.object`**. **[V-se
 | Functions | 10,000 | Schema |
 | Storage + service credentials (combined) | 1,000 | Metastore |
 | External locations | 10,000 | Metastore |
-| Privileges | 4,000 on parent objects; 1,000 on non-parent objects | â€” |
-| **ABAC policies** | 100/catalog, 100/schema, **50/table**, 10,000/metastore | â€” |
+| Privileges | 4,000 on parent objects; 1,000 on non-parent objects | — |
+| **ABAC policies** | 100/catalog, 100/schema, **50/table**, 10,000/metastore | — |
 | **Principals per policy** | **20** (applies to both `TO` and `EXCEPT` clauses) | Policy |
 
 ### 5.2 Row filters and column masks
@@ -488,15 +488,15 @@ ALTER TABLE table_name ALTER COLUMN column_name SET MASK mask_name;
 - *"you can decide where to implement principal-based logic: in the policy's TO/EXCEPT clauses, or inside the UDF using identity functions like `current_user()` and `is_account_group_member()`."*
 - Performance: *"Identity functions are resolved once during query analysis, not per row. Multiple calls to identity functions like `is_account_group_member()` with different group arguments result in a single UC API call, so the performance impact is typically minimal."*
 - Dynamic views are the older alternative, *"gated by group-membership functions like `is_account_group_member()`."*
-- Note: the filters-and-masks landing page itself does **not** name these functions for table-level filters â€” the ABAC pages do. Treat identity functions as supported in the UDF body.
+- Note: the filters-and-masks landing page itself does **not** name these functions for table-level filters — the ABAC pages do. Treat identity functions as supported in the UDF body.
 
-**Databricks now recommends ABAC policies over table-specific UDFs** â€” *"apply filters and masks centrally using governed tags and reusable policies. ABAC scales across catalogs and schemas and can be defined by higher-level admins, so table owners can't override or remove them."* **[V-search]**
+**Databricks now recommends ABAC policies over table-specific UDFs** — *"apply filters and masks centrally using governed tags and reusable policies. ABAC scales across catalogs and schemas and can be defined by higher-level admins, so table owners can't override or remove them."* **[V-search]**
 
-Limitations **[V]**: DBR <12.2 LTS unsupported; dedicated access mode not supported on DBR â‰¤15.3; DBR 15.4+ for reads, 16.3+ for writes; cannot apply to views; **incompatible with the Iceberg REST catalog and Unity REST APIs**; Delta Lake APIs unsupported; `MERGE` fails with nested/aggregated/windowed/limited policies; no time travel, cloning, or AI Search indexing; a policy cannot reference tables that themselves have active policies.
+Limitations **[V]**: DBR <12.2 LTS unsupported; dedicated access mode not supported on DBR ≤15.3; DBR 15.4+ for reads, 16.3+ for writes; cannot apply to views; **incompatible with the Iceberg REST catalog and Unity REST APIs**; Delta Lake APIs unsupported; `MERGE` fails with nested/aggregated/windowed/limited policies; no time travel, cloning, or AI Search indexing; a policy cannot reference tables that themselves have active policies.
 
-> **This is the key tenancy lever.** Because the Statement Execution API runs statements as the authenticated principal and *"only the user who executes a statement can make fetch requests for the statement's results"*, row filters keyed on `current_user()` / `is_account_group_member()` give real per-tenant isolation **only if Lakewright.NET calls with the end user's identity** â€” i.e. U2M tokens or a Databricks App. With a single shared service principal, every tenant is the same `current_user()` and UC row filters do nothing for you.
+> **This is the key tenancy lever.** Because the Statement Execution API runs statements as the authenticated principal and *"only the user who executes a statement can make fetch requests for the statement's results"*, row filters keyed on `current_user()` / `is_account_group_member()` give real per-tenant isolation **only if Lakewright.NET calls with the end user's identity** — i.e. U2M tokens or a Databricks App. With a single shared service principal, every tenant is the same `current_user()` and UC row filters do nothing for you.
 
-### 5.3 Credential vending / temporary credentials â€” yes, it exists
+### 5.3 Credential vending / temporary credentials — yes, it exists
 
 **[V]** https://docs.databricks.com/aws/en/external-access/credential-vending
 
@@ -514,7 +514,7 @@ Limitations **[V]**: DBR <12.2 LTS unsupported; dedicated access mode not suppor
 
 **Not supported:** **tables with row filters or column masks**, tables shared via Delta Sharing/OpenSharing, Lakehouse-federated (foreign) tables, views, materialized views, streaming tables, online tables, AI Search indexes. **[V]**
 
-**Credential TTL: [UNDOC]** â€” the page does not state an expiration time.
+**Credential TTL: [UNDOC]** — the page does not state an expiration time.
 
 **Auth for the Unity REST API path:** PAT or **OAuth M2M** (M2M *"Supports automatic credential and token refresh for long-running Spark jobs (>1 hour)"*). **[V]**
 
@@ -537,18 +537,18 @@ Limitations **[V]**: DBR <12.2 LTS unsupported; dedicated access mode not suppor
 
 **[V]** https://learn.microsoft.com/en-us/azure/databricks/machine-learning/foundation-model-apis/api-reference (updated 2026-07-28)
 
-Same `/serving-endpoints/{name}/invocations` path. Three task shapes â€” **Chat Completions**, **Embeddings**, **Completions** â€” plus a newer **Responses API** (uses `input` instead of `messages`; OpenAI models, with a separate "Open Responses API" path for Claude/Gemini/Databricks-hosted models). *"The Foundation Model APIs are designed to be similar to OpenAI's REST API."*
+Same `/serving-endpoints/{name}/invocations` path. Three task shapes — **Chat Completions**, **Embeddings**, **Completions** — plus a newer **Responses API** (uses `input` instead of `messages`; OpenAI models, with a separate "Open Responses API" path for Claude/Gemini/Databricks-hosted models). *"The Foundation Model APIs are designed to be similar to OpenAI's REST API."*
 
 **Streaming: yes, SSE.**
-- `stream` parameter, **default `true`** on both Chat and Completions requests (note: **not** `false` â€” this differs from OpenAI and will surprise a .NET client that assumes non-streaming by default).
+- `stream` parameter, **default `true`** on both Chat and Completions requests (note: **not** `false` — this differs from OpenAI and will surprise a .NET client that assumes non-streaming by default).
 - Quoted: *"If this parameter is included in the request, responses are sent using the Server-sent events standard."*
 - *"For streaming requests, the response is a `text/event-stream` where each event is a completion chunk object."*
 - `object` is `"chat.completions"` non-streaming vs `"chat.completion.chunk"` streaming.
-- `ChatCompletionChunk` has `index`, `delta` (ChatMessage), `finish_reason` â€” *"Only the first chunk is guaranteed to have `role` populated"*, *"Only the last chunk will have this populated"* (finish_reason).
+- `ChatCompletionChunk` has `index`, `delta` (ChatMessage), `finish_reason` — *"Only the first chunk is guaranteed to have `role` populated"*, *"Only the last chunk will have this populated"* (finish_reason).
 - `usage` *"Might not be present on streaming responses."* Use `stream_options.include_usage: true` (Responses API) to force it.
 - The literal `data: [DONE]` sentinel is **[UNDOC]** on this page.
 
-Other notable request fields: `max_tokens`, `temperature` [0,2], `top_p` (0,1], `top_k`, `stop`, `n` (**provisioned throughput only**), `tools` (**max 32 functions**; `function` is the only supported tool type in Chat), `tool_choice` (`auto`/`required`/`none`/object), `response_format` (`text` / `json_object` / `json_schema` for structured outputs), `logprobs`, `top_logprobs` (0â€“20), `reasoning_effort` (`minimal`/`low`/`medium`/`high`, model-dependent), `service_tier` (`"priority"` / `"default"`; anything else errors).
+Other notable request fields: `max_tokens`, `temperature` [0,2], `top_p` (0,1], `top_k`, `stop`, `n` (**provisioned throughput only**), `tools` (**max 32 functions**; `function` is the only supported tool type in Chat), `tool_choice` (`auto`/`required`/`none`/object), `response_format` (`text` / `json_object` / `json_schema` for structured outputs), `logprobs`, `top_logprobs` (0–20), `reasoning_effort` (`minimal`/`low`/`medium`/`high`, model-dependent), `service_tier` (`"priority"` / `"default"`; anything else errors).
 
 `FunctionObject.parameters`: *"The number of `properties` is limited to 15 keys."*
 
@@ -556,7 +556,7 @@ Usage sub-message fields: `completion_tokens`, `prompt_tokens`, `total_tokens`, 
 
 Responses API **unsupported params** (return 400): `background`, `store`, `conversation`.
 
-### 6.3 Limits â€” hard numbers
+### 6.3 Limits — hard numbers
 
 **[V]** https://docs.databricks.com/aws/en/machine-learning/model-serving/model-serving-limits, cross-checked against the resource-limits table.
 
@@ -578,7 +578,7 @@ Responses API **unsupported params** (return 400): `background`, `store`, `conve
 | Env vars per served model | 50 (increase on request) |
 | Request/response logging cutoff | anything over 1 MB not logged |
 
-**Client-side HTTP timeout: [UNDOC]** â€” only the 597 s *model execution* limit is published, not a gateway/idle timeout. **[INFER]** set the .NET `HttpClient.Timeout` above 597 s for long inference, or use streaming to keep the socket active.
+**Client-side HTTP timeout: [UNDOC]** — only the 597 s *model execution* limit is published, not a gateway/idle timeout. **[INFER]** set the .NET `HttpClient.Timeout` above 597 s for long inference, or use streaming to keep the socket active.
 
 ### 6.4 AI Gateway (branded "Unity AI Gateway")
 
@@ -586,17 +586,17 @@ Responses API **unsupported params** (return 400): `background`, `store`, `conve
 
 It exists and covers exactly the four things asked about: *"usage tracking, payload logging, rate limits, and guardrails on a model serving endpoint."*
 
-- **Payload logging â†’ inference tables:** requests/responses logged to **Unity Catalog Delta tables**.
+- **Payload logging → inference tables:** requests/responses logged to **Unity Catalog Delta tables**.
 - **Size caps:** requests/responses **larger than 10 MiB aren't logged**; `logging_error_codes` gets `MAX_REQUEST_SIZE_EXCEEDED` / `MAX_RESPONSE_SIZE_EXCEEDED`. **For CPU model serving endpoints the cap is 1 MiB (1,048,576 bytes)** and oversized payloads are logged as `null`.
-- **Sampling:** CPU endpoints support a `sampling_fraction` between 0 and 1 (0%â€“100%); **default 100%**.
-- **Delivery:** *"Logs are typically available within minutes of a request, but delivery isn't guaranteed."* â€” **not** an audit-grade channel.
-- **Rate limiting:** configurable per endpoint; ITPM (input tokens/min), OTPM (output tokens/min), QPH (queries/hour). *"The most restrictive rate limit (ITPM, OTPM, QPH) applies at any given time."* Exceeding â†’ **429** until the window resets. **[V-search]** https://docs.databricks.com/aws/en/ai-gateway/rate-limits
+- **Sampling:** CPU endpoints support a `sampling_fraction` between 0 and 1 (0%–100%); **default 100%**.
+- **Delivery:** *"Logs are typically available within minutes of a request, but delivery isn't guaranteed."* — **not** an audit-grade channel.
+- **Rate limiting:** configurable per endpoint; ITPM (input tokens/min), OTPM (output tokens/min), QPH (queries/hour). *"The most restrictive rate limit (ITPM, OTPM, QPH) applies at any given time."* Exceeding → **429** until the window resets. **[V-search]** https://docs.databricks.com/aws/en/ai-gateway/rate-limits
 
 ---
 
-## 7. Free Edition â€” the OSS-contributor verdict
+## 7. Free Edition — the OSS-contributor verdict
 
-**[V]** https://learn.microsoft.com/en-us/azure/databricks/getting-started/free-edition-limitations (page updated **2026-07-20**) â€” full page read verbatim. Mirrors: docs.databricks.com/aws/en/... and /gcp/en/...
+**[V]** https://learn.microsoft.com/en-us/azure/databricks/getting-started/free-edition-limitations (page updated **2026-07-20**) — full page read verbatim. Mirrors: docs.databricks.com/aws/en/... and /gcp/en/...
 
 **What it is:** *"a no-cost version of Databricks designed for students, educators, hobbyists, and anyone interested in learning or experimenting with data and AI"* **[V]** https://docs.databricks.com/aws/en/getting-started/free-edition. **Serverless-only, quota-limited.** Distinct from the 14-day free trial (the trial gives the full platform).
 
@@ -644,15 +644,15 @@ R and Scala; custom workspace storage locations; online tables; clean rooms; all
 **Workable for an OSS sample, with three real caveats.**
 
 Works:
-- **Unity Catalog: yes** â€” one metastore, three-level namespace, row filters/column masks all present.
-- **Serverless SQL warehouse: yes** â€” one 2X-Small. Sufficient for the Statement Execution API sample.
-- **Jobs: yes** â€” capped at 5 concurrent tasks per account.
-- **Model serving: yes** â€” pay-per-token foundation models, no GPU/provisioned throughput.
-- **Workspace-level REST API: yes by implication.** The docs restrict only *"the account console or account-level APIs"*, which means workspace-level APIs are in scope. **[INFER]** â€” the page never affirmatively states "workspace REST API is supported"; it's an argument from the negative. Verify empirically before promising it in a README.
+- **Unity Catalog: yes** — one metastore, three-level namespace, row filters/column masks all present.
+- **Serverless SQL warehouse: yes** — one 2X-Small. Sufficient for the Statement Execution API sample.
+- **Jobs: yes** — capped at 5 concurrent tasks per account.
+- **Model serving: yes** — pay-per-token foundation models, no GPU/provisioned throughput.
+- **Workspace-level REST API: yes by implication.** The docs restrict only *"the account console or account-level APIs"*, which means workspace-level APIs are in scope. **[INFER]** — the page never affirmatively states "workspace REST API is supported"; it's an argument from the negative. Verify empirically before promising it in a README.
 
 Caveats:
-1. **Account-level OAuth is out.** The account token endpoint `accounts.cloud.databricks.com/oidc/accounts/<id>/v1/token` is an account-level API. **Only the workspace-level flow (`https://<instance>/oidc/v1/token`) can work.** **[INFER]** from "no account-level APIs" â€” not stated explicitly.
-2. **Service principals + OAuth secrets: [UNDOC] for Free Edition.** The Free Edition page never mentions service principals. Workspace admins *can* generate SP OAuth secrets in workspace settings on the general platform, so it plausibly works â€” but **this is unverified and it is the single highest-risk assumption for the "OSS contributor runs the sample" story.** Test it on a real Free Edition account before the README depends on it. If it fails, contributors are limited to their own user identity (PAT or U2M), which changes the sample's auth story.
+1. **Account-level OAuth is out.** The account token endpoint `accounts.cloud.databricks.com/oidc/accounts/<id>/v1/token` is an account-level API. **Only the workspace-level flow (`https://<instance>/oidc/v1/token`) can work.** **[INFER]** from "no account-level APIs" — not stated explicitly.
+2. **Service principals + OAuth secrets: [UNDOC] for Free Edition.** The Free Edition page never mentions service principals. Workspace admins *can* generate SP OAuth secrets in workspace settings on the general platform, so it plausibly works — but **this is unverified and it is the single highest-risk assumption for the "OSS contributor runs the sample" story.** Test it on a real Free Edition account before the README depends on it. If it fails, contributors are limited to their own user identity (PAT or U2M), which changes the sample's auth story.
 3. **"May not be used for commercial purposes."** Fine for contributors learning the accelerator; **not** fine as the runtime for anything an adopter ships. The README must say this plainly.
 4. **Restricted outbound internet** from Free Edition compute may break samples that call external services from inside a notebook/job (unless LinkedIn-verified).
 
@@ -660,18 +660,18 @@ Caveats:
 
 ## Consolidated gotchas for the .NET integration boundary
 
-1. **No general OBO flow.** On-behalf-of-user exists only for Databricks Apps via `x-forwarded-access-token`. An external .NET service acting as an end user against UC must use U2M tokens or move the surface into a Databricks App. (Â§1.4)
-2. **UC row filters need per-user identity.** A shared service principal collapses `current_user()` to one value, making UC-level tenancy a no-op. (Â§5.2)
-3. **Row filters/column masks and credential vending are mutually exclusive.** (Â§5.3)
-4. **Statement chunk fetching is destructive** â€” the statement closes when the last chunk is read; no retry. Poll every â‰¤15 min to keep alive; results expire 1 h after success. (Â§2.6, Â§2.7)
-5. **INLINE hard-fails at 25 MiB and cancels the statement** â€” it does not truncate. Choose `EXTERNAL_LINKS` + `ARROW_STREAM` for anything non-trivial, and **strip the Authorization header** on the SAS/presigned download. (Â§2.5)
-6. **`wait_timeout` maxes at 50 s** â€” any query slower than that forces an async poll loop. (Â§2.3)
-7. **`stream` defaults to `true`** on Foundation Model chat/completions â€” opposite of the OpenAI default. (Â§6.2)
-8. **Job run states are explicitly open-ended** â€” do not write an exhaustive switch. (Â§3.3)
-9. **`idempotency_token` has no documented dedup window** and errors if the matching run was deleted. (Â§3.4)
-10. **No documented rate limits** for the Statement Execution API, Unity Catalog CRUD, or serving invocations â€” the three hottest paths. Assume backoff is mandatory. (Â§4.1)
-11. **No documented `Retry-After` header.** Exponential backoff with jitter, not header-driven retry. (Â§4.2)
-12. **Secretless auth is available and should be the default posture** â€” Entra managed identity on Azure (resource ID `2ff814a6-3304-4ab8-85cb-cd0e6f879c1d`), OIDC token exchange for GitHub Actions/CI. Stored client secrets (730-day max) should be the fallback, not the design. (Â§1.3)
+1. **No general OBO flow.** On-behalf-of-user exists only for Databricks Apps via `x-forwarded-access-token`. An external .NET service acting as an end user against UC must use U2M tokens or move the surface into a Databricks App. (§1.4)
+2. **UC row filters need per-user identity.** A shared service principal collapses `current_user()` to one value, making UC-level tenancy a no-op. (§5.2)
+3. **Row filters/column masks and credential vending are mutually exclusive.** (§5.3)
+4. **Statement chunk fetching is destructive** — the statement closes when the last chunk is read; no retry. Poll every ≤15 min to keep alive; results expire 1 h after success. (§2.6, §2.7)
+5. **INLINE hard-fails at 25 MiB and cancels the statement** — it does not truncate. Choose `EXTERNAL_LINKS` + `ARROW_STREAM` for anything non-trivial, and **strip the Authorization header** on the SAS/presigned download. (§2.5)
+6. **`wait_timeout` maxes at 50 s** — any query slower than that forces an async poll loop. (§2.3)
+7. **`stream` defaults to `true`** on Foundation Model chat/completions — opposite of the OpenAI default. (§6.2)
+8. **Job run states are explicitly open-ended** — do not write an exhaustive switch. (§3.3)
+9. **`idempotency_token` has no documented dedup window** and errors if the matching run was deleted. (§3.4)
+10. **No documented rate limits** for the Statement Execution API, Unity Catalog CRUD, or serving invocations — the three hottest paths. Assume backoff is mandatory. (§4.1)
+11. **No documented `Retry-After` header.** Exponential backoff with jitter, not header-driven retry. (§4.2)
+12. **Secretless auth is available and should be the default posture** — Entra managed identity on Azure (resource ID `2ff814a6-3304-4ab8-85cb-cd0e6f879c1d`), OIDC token exchange for GitHub Actions/CI. Stored client secrets (730-day max) should be the fallback, not the design. (§1.3)
 
 ---
 

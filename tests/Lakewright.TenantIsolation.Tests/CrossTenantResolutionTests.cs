@@ -58,10 +58,14 @@ public class CrossTenantResolutionTests(PostgresFixture postgres)
     [Fact]
     public async Task A_member_resolves_to_their_own_schema()
     {
+        // Arrange
+        var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedTwoTenantsAsync(postgres);
 
-        var ctx = await ResolverFor(db).ResolveAsync(AcmeId, AlicePrincipal, TestContext.Current.CancellationToken);
+        // Act
+        var ctx = await ResolverFor(db).ResolveAsync(AcmeId, AlicePrincipal, ct);
 
+        // Assert
         ctx.ShouldNotBeNull();
         ctx.TenantId.ShouldBe(AcmeId);
         ctx.Schema.ShouldBe(UnityCatalogIdentifier.SchemaForTenant(AcmeId));
@@ -70,26 +74,30 @@ public class CrossTenantResolutionTests(PostgresFixture postgres)
     [Fact]
     public async Task Naming_another_tenant_resolves_to_nothing()
     {
-        // The request is well-formed and the organization exists. Alice simply is not in it.
+        // Arrange — the request is well-formed and the organization exists. Alice is not in it.
+        var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedTwoTenantsAsync(postgres);
 
-        var ctx = await ResolverFor(db).ResolveAsync(GlobexId, AlicePrincipal, TestContext.Current.CancellationToken);
+        // Act
+        var ctx = await ResolverFor(db).ResolveAsync(GlobexId, AlicePrincipal, ct);
 
+        // Assert
         ctx.ShouldBeNull();
     }
 
     [Fact]
     public async Task An_unknown_tenant_is_indistinguishable_from_one_you_cannot_reach()
     {
-        // Both return null. A caller must not be able to tell whether an organization exists by
-        // the shape of the refusal, which is why callers map this to 404 and never 403.
+        // Arrange
+        var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedTwoTenantsAsync(postgres);
         var resolver = ResolverFor(db);
-        var ct = TestContext.Current.CancellationToken;
 
+        // Act
         var notAMember = await resolver.ResolveAsync(GlobexId, AlicePrincipal, ct);
         var doesNotExist = await resolver.ResolveAsync(TenantId.New(), AlicePrincipal, ct);
 
+        // Assert — both null, so the shape of the refusal reveals nothing. Callers map this to 404.
         notAMember.ShouldBeNull();
         doesNotExist.ShouldBeNull();
     }
@@ -97,23 +105,26 @@ public class CrossTenantResolutionTests(PostgresFixture postgres)
     [Fact]
     public async Task A_suspended_organization_refuses_its_own_members()
     {
+        // Arrange
+        var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedTwoTenantsAsync(postgres);
-        var acme = await db.Organizations.FindAsync([AcmeId], TestContext.Current.CancellationToken);
+        var acme = await db.Organizations.FindAsync([AcmeId], ct);
         acme!.State = OrganizationState.Suspended;
-        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        await db.SaveChangesAsync(ct);
 
-        var ctx = await ResolverFor(db).ResolveAsync(AcmeId, AlicePrincipal, TestContext.Current.CancellationToken);
+        // Act
+        var ctx = await ResolverFor(db).ResolveAsync(AcmeId, AlicePrincipal, ct);
 
+        // Assert
         ctx.ShouldBeNull();
     }
 
     [Fact]
     public async Task Two_organizations_cannot_share_a_schema()
     {
-        // Enforced by a unique index rather than by provisioning code, because provisioning code
-        // is the thing most likely to be wrong.
+        // Arrange
+        var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedTwoTenantsAsync(postgres);
-
         db.Organizations.Add(new Organization
         {
             Id = TenantId.New(),
@@ -124,16 +135,21 @@ public class CrossTenantResolutionTests(PostgresFixture postgres)
             State = OrganizationState.Active
         });
 
-        await Should.ThrowAsync<DbUpdateException>(
-            async () => await db.SaveChangesAsync(TestContext.Current.CancellationToken));
+        // Act
+        var refused = await Should.ThrowAsync<DbUpdateException>(
+            async () => await db.SaveChangesAsync(ct));
+
+        // Assert — enforced by a unique index, because provisioning code is the thing most likely
+        // to be wrong.
+        refused.ShouldNotBeNull();
     }
 
     [Fact]
     public async Task Audit_events_cannot_be_edited_or_deleted()
     {
-        await using var db = await SeedTwoTenantsAsync(postgres);
+        // Arrange
         var ct = TestContext.Current.CancellationToken;
-
+        await using var db = await SeedTwoTenantsAsync(postgres);
         var evt = new AuditEvent
         {
             Id = Guid.CreateVersion7(),
@@ -146,22 +162,24 @@ public class CrossTenantResolutionTests(PostgresFixture postgres)
         };
         db.AuditEvents.Add(evt);
         await db.SaveChangesAsync(ct);
-
         db.AuditEvents.Remove(evt);
-        var deleting = await Should.ThrowAsync<InvalidOperationException>(
+
+        // Act
+        var refused = await Should.ThrowAsync<InvalidOperationException>(
             async () => await db.SaveChangesAsync(ct));
-        deleting.Message.ShouldContain("append-only");
+
+        // Assert
+        refused.Message.ShouldContain("append-only");
     }
 
     [Fact]
     public async Task The_append_only_guard_covers_every_save_overload()
     {
-        // Overriding only SaveChangesAsync(CancellationToken) left the synchronous path and the
-        // two-argument async overload open. They are independent virtual methods, and a security
-        // review demonstrated both bypassing the guard.
-        await using var db = await SeedTwoTenantsAsync(postgres);
+        // Arrange — overriding only SaveChangesAsync(CancellationToken) left the synchronous path
+        // and the two-argument async overload open. A security review demonstrated both bypassing
+        // the guard.
         var ct = TestContext.Current.CancellationToken;
-
+        await using var db = await SeedTwoTenantsAsync(postgres);
         var evt = new AuditEvent
         {
             Id = Guid.CreateVersion7(),
@@ -173,17 +191,16 @@ public class CrossTenantResolutionTests(PostgresFixture postgres)
         };
         db.AuditEvents.Add(evt);
         await db.SaveChangesAsync(ct);
-
         db.Entry(evt).State = EntityState.Deleted;
-        Should.Throw<InvalidOperationException>(() => db.SaveChanges())
-            .Message.ShouldContain("append-only");
 
-        (await Should.ThrowAsync<InvalidOperationException>(
-            async () => await db.SaveChangesAsync(acceptAllChangesOnSuccess: true, ct)))
-            .Message.ShouldContain("append-only");
+        // Act
+        var synchronous = Should.Throw<InvalidOperationException>(() => db.SaveChanges());
+        var twoArgumentAsync = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await db.SaveChangesAsync(acceptAllChangesOnSuccess: true, ct));
 
-        // ExecuteUpdate and ExecuteDelete bypass the change tracker entirely and cannot be caught
-        // here. Closing that needs REVOKE on the database role; it is a documented gap, not a
-        // silent one.
+        // Assert — ExecuteUpdate and ExecuteDelete bypass the change tracker entirely and are
+        // covered at the database instead; see AuditLockdownTests.
+        synchronous.Message.ShouldContain("append-only");
+        twoArgumentAsync.Message.ShouldContain("append-only");
     }
 }
