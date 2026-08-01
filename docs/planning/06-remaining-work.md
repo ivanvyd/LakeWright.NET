@@ -125,10 +125,14 @@ flips, with no config change.
 Sequenced by dependency, not by appeal. Each states what "done" means, because a milestone without
 an acceptance line finishes whenever someone is tired of it.
 
-### M1. Asynchronous operations, end to end
+### M1. Asynchronous operations, end to end — DONE
 
-**The largest real gap.** The claim loop and the operation record exist; nothing submits to
-Databricks. Until this lands, ADR 0005 is a design rather than a feature.
+Landed in `c6e4d2a`, with the live-workspace half of the acceptance criterion closed afterwards by
+`Category=Live` tests. ADR 0005 is now a feature rather than a design.
+
+The one part that is *not* done: nothing hosts `OperationWorker` as a running process. It is a
+`BackgroundService` with no host, driven one iteration at a time by tests, and it starts running for
+real in M2. "End to end" here means the library, not a process.
 
 - A Jobs submitter in `Lakewright.Databricks`, using `idempotency_token`.
 - `OperationWorker` as a `BackgroundService`: claim, submit, record the external id, poll with

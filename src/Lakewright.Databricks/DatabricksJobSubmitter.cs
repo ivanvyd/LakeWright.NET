@@ -13,8 +13,11 @@ public sealed partial class DatabricksJobSubmitter(
 {
     private readonly ILogger<DatabricksJobSubmitter> _logger = logger;
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Databricks rejected a job submission for tenant {TenantId}, job {JobId}")]
-    private partial void LogSubmitRejected(Exception exception, Core.Tenancy.TenantId tenantId, long jobId);
+    // Identifiers and a status code only. The client's exception message is the raw HTTP
+    // response body, which can quote tenant-supplied values. See the note in
+    // DatabricksStatementExecutor.
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Databricks rejected a job submission for tenant {TenantId}, job {JobId} (HTTP {StatusCode})")]
+    private partial void LogSubmitRejected(Core.Tenancy.TenantId tenantId, long jobId, int statusCode);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Run {RunId} reported unrecognised lifecycle state {State}; treating as running")]
     private partial void LogUnrecognisedState(long runId, RunStatusState state);
@@ -36,7 +39,7 @@ public sealed partial class DatabricksJobSubmitter(
         }
         catch (ClientApiException ex)
         {
-            LogSubmitRejected(ex, run.Tenant.TenantId, run.JobId);
+            LogSubmitRejected(run.Tenant.TenantId, run.JobId, (int)ex.StatusCode);
 
             // No run id: either nothing started, or something started and we cannot learn its id.
             // Reconciliation resolves the difference by re-submitting the same idempotency key.

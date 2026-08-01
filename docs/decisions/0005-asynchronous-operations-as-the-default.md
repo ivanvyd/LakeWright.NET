@@ -28,16 +28,31 @@ exposure.
 ## Consequences
 
 The crash-critical window is between submitting to Databricks and recording the run identifier. A
-worker that dies there orphans the operation, and a naive retry submits a second run. This is
-bounded by `idempotency_token` and closed by a reconciliation pass that matches orphaned operations
-to runs by tag. It is the case the integration suite covers, because no happy-path test can see it.
+worker that dies there orphans the operation, and a naive retry submits a second run. It is the case
+the integration suite covers, because no happy-path test can see it.
+
+Reconciliation closes it by **re-submitting the orphan with its original `idempotency_token`**.
+Databricks returns the run that token already started rather than starting a second one, so one call
+both discovers the lost run identifier and is safe if no run was ever created.
+
+This decision originally said reconciliation would match orphaned operations to runs *by tag*. That
+is not possible: the Jobs API does not expose the idempotency token on a run, so there is nothing to
+search on. Re-submission is simpler and it deletes a method rather than adding one. Verified against
+a live workspace in `LiveDatabricksTests`, because the whole design rests on Databricks actually
+deduplicating, and that had only ever been proved against a fake written to behave that way.
 
 `idempotency_token` is capped at 64 characters and has no documented deduplication window, and it
 errors if the matching run was deleted. Reconciliation is therefore required, not optional.
 
 Job run states are explicitly open-ended in the Databricks documentation. An exhaustive `switch` over
-them is a future crash. Platform states map at the boundary into a closed internal enum with an
-`Unknown` arm that logs and treats the run as still running. This is a deliberate exception to the
+them is a future crash. Platform states map at the boundary into a closed internal enum, and the
+`default` arm logs a warning and treats the run as still running, bounded by the run timeout.
+
+Note what that does not give you: there is no distinct `Unknown` value, so "we recognise this and it
+is running" and "we do not recognise this and are guessing" are the same value to a caller or a
+metric. The warning log is the only signal. That is a deliberate trade for now — an extra enum case
+would ripple through every consumer for an event that has not happened yet — but it is the thing to
+change first if an unrecognised state ever shows up in production. This is a deliberate exception to the
 usual rule of exhaustive switches with a `never` check: that rule is correct for our own discriminated
 unions and wrong for a vendor's extensible enumeration.
 

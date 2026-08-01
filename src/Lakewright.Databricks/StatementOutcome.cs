@@ -19,9 +19,36 @@ public abstract record StatementOutcome
 {
     private StatementOutcome() { }
 
+    /// <summary>
+    /// The statement succeeded and its rows are here.
+    /// </summary>
+    /// <remarks>
+    /// Only produced for <c>INLINE</c> results. An earlier version defaulted to
+    /// <c>EXTERNAL_LINKS</c> and still read <c>DataArray</c>, which is only populated for
+    /// <c>INLINE</c> — so every successful query returned zero rows. Unit tests could not see it;
+    /// the first live call did. See <see cref="LargeResult"/>.
+    /// </remarks>
     public sealed record Success(
         IReadOnlyList<string> ColumnNames,
         IReadOnlyList<IReadOnlyList<string?>> Rows,
+        long TotalRowCount,
+        string StatementId) : StatementOutcome;
+
+    /// <summary>
+    /// The statement succeeded and its rows are in external storage, not here.
+    /// </summary>
+    /// <remarks>
+    /// A distinct case rather than a <see cref="Success"/> with an empty row list, because those
+    /// are not the same thing and a caller must not be able to confuse them.
+    ///
+    /// Fetch <paramref name="Links"/> with a plain HTTP client and **no Authorization header**:
+    /// they are presigned, and Azure blob rejects a request carrying both a SAS and an
+    /// Authorization header with HTTP 400. Chunk reads are destructive — the statement closes when
+    /// the last chunk is read, and links expire an hour after success.
+    /// </remarks>
+    public sealed record LargeResult(
+        IReadOnlyList<string> ColumnNames,
+        IReadOnlyList<Uri> Links,
         long TotalRowCount,
         string StatementId) : StatementOutcome;
 
