@@ -52,6 +52,14 @@ public class OperationWorkerTests(PostgresFixture postgres)
             return Task.FromResult<RunOutcome>(new RunOutcome.Submitted(runId));
         }
 
+        public List<long> CancelledRuns { get; } = [];
+
+        public Task CancelRunAsync(long runId, CancellationToken cancellationToken)
+        {
+            CancelledRuns.Add(runId);
+            return Task.CompletedTask;
+        }
+
         public Task<RunOutcome> GetRunAsync(long runId, CancellationToken cancellationToken) =>
             Task.FromResult(RunState switch
             {
@@ -246,6 +254,52 @@ public class OperationWorkerTests(PostgresFixture postgres)
         submitter.SubmittedKeys.ShouldBeEmpty("nothing should be submitted for an unmapped kind");
         final.State.ShouldBe(OperationState.Failed);
         final.Error.ShouldNotBeNull().ShouldContain("export");
+    }
+
+    [Fact]
+    public async Task A_run_that_exceeds_the_timeout_is_cancelled_rather_than_abandoned()
+    {
+        // Arrange — a run that never finishes. The timeout used to mark the operation failed and
+        // return, which stopped the polling and left the job executing: still spending the compute
+        // the timeout exists to bound, and still holding the tenant's schema, which tenant
+        // deletion would then drop underneath it having counted the operation as finished.
+        var ct = TestContext.Current.CancellationToken;
+        var (provider, submitter) = await BuildAsync(postgres);
+        await using var _p = provider;
+
+        submitter.RunState = new RunOutcome.Running(0);
+
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var store = scope.ServiceProvider.GetRequiredService<OperationStore>();
+            await store.CreateAsync(Ctx(), "auth0|alice", "analysis", clientRequestId: null, ct);
+        }
+
+        // A timeout already in the past, so the deadline is passed on the first poll.
+        var worker = new OperationWorker(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            Options.Create(new OperationWorkerOptions
+            {
+                Jobs = { ["analysis"] = JobId },
+                InitialPollInterval = TimeSpan.FromMilliseconds(1),
+                MaxPollInterval = TimeSpan.FromMilliseconds(2),
+                RunTimeout = TimeSpan.FromMinutes(-1)
+            }),
+            Options.Create(new MultitenancyOptions { Catalog = "analytics" }),
+            NullLogger<OperationWorker>.Instance,
+            TimeProvider.System);
+
+        // Act
+        await worker.RunOnceAsync(ct);
+
+        // Assert — the run was stopped, not merely forgotten.
+        await using var check = provider.CreateAsyncScope();
+        var final = await check.ServiceProvider.GetRequiredService<LakeWrightDbContext>()
+            .Operations.SingleAsync(ct);
+
+        submitter.CancelledRuns.ShouldBe([1000]);
+        final.State.ShouldBe(OperationState.Failed);
+        final.Error.ShouldNotBeNull().ShouldContain("cancelled");
     }
 
     [Fact]

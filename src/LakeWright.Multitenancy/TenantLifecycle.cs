@@ -137,6 +137,11 @@ public sealed class TenantLifecycle(
 
         if (organization is null) { return false; }
 
+        // A tenant still being provisioned is mid-flight in another call, which will save Active
+        // over this when it finishes — or fail with a concurrency exception if the purge already
+        // removed the row. Refusing is the honest answer: ask again once provisioning settles.
+        if (organization.State == OrganizationState.Provisioning) { return false; }
+
         organization.State = OrganizationState.PendingDeletion;
         audit.Record(
             tenantId, principalId, AuditActions.TenantDeletionRequested,

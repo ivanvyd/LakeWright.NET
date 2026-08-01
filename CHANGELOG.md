@@ -17,6 +17,22 @@ note.
 - `ITenantSchemaProvisioner` in `LakeWright.Core`, implemented by `DatabricksSchemaProvisioner`.
   The only DDL this library issues and the only statement it sends without a `TenantContext`, so
   it is a narrow interface a caller has to reach for deliberately.
+- `IJobSubmitter.CancelRunAsync`. **Migration:** a custom implementation needs the new member.
+
+### Fixed
+
+- A run that exceeded `RunTimeout` was abandoned, not stopped. The worker marked the operation
+  failed and returned, leaving the job executing — still spending the compute the timeout exists to
+  bound, and still holding the tenant's schema, which tenant deletion would then drop underneath it
+  having counted the operation as finished.
+- `BeginDeletionAsync` accepted a tenant still being provisioned, so a concurrent `ProvisionAsync`
+  could fail with a concurrency exception for a call that did nothing wrong.
+- The `AuditEvent.OrganizationId` value converter dereferenced a null it documents as valid. No
+  call site writes one yet, so nothing had triggered it.
+- Every GitHub release attached the entire `CHANGELOG.md`, so each repeated all the history before
+  it, and a tag pushed before its heading was renamed would publish notes opening with
+  `## [Unreleased]`. Notes are now the section for the tagged version, and the release fails when
+  there is not one. A tag with a hyphen is published as a pre-release; `gh` does not infer that.
 
 ## [0.1.0] — 2026-08-01
 
