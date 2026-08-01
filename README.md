@@ -7,9 +7,9 @@ analytics to customers who are not themselves Databricks customers.
 
 > **Status: early. The engine exists; the product around it does not.**
 > Implemented and tested: the tenant model, the tenant-scoped Databricks query layer, the
-> asynchronous operation worker with crash reconciliation, and the Declarative Automation Bundle.
-> Missing: the web application and the sample, so there is still no user-facing thing to run, and
-> nothing hosts the worker as a process yet. The milestone is in [ROADMAP.md](ROADMAP.md), and
+> asynchronous operation worker with crash reconciliation, the ASP.NET Core tier (tenant
+> middleware, role policies, the operations API) and the Declarative Automation Bundle.
+> Missing: the Signalboard sample, so there is a library and an API but no product to look at. The milestone is in [ROADMAP.md](ROADMAP.md), and
 > [docs/compatibility.md](docs/compatibility.md) records exactly what has been verified against a
 > live workspace and what has not.
 
@@ -64,14 +64,14 @@ src/
   Lakewright.Core/            tenancy contracts
   Lakewright.Databricks/      tenant-scoped Databricks SQL access
   Lakewright.Multitenancy/    tenant model, resolution, operations, EF Core
+  Lakewright.AspNetCore/      tenant middleware, role policies, operations API
 tests/
   Lakewright.TenantIsolation.Tests/   the suite the rest of it rests on
 databricks/                   Declarative Automation Bundle, dev and prod targets
 docs/                         see docs/README.md
 ```
 
-Still to come: the ASP.NET Core integration that hosts the worker and serves the API, observability,
-and the Signalboard sample.
+Still to come: observability, and the Signalboard sample that puts a product in front of all this.
 
 ## Documentation
 
@@ -79,6 +79,7 @@ and the Signalboard sample.
 
 | Document | What it answers |
 |---|---|
+| [Getting started](docs/guides/getting-started.md) | Running the tests, and wiring it into an application |
 | [Product thesis](docs/planning/01-product-thesis.md) | What this is for, and the strongest argument against building it |
 | [Architecture](docs/planning/03-architecture.md) | The three planes, what lives where, and why |
 | [Tenant model](docs/planning/04-tenant-model.md) | The isolation decision matrix and the recommended default |
