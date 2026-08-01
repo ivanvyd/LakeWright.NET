@@ -50,6 +50,7 @@ public static class LakeWrightServiceCollectionExtensions
         services.TryAddSingletonTimeProvider();
         services.AddScoped<AuditLog>();
         services.AddScoped<OperationStore>();
+        services.AddScoped<TenantLifecycle>();
 
         services.AddHttpContextAccessor();
         services.AddScoped<ITenantContextAccessor, HttpTenantContextAccessor>();
@@ -101,6 +102,7 @@ public static class LakeWrightServiceCollectionExtensions
             return DatabricksClient.CreateClient(options.WorkspaceUrl, credential);
         });
 
+        services.AddScoped<ITenantSchemaProvisioner, DatabricksSchemaProvisioner>();
         services.AddScoped<IStatementExecutor, DatabricksStatementExecutor>();
         services.AddScoped<IJobSubmitter, DatabricksJobSubmitter>();
 
