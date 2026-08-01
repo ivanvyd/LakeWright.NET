@@ -60,7 +60,7 @@ Last updated 2026-08-01, after the asynchronous operations work landed.
 | Azure | **Verified** for the rows above | The reference deployment |
 | AWS | Unverified | OAuth federation documented; nobody here has run it |
 | GCP | Unverified | Same |
-| Free Edition | Unverified | Whether service principals and OAuth secrets work there is **undocumented** and is the highest-risk open assumption in the contributor story |
+| Free Edition | **Service principal OAuth does not work** | Free Edition exposes no account console or account-level API, and service principal OAuth depends on account-level identity infrastructure — confirmed by Databricks on the community forum, 2026-08-01. Contributors use their own user identity there, or need no workspace at all: the sample runs without one |
 
 ## .NET
 

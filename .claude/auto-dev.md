@@ -82,8 +82,9 @@ the repository is going public; neither is a credential, but both identify a per
 to anyone who reads it. Get them from `az account show` and
 `az databricks workspace show -g rg-lakewright-dev -n lakewright-dev`.
 
-Free Edition is the contributor baseline and may lack service principals; treat that as unverified
-until the week-one spike settles it.
+Free Edition cannot do service principal OAuth: it exposes no account console or account-level API,
+and that is where the OAuth secret lives. Contributors need no workspace at all — the sample runs on
+a Postgres container.
 
 Compute costs real credits. Warehouses get auto-stop, and live tests clean up what they create.
 
