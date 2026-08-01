@@ -1,4 +1,4 @@
-# Naming & Trademark Validation — "LakeWright.NET" (repo `lakewright-dotnet`)
+# Naming & Trademark Validation — "LakeWright.NET" (repo `LakeWright.NET`)
 
 Research date: 2026-07-31. Researcher: R10-naming.
 **Not legal advice.** A trademark attorney must clear any name before commercial use or before
@@ -107,7 +107,7 @@ observed convention: `<YourBrand>.Databricks.<Thing>`, never `Databricks.<Thing>
 | Repo search, all fields | `https://api.github.com/search/repositories?q=lakewright` | `total_count: 0` |
 | Repo search, name+desc+readme | `https://api.github.com/search/repositories?q=lakewright+in:name,description,readme` | `total_count: 0` |
 
-**Conclusion: `lakewright` org and `lakewright` / `lakewright-dotnet` repo names are unused.**
+**Conclusion: `lakewright` org and `lakewright` / `LakeWright.NET` repo names are unused.**
 Confidence: HIGH.
 
 ---
@@ -390,7 +390,7 @@ each dilutes searchability and each is a "Lake…" data company):
    hosted-lakehouse product the name implies.)
 2. **It is hard to say and hard to type.** "Lake-Sass"? "Lake-Ess-Ay-Ay-Ess"? The internal
    capitalisation `LakeWright` is unstable in the wild — people will write `LakeSaas`, `Lakesaas`,
-   `LakeSAAS`. That fragments search, package IDs and the repo slug (`lakewright-dotnet` vs the
+   `LakeSAAS`. That fragments search, package IDs and the repo slug (`LakeWright.NET` vs the
    `LakeWright.*` package prefix is already an inconsistency you'd carry forever).
 3. **"SaaS" dates the project and adds nothing.** It is a generic, faintly 2015-flavoured acronym
    that carries no distinctiveness (see §4) and tells a .NET developer nothing they wanted to know.
