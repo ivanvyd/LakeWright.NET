@@ -69,6 +69,8 @@ public sealed class TenantResolutionMiddleware(RequestDelegate next)
                     resourceType: nameof(Organization), resourceId: parsed.ToString());
 
                 await db.SaveChangesAsync(context.RequestAborted);
+
+                LakewrightTelemetry.TenantAccessDenied.Add(1);
                 await WriteNotFoundAsync(context);
                 return;
             }

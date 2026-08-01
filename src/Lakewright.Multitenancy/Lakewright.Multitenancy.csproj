@@ -18,5 +18,9 @@
          production. The isolation suite needs it to test one step at a time instead of racing
          a background loop. -->
     <InternalsVisibleTo Include="Lakewright.TenantIsolation.Tests" />
+
+    <!-- The web tier records the same instruments as the tenancy tier. They stay internal so an
+         adopter cannot write to Lakewright's meters, which would make a metric mean two things. -->
+    <InternalsVisibleTo Include="Lakewright.AspNetCore" />
   </ItemGroup>
 </Project>

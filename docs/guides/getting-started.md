@@ -115,6 +115,29 @@ two people in the same organization cannot collide.
 The key is yours and never reaches Databricks. The job idempotency token is generated server-side,
 because a caller who could choose it could choose another tenant's.
 
+## Watching it in production
+
+The library publishes plain `System.Diagnostics` instruments and takes no OpenTelemetry dependency,
+so it does not choose your exporter or its version. Subscribe with:
+
+```csharp
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(m => m.AddMeter(LakewrightTelemetry.MeterName))
+    .WithTracing(t => t.AddSource(LakewrightTelemetry.ActivitySourceName));
+```
+
+| Instrument | What it tells you |
+|---|---|
+| `lakewright.operations.started` | Accepted operations, by kind. A replayed idempotency key does not count. |
+| `lakewright.operations.completed` | Terminal operations, tagged with the state reached, so failure rate is a ratio of two series. |
+| `lakewright.operations.queue_wait` | Seconds from accepted to claimed. A rising p99 against a flat median is one tenant's backlog pushing everyone back. |
+| `lakewright.tenant.access_denied` | Refused tenant resolutions. These answer 404, so nothing in an access log separates them from a stale bookmark. |
+
+None of them carries a tenant identifier. It is the first tag anyone reaches for and it is a
+cardinality bomb in a system built to have many tenants: a thousand tenants turns four instruments
+into four thousand time series. Tenant lands on spans, where sampling bounds the volume, and
+per-tenant totals come from `operations` and `audit_events`.
+
 ## The audit trail
 
 Starting an operation, completing one, and asking for a tenant you cannot reach each write a row to

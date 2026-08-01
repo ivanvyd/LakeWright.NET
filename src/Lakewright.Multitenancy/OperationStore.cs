@@ -98,6 +98,7 @@ public sealed class OperationStore(LakewrightDbContext db, AuditLog audit, TimeP
             return winner;
         }
 
+        LakewrightTelemetry.OperationsStarted.Add(1, new KeyValuePair<string, object?>("kind", kind));
         return operation;
     }
 
@@ -234,7 +235,13 @@ public sealed class OperationStore(LakewrightDbContext db, AuditLog audit, TimeP
             .AsNoTracking()
             .ToListAsync(cancellationToken);
 
-        return claimed.FirstOrDefault();
+        if (claimed.FirstOrDefault() is not { } operation) { return null; }
+
+        LakewrightTelemetry.QueueWait.Record(
+            (time.GetUtcNow() - operation.CreatedAt).TotalSeconds,
+            new KeyValuePair<string, object?>("kind", operation.Kind));
+
+        return operation;
     }
 
     /// <summary>
@@ -319,6 +326,9 @@ public sealed class OperationStore(LakewrightDbContext db, AuditLog audit, TimeP
 
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+
+        LakewrightTelemetry.OperationsCompleted.Add(
+            1, new KeyValuePair<string, object?>("state", state.ToString()));
     }
 
     /// <summary>
