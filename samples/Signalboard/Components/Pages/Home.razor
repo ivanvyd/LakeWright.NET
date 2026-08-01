@@ -1,0 +1,80 @@
+@page "/"
+@attribute [AllowAnonymous]
+
+<PageTitle>Signalboard</PageTitle>
+
+<h1>Two tenants that cannot see each other</h1>
+
+<p>
+    Signalboard is a sample product built on Lakewright.NET. It exists to make one claim checkable:
+    a customer of one organization cannot reach another organization's work, and cannot learn that
+    the work exists.
+</p>
+
+<h2>Who you can be</h2>
+
+<table>
+    <thead>
+        <tr><th>Organization</th><th>Person</th><th>Role</th></tr>
+    </thead>
+    <tbody>
+        <tr><td rowspan="2">Acme Logistics</td><td>Alice</td><td>Admin</td></tr>
+        <tr><td>Vera</td><td>Viewer</td></tr>
+        <tr><td>Globex Freight</td><td>Bob</td><td>Admin</td></tr>
+    </tbody>
+</table>
+
+<p>
+    <a class="cta" href="/signin">Sign in as one of them</a>
+</p>
+
+<h2>What to try</h2>
+
+<p>
+    Sign in as Alice and start an operation. Sign in as Bob and open the same operation's address:
+    you get <strong>404, not 403</strong>. A 403 would confirm the operation exists, which is a
+    smaller leak than reading it but a leak all the same. Bob is not a member of Acme, so the tenant
+    never resolves and the request stops before authorization is consulted.
+</p>
+
+<p>
+    Then sign in as Vera. She is a member of Acme, so the tenant resolves and she can read. Starting
+    work gets her a 403, because a Viewer is below the role that endpoint requires. Two denials, two
+    status codes, two different reasons.
+</p>
+
+<h2>The same thing from a terminal</h2>
+
+<p>
+    The HTTP API is the same one the dashboard uses. Authenticate with a header instead of a cookie:
+</p>
+
+<pre><code>curl -i -X POST http://localhost:8080/organizations/@(DemoTenants.Acme.Value)/operations \
+  -H "X-Demo-User: @DemoTenants.Alice" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"kind":"analysis"}'</code></pre>
+
+<p>
+    Send the same <code>Idempotency-Key</code> twice and you get the same operation back rather than
+    a second Databricks run. Reuse it with a different <code>kind</code> and you get 422, because
+    answering with the stored operation would answer a question you did not ask.
+</p>
+
+<p>
+    Read <a href="/openapi/v1.json">the OpenAPI document</a> for the rest.
+</p>
+
+<h2>What is not real here</h2>
+
+<p>
+    Authentication. Signing in picks a name from a list and trusts it, so that the sample runs with
+    one container and no identity provider. That is safe to demonstrate with precisely because
+    isolation does not depend on it: membership is read from the database on every request, so
+    claiming to be Bob gets you Bob's access and nothing more.
+</p>
+
+<p>
+    Without a Databricks workspace configured no worker starts, so operations stay
+    <code>Pending</code>. Nothing here fakes a run.
+</p>

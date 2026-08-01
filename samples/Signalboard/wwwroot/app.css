@@ -1,0 +1,129 @@
+/* One stylesheet, no build step, no CDN. ADR 0007 chose Blazor partly to keep Node out of CI;
+   pulling a framework off a CDN at runtime would give that back and add an external dependency to
+   a page whose whole subject is trust boundaries. */
+
+:root {
+    --ink: #16181d;
+    --paper: #fbfbfa;
+    --muted: #5c6270;
+    --rule: #dcdde1;
+    --accent: #1f4bd8;
+    --warn: #a3341c;
+    --ok: #1c6b3f;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --ink: #e8e9ec;
+        --paper: #16181d;
+        --muted: #9aa0ad;
+        --rule: #2c3038;
+        --accent: #8aa8ff;
+        --warn: #f0917a;
+        --ok: #6fcf97;
+    }
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem clamp(1rem, 5vw, 3rem);
+    border-bottom: 1px solid var(--rule);
+    flex-wrap: wrap;
+}
+
+.brand { font-weight: 650; text-decoration: none; color: var(--ink); }
+
+nav { display: flex; align-items: center; gap: 1rem; }
+nav form { margin: 0; }
+
+.who { color: var(--muted); font-size: 0.9rem; }
+
+main { max-width: 62rem; margin: 0 auto; padding: 2rem clamp(1rem, 5vw, 3rem) 4rem; }
+
+footer {
+    max-width: 62rem;
+    margin: 0 auto;
+    padding: 1.5rem clamp(1rem, 5vw, 3rem) 3rem;
+    border-top: 1px solid var(--rule);
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+h1 { font-size: clamp(1.5rem, 4vw, 2rem); line-height: 1.25; margin: 0 0 1rem; }
+h2 { font-size: 1.15rem; margin: 2.5rem 0 0.75rem; }
+
+a { color: var(--accent); }
+
+code, pre {
+    font-family: ui-monospace, "Cascadia Code", "SF Mono", Menlo, monospace;
+    font-size: 0.875em;
+}
+
+pre {
+    background: color-mix(in srgb, var(--ink) 6%, transparent);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 0.9rem 1rem;
+    overflow-x: auto;
+}
+
+table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--rule); }
+th { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+
+/* Wide content scrolls inside its own box rather than making the page scroll sideways. */
+.operations { display: block; overflow-x: auto; white-space: nowrap; }
+
+.cta, button, .link {
+    font: inherit;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: var(--paper);
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.link { background: none; border-color: transparent; color: var(--accent); padding: 0.25rem 0; }
+
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.signin { display: grid; gap: 0.75rem; max-width: 26rem; margin-top: 1.5rem; }
+
+.person {
+    display: block;
+    text-align: left;
+    background: none;
+    color: var(--ink);
+    border: 1px solid var(--rule);
+}
+
+.person:hover { border-color: var(--accent); }
+.person .name { display: block; font-weight: 600; }
+.person .detail { display: block; color: var(--muted); font-size: 0.875rem; }
+
+.start { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin: 1.5rem 0; }
+.start select { font: inherit; padding: 0.45rem 0.5rem; border: 1px solid var(--rule); border-radius: 6px;
+    background: var(--paper); color: var(--ink); }
+
+.scope, .hint { color: var(--muted); font-size: 0.9rem; }
+.denied { color: var(--warn); }
+
+.state { font-weight: 600; }
+.state.succeeded { color: var(--ok); }
+.state.failed, .state.cancelled { color: var(--warn); }
+.state.pending, .state.running { color: var(--muted); }

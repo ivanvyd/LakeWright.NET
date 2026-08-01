@@ -3,6 +3,8 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using Azure.Core;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
 namespace Signalboard;
@@ -40,23 +42,95 @@ public sealed class DemoAuthenticationHandler(
             return Task.FromResult(AuthenticateResult.NoResult());
         }
 
-        var identity = new ClaimsIdentity(
-            [new Claim(ClaimTypes.NameIdentifier, principal.ToString())], SchemeName);
-
         return Task.FromResult(AuthenticateResult.Success(
-            new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName)));
+            new AuthenticationTicket(DemoTenants.PrincipalFor(principal.ToString()), SchemeName)));
     }
 }
 
 public static class DemoAuthenticationExtensions
 {
+    /// <summary>Scheme that picks between the cookie and the header per request.</summary>
+    private const string Either = "Either";
+
+    /// <summary>
+    /// Cookies for the dashboard, a header for curl.
+    /// </summary>
+    /// <remarks>
+    /// ADR 0007 chose cookie authentication so the browser never handles a token, and the header
+    /// scheme stays because a sample you cannot drive from a terminal is hard to check. A policy
+    /// scheme forwards to whichever the request actually carries, so neither has to know about the
+    /// other.
+    /// </remarks>
     public static IServiceCollection AddDemoAuthentication(this IServiceCollection services)
     {
-        services.AddAuthentication(DemoAuthenticationHandler.SchemeName)
+        services.AddAuthentication(Either)
+            .AddPolicyScheme(Either, Either, o => o.ForwardDefaultSelector = context =>
+                context.Request.Headers.ContainsKey(DemoAuthenticationHandler.PrincipalHeader)
+                    ? DemoAuthenticationHandler.SchemeName
+                    : CookieAuthenticationDefaults.AuthenticationScheme)
             .AddScheme<AuthenticationSchemeOptions, DemoAuthenticationHandler>(
-                DemoAuthenticationHandler.SchemeName, _ => { });
+                DemoAuthenticationHandler.SchemeName, _ => { })
+            .AddCookie(o =>
+            {
+                o.Cookie.Name = "signalboard";
+                o.Cookie.HttpOnly = true;
+                o.Cookie.SameSite = SameSiteMode.Strict;
+                o.LoginPath = "/signin";
+
+                // The dashboard is a Blazor page, so a redirect to the sign-in page is right. The
+                // API under /organizations is not, and a 302 there would turn "you are not
+                // authenticated" into a page of HTML that no client can read.
+                o.Events.OnRedirectToLogin = context =>
+                {
+                    if (context.Request.Path.StartsWithSegments("/organizations"))
+                    {
+                        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                        return Task.CompletedTask;
+                    }
+
+                    context.Response.Redirect(context.RedirectUri);
+                    return Task.CompletedTask;
+                };
+            });
 
         return services;
+    }
+
+    /// <summary>
+    /// The two form posts that sign a visitor in and out.
+    /// </summary>
+    /// <remarks>
+    /// Endpoints rather than component code: writing an auth cookie needs the HTTP response, and a
+    /// Blazor circuit has already sent its headers by the time an event handler runs.
+    /// </remarks>
+    public static IEndpointRouteBuilder MapDemoAuthentication(this IEndpointRouteBuilder routes)
+    {
+        ArgumentNullException.ThrowIfNull(routes);
+
+        routes.MapPost("/signin", async (HttpContext http, [FromForm] string principal) =>
+        {
+            // Only the seeded people, so the sign-in page cannot be used to mint an arbitrary
+            // subject. The header scheme still accepts anything, which is the documented shortcut;
+            // there is no reason for the browser path to widen it further.
+            if (!DemoTenants.IsKnown(principal))
+            {
+                return Results.Redirect("/signin");
+            }
+
+            await http.SignInAsync(
+                CookieAuthenticationDefaults.AuthenticationScheme,
+                DemoTenants.PrincipalFor(principal));
+
+            return Results.Redirect("/operations");
+        }).AllowAnonymous().DisableAntiforgery();
+
+        routes.MapPost("/signout", async (HttpContext http) =>
+        {
+            await http.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+            return Results.Redirect("/");
+        }).AllowAnonymous().DisableAntiforgery();
+
+        return routes;
     }
 }
 

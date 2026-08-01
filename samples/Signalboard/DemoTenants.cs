@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Lakewright.Core.Tenancy;
 using Lakewright.Multitenancy;
 using Lakewright.Multitenancy.Model;
@@ -19,9 +20,65 @@ public static class DemoTenants
     public static readonly TenantId Acme = TenantId.Parse("0198f000-0000-7000-8000-00000000ac11");
     public static readonly TenantId Globex = TenantId.Parse("0198f000-0000-7000-8000-00000000610b");
 
-    public const string Alice = "demo|alice";   // Admin at Acme
-    public const string Vera = "demo|vera";     // Viewer at Acme
-    public const string Bob = "demo|bob";       // Admin at Globex
+    public const string Alice = "demo|alice";
+    public const string Vera = "demo|vera";
+    public const string Bob = "demo|bob";
+
+    /// <summary>Someone you can sign in as.</summary>
+    public sealed record Person(string PrincipalId, string Name, MembershipRole Role, string Organization);
+
+    /// <summary>
+    /// The sign-in list, and the only subjects the cookie path will issue.
+    /// </summary>
+    /// <remarks>
+    /// One list rather than a page that hardcodes the same three names next to a seeder that
+    /// hardcodes them again. The seeding below reads it, so a fourth person is one entry.
+    /// </remarks>
+    public static readonly IReadOnlyList<Person> Everyone =
+    [
+        new(Alice, "Alice", MembershipRole.Admin, "Acme Logistics"),
+        new(Vera, "Vera", MembershipRole.Viewer, "Acme Logistics"),
+        new(Bob, "Bob", MembershipRole.Admin, "Globex Freight")
+    ];
+
+    private static readonly Dictionary<string, TenantId> TenantsByPrincipal = new(StringComparer.Ordinal)
+    {
+        [Alice] = Acme,
+        [Vera] = Acme,
+        [Bob] = Globex
+    };
+
+    public static bool IsKnown(string principalId) => TenantsByPrincipal.ContainsKey(principalId);
+
+    /// <summary>The display name for a principal, or the principal itself if it is not seeded.</summary>
+    /// <remarks>
+    /// The header scheme accepts any subject, so the dashboard can show a row started by someone
+    /// who is not on the list. Showing the raw identifier is honest; inventing a name is not.
+    /// </remarks>
+    public static string NameOf(string principalId) =>
+        Everyone.FirstOrDefault(p => p.PrincipalId == principalId)?.Name ?? principalId;
+
+    /// <summary>
+    /// Builds the claims principal for a subject.
+    /// </summary>
+    /// <remarks>
+    /// Carries the subject and a display name and nothing else. In particular it carries no
+    /// organization or role claim: those are read from the database on every request, and a role
+    /// in a cookie is a role the holder can keep after you revoke it.
+    /// </remarks>
+    public static ClaimsPrincipal PrincipalFor(string principalId)
+    {
+        var identity = new ClaimsIdentity(
+            [
+                new Claim(ClaimTypes.NameIdentifier, principalId),
+                new Claim(ClaimTypes.Name, NameOf(principalId))
+            ],
+            authenticationType: "Demo",
+            nameType: ClaimTypes.Name,
+            roleType: ClaimTypes.Role);
+
+        return new ClaimsPrincipal(identity);
+    }
 
     public static async Task SeedDemoTenantsAsync(this IServiceProvider services)
     {
