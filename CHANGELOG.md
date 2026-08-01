@@ -10,6 +10,12 @@ note.
 
 ### Added
 
+- `Lakewright.AspNetCore`: tenant resolution middleware that turns the organization in a route into
+  a resolved context or a 404, role policies over `MembershipRole` with a fallback policy so
+  endpoints are protected by omission, and the operations API (`202 Accepted` plus a poll endpoint).
+  It deliberately registers no identity provider — that choice belongs to the adopter.
+- `docs/compliance/permissions.md`, generated from the routing table by a test that fails when the
+  committed copy drifts from the code.
 - Asynchronous operations end to end (ADR 0005): a Lakeflow Jobs submitter, an `OperationWorker`
   `BackgroundService` that claims, submits, records, polls and completes, and a reconciliation pass
   that recovers a run orphaned by a worker crash. Reconciliation re-submits with the original

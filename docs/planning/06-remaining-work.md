@@ -149,7 +149,7 @@ workspace; a worker killed between submit and record leaves a row that reconcili
 the real run rather than submitting a second one; and that crash case is a test, because no
 happy-path test can reach it.
 
-### M2. The application tier
+### M2. The application tier — mostly done
 
 Unblocks two controls currently marked *Partial* in the compliance mapping.
 
@@ -164,8 +164,12 @@ Unblocks two controls currently marked *Partial* in the compliance mapping.
   drift from behaviour. That path is currently promised nowhere — it was removed when it turned out
   not to exist.
 
-**Done when:** cross-tenant requests return 404 over HTTP, not just at the store; the isolation
-suite has an HTTP-level case per data-reaching endpoint; and the permission matrix is generated.
+**Done.** Cross-tenant requests return 404 over HTTP, the isolation suite has HTTP-level cases,
+and `docs/compliance/permissions.md` is generated from the routing table by a test that fails when
+it drifts.
+
+Still open in M2: per-tenant cost budgets (threat T5) and queue fairness (T6), and an identity
+provider for local development so a contributor can sign in without wiring one up.
 
 ### M3. Tenant lifecycle
 
