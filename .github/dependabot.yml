@@ -16,10 +16,8 @@ updates:
         patterns: ['Microsoft.AspNetCore.*']
       efcore:
         patterns: ['Microsoft.EntityFrameworkCore.*', 'Npgsql.*']
-      opentelemetry:
-        patterns: ['OpenTelemetry.*']
       test:
-        patterns: ['xunit*', 'Testcontainers*', 'WireMock*', 'NSubstitute', 'Shouldly']
+        patterns: ['xunit*', 'Testcontainers*', 'WireMock*', 'NSubstitute', 'Shouldly', 'Microsoft.Extensions.Diagnostics.Testing', 'Microsoft.Extensions.TimeProvider.Testing']
 
   # Pinned SHAs do not update themselves. Without this, hardening the workflows
   # means freezing them at whatever was current the day they were written.
@@ -29,8 +27,17 @@ updates:
       interval: weekly
       day: monday
 
+  # The sample's Dockerfile and compose file, which is where they live rather than at the root.
+  # Pointed at / this watched nothing at all.
   - package-ecosystem: docker
-    directory: /
+    directory: /samples/Signalboard
     schedule:
       interval: weekly
       day: monday
+
+  # The browser smoke test. Not part of CI, but Playwright pulls a browser and still deserves
+  # patching.
+  - package-ecosystem: npm
+    directory: /tests/ui
+    schedule:
+      interval: monthly
