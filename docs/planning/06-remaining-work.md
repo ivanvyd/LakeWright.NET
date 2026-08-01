@@ -50,7 +50,38 @@ designations "confusingly similar" to a Databricks mark.
 
 **Do not** wait on this to keep building. Do wait on it to make the repository public.
 
+**Already mitigated, so this is prudence rather than a blocker.** The project name contains no
+Databricks mark, no logo appears anywhere, `NOTICE` and the README both carry an explicit
+non-affiliation notice, and every mention of Databricks is nominative. What the email buys is a
+written answer instead of a legal argument.
+
 **Effort:** 15 minutes, plus waiting.
+
+---
+
+## B4. Decide what history carries before the repository goes public
+
+Making a repository public exposes every commit, not just the current tree. Rewriting history
+afterwards does not help: forks, clones and caches keep the old objects.
+
+A scan of all history found **no credentials** — no tokens, no keys, no client secrets, no
+connection strings with real passwords. What it did find are three identifiers, redacted from the
+current tree but still present in earlier commits:
+
+| Value | What it is | Risk |
+|---|---|---|
+| Azure subscription id | An ARM resource-path component | Not a credential. Appears in support tickets and ARM ids routinely, and grants nothing without authentication |
+| Managed identity application id | An Entra object id | Not a credential. Visible to anything the identity interacts with |
+| Workspace URL | The hostname of a private workspace | Not a credential. Reaching it still requires authentication |
+
+None is a secret, and none can be used to access anything. They do identify a personal Azure
+account, which is why the current tree no longer carries them.
+
+**The decision.** Either accept that history keeps them, which is defensible because they are
+identifiers rather than secrets, or rewrite history before the repository goes public, which is
+cheap now — one maintainer, no forks, no external clones — and impossible afterwards. This is a
+judgement call about a personal account rather than a security finding, so it belongs to the
+maintainer.
 
 ---
 
