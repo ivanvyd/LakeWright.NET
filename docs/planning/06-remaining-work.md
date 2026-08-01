@@ -2,7 +2,7 @@
 
 Written 2026-08-01, against `main` at the Declarative Automation Bundle merge.
 
-Two parts: four blockers that need a human, and five milestones that do not. The blockers are first
+Two parts: five blockers, four of which still need a human, and five milestones that do not. The blockers are first
 because three of them gate work in the second half, and one of them gets harder the longer it waits.
 
 ---
@@ -59,7 +59,24 @@ written answer instead of a legal argument.
 
 ---
 
-## B4. Decide what history carries before the repository goes public
+### B3. Register `lakewright.dev`
+
+**Why.** It is unregistered today. The `.com` is held by a speculator — registered 2026-07-23
+through Gname, Cloudflare nameservers, no A record, a one-year registration expiring 2027-07-23.
+A rename after the first release is expensive; a domain is not.
+
+**Steps.**
+
+1. Register `lakewright.dev` at any registrar. `.dev` is on the HSTS preload list, so it is HTTPS
+   only, which is the right default for a developer tool.
+2. Turn on auto-renew and registrar lock immediately. The failure mode here is forgetting.
+3. Do not chase the `.com`. If you want it eventually, set a drop alert for 2027-07-23 and move on.
+
+**Effort:** 10 minutes. **Cost:** roughly £12 a year.
+
+---
+
+### B4. Decide what history carries before the repository goes public
 
 Making a repository public exposes every commit, not just the current tree. Rewriting history
 afterwards does not help: forks, clones and caches keep the old objects.
@@ -85,48 +102,40 @@ maintainer.
 
 ---
 
-### B3. Register `lakewright.dev`
-
-**Why.** It is unregistered today. The `.com` is held by a speculator — registered 2026-07-23
-through Gname, Cloudflare nameservers, no A record, a one-year registration expiring 2027-07-23.
-A rename after the first release is expensive; a domain is not.
-
-**Steps.**
-
-1. Register `lakewright.dev` at any registrar. `.dev` is on the HSTS preload list, so it is HTTPS
-   only, which is the right default for a developer tool.
-2. Turn on auto-renew and registrar lock immediately. The failure mode here is forgetting.
-3. Do not chase the `.com`. If you want it eventually, set a drop alert for 2027-07-23 and move on.
-
-**Effort:** 10 minutes. **Cost:** roughly £12 a year.
-
 ---
 
-### B4. Make the repository public
+### B5. Make the repository public
 
 **Why.** CodeQL, OpenSSF Scorecard and dependency review are gated off in
 `.github/workflows/security.yml` because they need GitHub Advanced Security on a private repository
 and are free on a public one. They are written and tested; they start running the moment visibility
 flips, with no config change.
 
-**Do B2 first.**
+**Do B2 and B4 first.**
 
 **Steps.**
 
-1. **Redact the identifiers in `.claude/auto-dev.md`.** It is the only file in the repository
-   carrying the live workspace URL and the Azure subscription ID. Neither is a credential — a
-   workspace URL appears in any user's address bar — but neither belongs in a public repository
-   either. Replace with placeholders and keep the real values in a gitignored local override.
-   A full scan found no secrets, keys or passwords anywhere in history.
-2. Flip visibility: **Settings → General → Danger Zone → Change visibility**.
-3. Enable, in **Settings → Code security**: secret scanning, push protection, private vulnerability
-   reporting, and Dependabot alerts.
-4. Add a ruleset on `main` requiring the five checks that exist today: `build`, `test`,
+1. ~~Redact the identifiers in `.claude/auto-dev.md`.~~ **Done 2026-08-01.** The current tree
+   carries no workspace URL, subscription id or managed identity id. A scan of all history found no
+   secrets, keys or passwords at all; what history still holds is covered by B4.
+2. ~~Enable Discussions.~~ **Done 2026-08-01.** `.github/ISSUE_TEMPLATE/config.yml` routes
+   "Question or idea" there, and it was off, so the contact link would have dead-ended on the first
+   person who clicked it.
+3. Flip visibility: **Settings → General → Danger Zone → Change visibility**.
+4. Enable, in **Settings → Code security**: secret scanning, push protection, private vulnerability
+   reporting, and Dependabot alerts. `SECURITY.md` and `CODE_OF_CONDUCT.md` both send reporters to
+   private vulnerability reporting, so until it is on, two documents describe a channel that does
+   not exist.
+5. Add a ruleset on `main` requiring the five checks that exist today: `build`, `test`,
    `tenant-isolation`, `docs`, `bundle`. Require a pull request. `tenant-isolation` in particular
    must be required, or a filtered-out isolation suite passes silently.
-5. Confirm CodeQL, Scorecard and dependency review actually ran on the next pull request. If they
+6. Confirm CodeQL, Scorecard and dependency review actually ran on the next pull request. If they
    still skip, the visibility condition in `security.yml` is wrong and needs a look.
-6. Expect a low Scorecard score at first. Branch protection and signed releases are the cheap wins;
+7. ~~Set repository topics.~~ **Done 2026-08-01**: `dotnet`, `databricks`, `multi-tenancy`, `saas`,
+   `aspnetcore`, `blazor`, `unity-catalog`, `csharp`. Check the README renders and that the CI badge
+   resolves once the repository is public — badge images 404 on a private repository, which is
+   expected and fixes itself on the flip.
+8. Expect a low Scorecard score at first. Branch protection and signed releases are the cheap wins;
    do not chase the number.
 
 **Effort:** about 30 minutes.

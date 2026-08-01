@@ -49,7 +49,7 @@ credible.
 | Backup and restore | Availability A1.2, CC7.5 | Delta time travel plus scheduled `DEEP CLONE` to separate storage; point-in-time restore on the operational database. The control auditors test is the **restore**, not the backup, so a scheduled restore drill writes its result to an evidence table. |
 | Incident response | CC7.3, CC7.4, CC7.5 | `SECURITY.md` with a private reporting channel and stated response expectations. GitHub security advisories as the coordinated disclosure mechanism. |
 | Vulnerability management | CC7.1, CC9.1 | Dependabot, CodeQL on push and pull request, `dotnet list package --vulnerable --include-transitive` as a failing gate, OpenSSF Scorecard weekly with SARIF into the Security tab. |
-| Monitoring and alerting | CC7.1, CC7.2 | OpenTelemetry traces and metrics, health checks, alerting on operation failure rate and warehouse queue depth. |
+| Monitoring and alerting | CC7.1, CC7.2 | **Partial.** The library publishes four `System.Diagnostics` instruments — operations started, completions by state, queue wait, refused tenant resolutions — and an activity source, named on `LakeWrightTelemetry`, plus a `/health` endpoint in the sample. It deliberately takes no OpenTelemetry dependency, so **subscribing to them, exporting them and alerting on them is the adopter's**: nothing here raises an alert on failure rate or warehouse queue depth. Evidence: `TelemetryTests` asserts each instrument records; there is no alerting to evidence. |
 | Data retention and deletion | Privacy, Confidentiality | **Design only.** `OrganizationState.PendingDeletion` stops reads before anything is destroyed and is honoured by both resolution and the claim loop. The ordered procedure, classification and retention periods are in [data-handling.md](data-handling.md); the deletion itself is not implemented. |
 
 ## Reading this table honestly
@@ -62,9 +62,9 @@ Current status, so it can be checked at a glance rather than read for:
 
 | Status | Rows |
 |---|---|
-| Implemented and evidenced by a test | Tenant isolation, authorization, audit logging |
+| Implemented and evidenced by a test | Tenant isolation, authorization within a tenant, audit logging |
 | Implemented, evidence is configuration or history | Change management, secret management (the architecture; the GitHub settings are still B4), encryption at rest |
-| Partial | Authorization, encryption in transit, vulnerability management (CodeQL and Scorecard are gated off while the repository is private), monitoring and alerting |
+| Partial | Authorization across tenants at the account layer (no access review or provisioning yet — see those rows), encryption in transit, vulnerability management (CodeQL and Scorecard are gated off while the repository is private), monitoring and alerting |
 | Design only | Access review, backup and restore, data retention and deletion, logical access provisioning |
 | Adopter's responsibility | Authentication (the seam exists; the provider is theirs) |
 | Not started | Incident response beyond `SECURITY.md` |
