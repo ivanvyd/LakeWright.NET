@@ -28,7 +28,7 @@ note.
   state, queue wait, and refused tenant resolutions. No OpenTelemetry dependency, and no tenant
   identifier on any metric — that tag is a cardinality bomb in a system built for many tenants.
 - A container image for the sample and an `app` service in compose, so `docker compose up` runs the
-  whole thing with no .NET SDK. Chiseled runtime, non-root, 56 MB, with `/health` reporting the
+  whole thing with no .NET SDK. Chiseled runtime, non-root, no shell, with `/health` reporting the
   database connection.
 - `tests/ui/smoke.mjs`, a browser smoke test for the sample. Not part of CI.
 - Screenshots in `docs/images/`, taken from the running application by that smoke test.

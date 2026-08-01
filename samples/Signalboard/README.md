@@ -19,7 +19,7 @@ docker compose up -d postgres
 dotnet run
 ```
 
-The image is a chiseled .NET runtime: 56 MB, no shell, no package manager, and a non-root user. The
+The image is a chiseled .NET runtime: no shell, no package manager, and a non-root user. The
 application exposes `/health`, which reports the database connection; there is no container
 healthcheck because an image with no shell cannot probe itself, and Kubernetes and Azure Container
 Apps both call `/health` from outside anyway.
