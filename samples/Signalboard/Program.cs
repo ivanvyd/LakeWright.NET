@@ -1,3 +1,4 @@
+using Azure.Core;
 using Lakewright.AspNetCore;
 using Lakewright.Multitenancy;
 using Signalboard;
@@ -17,7 +18,7 @@ builder.Services.AddLakewright(builder.Configuration);
 // operations simply stay Pending because nothing submits them.
 if (!string.IsNullOrWhiteSpace(builder.Configuration["Databricks:WorkspaceUrl"]))
 {
-    builder.Services.AddSingleton<IDatabricksTokenSource, EnvironmentTokenSource>();
+    builder.Services.AddSingleton<TokenCredential, ConfiguredTokenCredential>();
     builder.Services.AddLakewrightDatabricks(builder.Configuration);
     builder.Services.AddLakewrightOperationWorker(builder.Configuration);
 }

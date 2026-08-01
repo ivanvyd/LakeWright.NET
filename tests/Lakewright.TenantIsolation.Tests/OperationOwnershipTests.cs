@@ -46,7 +46,7 @@ public class OperationOwnershipTests(PostgresFixture postgres)
         // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres);
-        var store = new OperationStore(db);
+        var store = new OperationStore(db, new AuditLog(db));
         var acmeOperation = await store.CreateAsync(Ctx(AcmeId), "auth0|alice", "analysis", clientRequestId: null, ct);
 
         // Act — Globex knows the id. That is the realistic case: ids leak through logs, support
@@ -64,7 +64,7 @@ public class OperationOwnershipTests(PostgresFixture postgres)
         // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres);
-        var store = new OperationStore(db);
+        var store = new OperationStore(db, new AuditLog(db));
         var acmeOperation = await store.CreateAsync(Ctx(AcmeId), "auth0|alice", "analysis", clientRequestId: null, ct);
 
         // Act
@@ -82,7 +82,7 @@ public class OperationOwnershipTests(PostgresFixture postgres)
         // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres);
-        var store = new OperationStore(db);
+        var store = new OperationStore(db, new AuditLog(db));
         var acmeOperation = await store.CreateAsync(Ctx(AcmeId), "auth0|alice", "analysis", clientRequestId: null, ct);
 
         // Act
@@ -103,7 +103,7 @@ public class OperationOwnershipTests(PostgresFixture postgres)
         // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres);
-        var store = new OperationStore(db);
+        var store = new OperationStore(db, new AuditLog(db));
         var first = await store.CreateAsync(Ctx(AcmeId), "auth0|alice", "analysis", clientRequestId: null, ct);
 
         db.Operations.Add(new Operation

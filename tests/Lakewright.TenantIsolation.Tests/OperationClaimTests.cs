@@ -34,7 +34,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         });
         await db.SaveChangesAsync();
 
-        var store = new OperationStore(db);
+        var store = new OperationStore(db, new AuditLog(db));
         for (var i = 0; i < operations; i++)
         {
             await store.CreateAsync(Ctx(), "auth0|alice", "analysis", clientRequestId: null, CancellationToken.None);
@@ -49,7 +49,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 0);
-        var store = new OperationStore(db);
+        var store = new OperationStore(db, new AuditLog(db));
 
         // Act
         var claimed = await store.ClaimNextAsync(ct);
@@ -64,7 +64,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
-        var store = new OperationStore(db);
+        var store = new OperationStore(db, new AuditLog(db));
 
         // Act
         var first = await store.ClaimNextAsync(ct);
@@ -97,7 +97,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         await Task.WhenAll(Enumerable.Range(0, Workers).Select(async _ =>
         {
             await using var db = PostgresFixture.ContextFor(connectionString);
-            var store = new OperationStore(db);
+            var store = new OperationStore(db, new AuditLog(db));
 
             while (await store.ClaimNextAsync(ct) is { } operation)
             {
@@ -118,7 +118,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         // compute after their access was cut off.
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
-        var store = new OperationStore(db);
+        var store = new OperationStore(db, new AuditLog(db));
         var acme = await db.Organizations.FindAsync([AcmeId], ct);
         acme!.State = OrganizationState.Suspended;
         await db.SaveChangesAsync(ct);
@@ -142,7 +142,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         // reconciliation claim was missing the organization join that ClaimNextAsync has.
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
-        var store = new OperationStore(db);
+        var store = new OperationStore(db, new AuditLog(db));
         await store.ClaimNextAsync(ct);
         var acme = await db.Organizations.FindAsync([AcmeId], ct);
         acme!.State = OrganizationState.Suspended;
@@ -173,7 +173,7 @@ public class OperationClaimTests(PostgresFixture postgres)
             $"UPDATE organizations SET \"Schema\" = 'legacy_schema_name' WHERE \"Id\" = {AcmeId.Value}",
             ct);
         db.ChangeTracker.Clear();
-        var store = new OperationStore(db);
+        var store = new OperationStore(db, new AuditLog(db));
 
         // Act
         var resolved = await store.ResolveClaimedTenantAsync(AcmeId, "analytics", ct);
@@ -191,7 +191,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         // both can reach CompleteAsync. The first to arrive should win.
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
-        var store = new OperationStore(db);
+        var store = new OperationStore(db, new AuditLog(db));
         var claimed = await store.ClaimNextAsync(ct);
 
         // Act
@@ -211,7 +211,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
-        var store = new OperationStore(db);
+        var store = new OperationStore(db, new AuditLog(db));
         var claimed = await store.ClaimNextAsync(ct);
 
         // Act
@@ -232,7 +232,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         // external id. Nothing else in the system can tell that run exists.
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
-        var store = new OperationStore(db);
+        var store = new OperationStore(db, new AuditLog(db));
         var claimed = await store.ClaimNextAsync(ct);
 
         // Act
@@ -254,7 +254,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         // re-submit, and the second would race the first's RecordExternalIdAsync.
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
-        var store = new OperationStore(db);
+        var store = new OperationStore(db, new AuditLog(db));
         await store.ClaimNextAsync(ct);
 
         // Act
@@ -267,20 +267,44 @@ public class OperationClaimTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task Recording_the_external_id_takes_the_operation_out_of_reconciliation()
+    public async Task An_abandoned_run_is_reconcilable_and_carries_its_run_id()
     {
-        // Arrange
+        // Arrange — a submitted, recorded operation whose worker then stopped polling it. This
+        // test asserted the opposite until 2026-08-01: that recording an external id took the row
+        // out of reconciliation for good. That was the bug, not the contract. Nothing else watches
+        // a Running row, so a rolling deploy mid-poll left it Running with no end.
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
-        var store = new OperationStore(db);
+        var store = new OperationStore(db, new AuditLog(db));
         var claimed = await store.ClaimNextAsync(ct);
+        await store.RecordExternalIdAsync(Ctx(), claimed!.Id, "994455", ct);
 
         // Act
-        await store.RecordExternalIdAsync(Ctx(), claimed!.Id, "01f18d14-a905-1cef", ct);
+        var reconcilable = await store.ClaimOrphanForReconciliationAsync(AlreadyOrphaned, ct);
 
-        // Assert — even with the cutoff pushed into the future, a row with an external id is not
-        // an orphan.
+        // Assert — reclaimed with the run id intact, which is what lets the worker resume the poll
+        // instead of submitting the run a second time.
+        reconcilable.ShouldNotBeNull();
+        reconcilable.Id.ShouldBe(claimed.Id);
+        reconcilable.ExternalId.ShouldBe("994455");
+        reconcilable.State.ShouldBe(OperationState.Running);
+    }
+
+    [Fact]
+    public async Task A_completed_operation_is_never_reconciled()
+    {
+        // Arrange — the stop condition for the widened claim above. Without it, every finished
+        // operation would be reclaimed forever.
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await SeedAsync(postgres, operations: 1);
+        var store = new OperationStore(db, new AuditLog(db));
+        var claimed = await store.ClaimNextAsync(ct);
+        await store.RecordExternalIdAsync(Ctx(), claimed!.Id, "994455", ct);
+
+        // Act
+        await store.CompleteAsync(AcmeId, claimed.Id, OperationState.Succeeded, null, ct);
+
+        // Assert
         (await store.ClaimOrphanForReconciliationAsync(AlreadyOrphaned, ct)).ShouldBeNull();
-        (await store.FindAsync(Ctx(), claimed.Id, ct))!.State.ShouldBe(OperationState.Running);
     }
 }

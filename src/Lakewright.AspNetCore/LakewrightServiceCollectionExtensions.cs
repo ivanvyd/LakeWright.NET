@@ -1,3 +1,4 @@
+using Azure.Core;
 using Lakewright.Core.Tenancy;
 using Lakewright.Databricks;
 using Lakewright.Multitenancy;
@@ -45,6 +46,7 @@ public static class LakewrightServiceCollectionExtensions
 
         services.AddScoped<ITenantContextResolver, EfTenantContextResolver>();
         services.AddScoped<IMembershipReader, EfMembershipReader>();
+        services.AddScoped<AuditLog>();
         services.AddScoped<OperationStore>();
 
         services.AddHttpContextAccessor();
@@ -75,8 +77,8 @@ public static class LakewrightServiceCollectionExtensions
     /// broke the promise that a contributor needs no cloud account — found by running the sample
     /// rather than by reading it.
     ///
-    /// Supply an <see cref="IDatabricksTokenSource"/>. On Azure that is a managed identity
-    /// requesting an Entra token, which Databricks accepts with no stored secret (ADR 0006).
+    /// Supply a <see cref="TokenCredential"/>. On Azure that is <c>DefaultAzureCredential</c>
+    /// backed by a managed identity, which Databricks accepts with no stored secret (ADR 0006).
     /// </remarks>
     public static IServiceCollection AddLakewrightDatabricks(
         this IServiceCollection services,
@@ -93,8 +95,8 @@ public static class LakewrightServiceCollectionExtensions
         services.AddSingleton(provider =>
         {
             var options = provider.GetRequiredService<IOptions<DatabricksOptions>>().Value;
-            var credential = provider.GetRequiredService<IDatabricksTokenSource>();
-            return DatabricksClient.CreateClient(options.WorkspaceUrl, credential.GetToken());
+            var credential = provider.GetRequiredService<TokenCredential>();
+            return DatabricksClient.CreateClient(options.WorkspaceUrl, credential);
         });
 
         services.AddScoped<IStatementExecutor, DatabricksStatementExecutor>();
@@ -139,18 +141,4 @@ public static class LakewrightServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(app);
         return app.UseMiddleware<TenantResolutionMiddleware>();
     }
-}
-
-/// <summary>
-/// Supplies the bearer token for Databricks.
-/// </summary>
-/// <remarks>
-/// An interface rather than a configuration string, because the reference deployment has no
-/// Databricks secret to configure: an Azure managed identity requests an Entra token that
-/// Databricks accepts directly (ADR 0006, spike 04). An adopter on another cloud implements this
-/// against OAuth token federation instead.
-/// </remarks>
-public interface IDatabricksTokenSource
-{
-    string GetToken();
 }

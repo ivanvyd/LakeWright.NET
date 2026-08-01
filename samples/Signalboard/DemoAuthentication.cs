@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text.Encodings.Web;
-using Lakewright.AspNetCore;
+using System.Text.Json;
+using Azure.Core;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
 
@@ -60,15 +61,52 @@ public static class DemoAuthenticationExtensions
 }
 
 /// <summary>
-/// Reads the Databricks token from the environment.
+/// Hands Databricks whatever token you exported.
 /// </summary>
 /// <remarks>
-/// The reference deployment uses a managed identity and holds no secret (ADR 0006). A sample cannot
-/// assume Azure, so it reads whatever token you export — typically
-/// <c>az account get-access-token --resource 2ff814a6-3304-4ab8-85cb-cd0e6f879c1d</c>. Empty is
-/// fine: the worker is not started without a workspace configured.
+/// A product registers <c>DefaultAzureCredential</c>: on Azure it holds no secret at all, and it
+/// refreshes the Entra token before it expires (ADR 0006). This one cannot refresh, because a
+/// pasted token is all it has — so it reports the real expiry from the token itself, and Databricks
+/// calls fail honestly once it lapses instead of pretending to work.
+///
+/// A sample cannot assume Azure, which is the only reason this exists. Get a token with
+/// <c>az account get-access-token --resource 2ff814a6-3304-4ab8-85cb-cd0e6f879c1d</c>.
 /// </remarks>
-public sealed class EnvironmentTokenSource(IConfiguration configuration) : IDatabricksTokenSource
+public sealed class ConfiguredTokenCredential(IConfiguration configuration) : TokenCredential
 {
-    public string GetToken() => configuration["Databricks:Token"] ?? string.Empty;
+    public override AccessToken GetToken(TokenRequestContext requestContext, CancellationToken cancellationToken) =>
+        new(Token, ExpiresOn());
+
+    public override ValueTask<AccessToken> GetTokenAsync(TokenRequestContext requestContext, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(GetToken(requestContext, cancellationToken));
+
+    private string Token => configuration["Databricks:Token"] ?? string.Empty;
+
+    /// <summary>
+    /// The <c>exp</c> claim, so the credential does not claim a lifetime the token does not have.
+    /// </summary>
+    /// <remarks>
+    /// Reading the payload rather than trusting it: this decides when to stop using the token, not
+    /// whether to accept it. Databricks validates the signature. An unparseable token is treated as
+    /// already expired, which surfaces a bad paste immediately.
+    /// </remarks>
+    private DateTimeOffset ExpiresOn()
+    {
+        var parts = Token.Split('.');
+
+        if (parts.Length != 3) { return DateTimeOffset.MinValue; }
+
+        try
+        {
+            var payload = JsonDocument.Parse(Base64UrlTextEncoder.Decode(parts[1]));
+
+            return payload.RootElement.TryGetProperty("exp", out var exp)
+                ? DateTimeOffset.FromUnixTimeSeconds(exp.GetInt64())
+                : DateTimeOffset.MinValue;
+        }
+        catch (Exception e) when (e is JsonException or FormatException)
+        {
+            return DateTimeOffset.MinValue;
+        }
+    }
 }

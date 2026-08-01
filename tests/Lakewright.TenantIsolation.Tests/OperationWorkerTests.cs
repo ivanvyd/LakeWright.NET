@@ -1,3 +1,4 @@
+using System.Globalization;
 using Lakewright.Core.Tenancy;
 using Lakewright.Databricks;
 using Lakewright.Multitenancy;
@@ -79,6 +80,7 @@ public class OperationWorkerTests(PostgresFixture postgres)
         var submitter = new FakeSubmitter();
         var services = new ServiceCollection();
         services.AddDbContext<LakewrightDbContext>(o => o.UseNpgsql(connectionString));
+        services.AddScoped<AuditLog>();
         services.AddScoped<OperationStore>();
         services.AddSingleton<IJobSubmitter>(submitter);
 
@@ -168,6 +170,50 @@ public class OperationWorkerTests(PostgresFixture postgres)
         submitter.SubmittedKeys[1].ShouldBe(idempotencyKey);
         final.ExternalId.ShouldBe("1000", "the reconciled run is the one already started, not a new one");
         final.State.ShouldBe(OperationState.Succeeded);
+    }
+
+    [Fact]
+    public async Task A_worker_that_stopped_polling_resumes_rather_than_resubmitting()
+    {
+        // Arrange — an ordinary rolling deploy, not a crash. The operation was submitted and
+        // recorded, so it is Running with a known run id, and then PollAsync exited on the
+        // shutdown token. Reconciliation used to require ExternalId IS NULL and passed straight
+        // over rows like this, leaving them Running forever.
+        var ct = TestContext.Current.CancellationToken;
+        var (provider, submitter) = await BuildAsync(postgres);
+        await using var _p = provider;
+
+        submitter.RunState = new RunOutcome.Running(0);
+
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var store = scope.ServiceProvider.GetRequiredService<OperationStore>();
+            await store.CreateAsync(Ctx(), "auth0|alice", "analysis", clientRequestId: null, ct);
+
+            var claimed = await store.ClaimNextAsync(ct);
+            var submitted = (RunOutcome.Submitted)await submitter.SubmitAsync(
+                TenantScopedJobRun.Create(Ctx(), JobId, claimed!.IdempotencyKey), ct);
+
+            await store.RecordExternalIdAsync(
+                Ctx(), claimed.Id, submitted.RunId.ToString(CultureInfo.InvariantCulture), ct);
+        }
+
+        submitter.RunState = new RunOutcome.Succeeded(0);
+
+        // Act
+        var didWork = await WorkerFor(provider).RunOnceAsync(ct);
+
+        // Assert — polling resumed on the existing run and finished it. One submission, not two:
+        // re-submitting a run already in flight is the mistake this branch avoids.
+        await using var check = provider.CreateAsyncScope();
+        var final = await check.ServiceProvider.GetRequiredService<LakewrightDbContext>()
+            .Operations.SingleAsync(ct);
+
+        didWork.ShouldBeTrue();
+        submitter.SubmittedKeys.Count.ShouldBe(1);
+        final.ExternalId.ShouldBe("1000");
+        final.State.ShouldBe(OperationState.Succeeded);
+        final.CompletedAt.ShouldNotBeNull();
     }
 
     [Fact]

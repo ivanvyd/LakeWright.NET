@@ -38,6 +38,9 @@ public sealed partial class OperationWorker(
     [LoggerMessage(Level = LogLevel.Warning, Message = "Reconciled orphaned operation {OperationId} to run {RunId}")]
     private partial void LogReconciled(Guid operationId, long runId);
 
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Resumed polling operation {OperationId} on run {RunId}")]
+    private partial void LogResumed(Guid operationId, long runId);
+
     [LoggerMessage(Level = LogLevel.Error, Message = "Operation worker iteration failed")]
     private partial void LogIterationFailed(Exception exception);
 
@@ -89,7 +92,7 @@ public sealed partial class OperationWorker(
 
         if (await store.ClaimOrphanForReconciliationAsync(_options.ReconciliationGracePeriod, cancellationToken) is { } orphan)
         {
-            await SubmitAndPollAsync(store, submitter, orphan, isReconciliation: true, cancellationToken);
+            await ReconcileAsync(store, submitter, orphan, cancellationToken);
             return true;
         }
 
@@ -164,6 +167,33 @@ public sealed partial class OperationWorker(
         }
 
         await PollAsync(store, submitter, operation, submitted.RunId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Picks up an operation whose worker stopped watching it.
+    /// </summary>
+    /// <remarks>
+    /// A known run id means the submission happened and only the polling stopped, so resuming the
+    /// poll is the whole job — re-submitting would be a second call for a run already in flight.
+    /// The run timeout restarts from here, because the original deadline lived in the call stack
+    /// that went away. That errs towards letting a long run finish rather than failing work the
+    /// tenant is already paying for.
+    /// </remarks>
+    private async Task ReconcileAsync(
+        OperationStore store,
+        IJobSubmitter submitter,
+        Operation operation,
+        CancellationToken cancellationToken)
+    {
+        if (operation.ExternalId is { } externalId
+            && long.TryParse(externalId, NumberStyles.None, CultureInfo.InvariantCulture, out var runId))
+        {
+            LogResumed(operation.Id, runId);
+            await PollAsync(store, submitter, operation, runId, cancellationToken);
+            return;
+        }
+
+        await SubmitAndPollAsync(store, submitter, operation, isReconciliation: true, cancellationToken);
     }
 
     private async Task PollAsync(

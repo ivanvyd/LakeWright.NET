@@ -33,7 +33,7 @@ public class OperationIdempotencyTests(PostgresFixture postgres)
         var ct = TestContext.Current.CancellationToken;
         await using var db = await postgres.NewDatabaseAsync();
         await Seed(db, ct);
-        var store = new OperationStore(db);
+        var store = new OperationStore(db, new AuditLog(db));
 
         // Act — the same caller, the same key, twice.
         var first = await store.CreateAsync(Ctx(), Alice, "analysis", "retry-me", ct);
@@ -64,7 +64,7 @@ public class OperationIdempotencyTests(PostgresFixture postgres)
 
         // Act — the lookup finds nothing because the winner is not written yet, so only the
         // constraint can stop the insert that follows.
-        var answered = await new OperationStore(loser)
+        var answered = await new OperationStore(loser, new AuditLog(loser))
             .CreateAsync(Ctx(), Alice, "analysis", "same-key", ct);
 
         // Assert
@@ -120,7 +120,7 @@ public class OperationIdempotencyTests(PostgresFixture postgres)
         var ct = TestContext.Current.CancellationToken;
         await using var db = await postgres.NewDatabaseAsync();
         await Seed(db, ct);
-        var store = new OperationStore(db);
+        var store = new OperationStore(db, new AuditLog(db));
 
         // Act
         var alices = await store.CreateAsync(Ctx(), Alice, "analysis", "nightly", ct);
@@ -138,7 +138,7 @@ public class OperationIdempotencyTests(PostgresFixture postgres)
         var ct = TestContext.Current.CancellationToken;
         await using var db = await postgres.NewDatabaseAsync();
         await Seed(db, ct);
-        var store = new OperationStore(db);
+        var store = new OperationStore(db, new AuditLog(db));
 
         // Act
         var first = await store.CreateAsync(Ctx(), Alice, "analysis", clientRequestId: null, ct);
