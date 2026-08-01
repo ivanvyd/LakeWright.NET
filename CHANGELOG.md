@@ -6,6 +6,18 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Before 1.0, minor versions may contain breaking changes. Each one is listed here with a migration
 note.
 
+## [Unreleased]
+
+### Added
+
+- `TenantLifecycle`: provisioning and deletion (M3). Before this, nothing in `src/` could create an
+  organization — an adopter wrote rows by hand — and `PendingDeletion` stopped reads while nothing
+  ever removed anything. Deletion follows the order in `docs/compliance/data-handling.md` and
+  refuses a tenant that is not pending deletion or still has work in flight.
+- `ITenantSchemaProvisioner` in `LakeWright.Core`, implemented by `DatabricksSchemaProvisioner`.
+  The only DDL this library issues and the only statement it sends without a `TenantContext`, so
+  it is a narrow interface a caller has to reach for deliberately.
+
 ## [0.1.0] — 2026-08-01
 
 First tagged release. Everything below shipped before it; the tag exists to give the work a

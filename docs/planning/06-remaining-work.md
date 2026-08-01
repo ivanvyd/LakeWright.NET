@@ -193,14 +193,19 @@ it drifts.
 Still open in M2: per-tenant cost budgets (threat T5) and queue fairness (T6), and an identity
 provider for local development so a contributor can sign in without wiring one up.
 
-### M3. Tenant lifecycle
+### M3. Tenant lifecycle — DONE
 
-- Provisioning: create the tenant's Unity Catalog schema, with rollback on partial failure and an
-  idempotency test.
-- Deletion, in the order in `docs/compliance/data-handling.md`: `PendingDeletion` first so it stays
-  reversible, drain operations, drop the schema, delete rows, write the audit event.
+`TenantLifecycle.ProvisionAsync` creates the row and the Unity Catalog schema, idempotent on the
+slug so a retry after a partial failure finishes the first attempt rather than minting a second
+tenant. `BeginDeletionAsync` and `PurgeAsync` split deletion at the point where it stops being
+reversible, and `PurgeAsync` refuses a tenant that is not pending deletion or that still has work
+in flight.
 
-**Done when:** deletion is implemented and the compliance mapping's *Design only* marker comes off.
+The schema half sits behind `ITenantSchemaProvisioner` in `LakeWright.Core`, so the tenancy tier
+still does not reference the Databricks integration, and a tenant provisions without Databricks
+configured at all.
+
+**Done:** deletion is implemented, and the *Design only* marker is off the compliance mapping.
 
 ### M4. The optional AI module
 
