@@ -20,6 +20,7 @@
     <PackageReference Include="WireMock.Net" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\src\LakeWright.AI\LakeWright.AI.csproj" />
     <ProjectReference Include="..\..\src\LakeWright.Core\LakeWright.Core.csproj" />
     <ProjectReference Include="..\..\src\LakeWright.Multitenancy\LakeWright.Multitenancy.csproj" />
     <ProjectReference Include="..\..\src\LakeWright.Databricks\LakeWright.Databricks.csproj" />

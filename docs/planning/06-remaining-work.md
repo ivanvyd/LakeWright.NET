@@ -207,19 +207,20 @@ configured at all.
 
 **Done:** deletion is implemented, and the *Design only* marker is off the compliance mapping.
 
-### M4. The optional AI module
+### M4. The optional AI module — DONE
 
-Two thirds of it needs no code: chat and tool calling already work through the stock OpenAI client.
+`AddDatabricksChatClient` registers Databricks model serving as an `IChatClient`. The streaming
+shim strips the incomplete `usage` object Databricks attaches to every chunk, which the OpenAI
+deserialiser refuses. Both halves are verified against `databricks-claude-sonnet-5`, including a
+test asserting streaming still fails *without* the shim — so the day Databricks fixes the payload,
+that test goes red and the shim can be deleted rather than carried forever.
 
-- An `AddDatabricksChatClient` DI extension over `Microsoft.Extensions.AI.OpenAI`.
-- **The streaming shim.** Databricks attaches `usage` to every chunk with `completion_tokens` and
-  `total_tokens` null, and the OpenAI deserialiser requires numbers. A pipeline policy that repairs
-  or strips it is roughly forty lines, and it is a precise upstream contribution to either
-  Databricks or the .NET client. Offer it upstream.
-- Per-tenant token metering. Note honestly that output tokens are unavailable on a streaming call
-  until the shim exists.
+Per-tenant token metering is not built. The shim makes it possible — the final chunk carries real
+numbers — but metering belongs with cost attribution, which is blocked on the grant recorded under
+T5 in the threat model.
 
-**Done when:** streaming round-trips, and the upstream issue is filed whether or not it is accepted.
+**Still open:** offer the shim upstream, to Databricks or to the .NET client. It is a private fix
+until then.
 
 ### M5. Signalboard
 
