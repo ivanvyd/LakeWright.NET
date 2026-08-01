@@ -195,7 +195,7 @@ public class TenantLifecycleTests(PostgresFixture postgres)
         schemas.Calls.Clear();
 
         // Act
-        var result = await lifecycle.PurgeAsync(tenant.Id, "auth0|ops", ct);
+        var result = await lifecycle.PurgeAsync(tenant.Id, "auth0|ops", TimeSpan.Zero, ct);
 
         // Assert
         result.ShouldBe(TenantPurgeResult.NotPendingDeletion);
@@ -222,14 +222,36 @@ public class TenantLifecycleTests(PostgresFixture postgres)
         schemas.Calls.Clear();
 
         // Act
-        var whileRunning = await lifecycle.PurgeAsync(tenant.Id, "auth0|ops", ct);
+        var whileRunning = await lifecycle.PurgeAsync(tenant.Id, "auth0|ops", TimeSpan.Zero, ct);
         await store.CompleteAsync(tenant.Id, operation.Id, OperationState.Succeeded, null, ct);
-        var afterDraining = await lifecycle.PurgeAsync(tenant.Id, "auth0|ops", ct);
+        var afterDraining = await lifecycle.PurgeAsync(tenant.Id, "auth0|ops", TimeSpan.Zero, ct);
 
         // Assert
         whileRunning.ShouldBe(TenantPurgeResult.OperationsInFlight);
         afterDraining.ShouldBe(TenantPurgeResult.Deleted);
         schemas.Calls.ShouldBe([$"drop analytics.{tenant.Schema}"]);
+    }
+
+    [Fact]
+    public async Task Purging_waits_out_the_grace_period()
+    {
+        // Arrange — data-handling.md calls deletion "reversible until the schema drop runs", which
+        // was only true if the adopter built a cooldown themselves. Nothing stopped a caller
+        // running both halves back to back and destroying a tenant with no interval to catch the
+        // mistake.
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        var lifecycle = Lifecycle(db, new RecordingSchemas());
+        var tenant = await lifecycle.ProvisionAsync("Acme", "acme", "auth0|ops", ct);
+        await lifecycle.BeginDeletionAsync(tenant.Id, "auth0|ops", ct);
+
+        // Act
+        var tooSoon = await lifecycle.PurgeAsync(tenant.Id, "auth0|ops", TimeSpan.FromDays(7), ct);
+        var afterWaiting = await lifecycle.PurgeAsync(tenant.Id, "auth0|ops", TimeSpan.Zero, ct);
+
+        // Assert
+        tooSoon.ShouldBe(TenantPurgeResult.StillWithinGracePeriod);
+        afterWaiting.ShouldBe(TenantPurgeResult.Deleted);
     }
 
     [Fact]
@@ -254,7 +276,7 @@ public class TenantLifecycleTests(PostgresFixture postgres)
         await lifecycle.BeginDeletionAsync(tenant.Id, "auth0|ops", ct);
 
         // Act
-        var result = await lifecycle.PurgeAsync(tenant.Id, "auth0|ops", ct);
+        var result = await lifecycle.PurgeAsync(tenant.Id, "auth0|ops", TimeSpan.Zero, ct);
 
         // Assert
         result.ShouldBe(TenantPurgeResult.Deleted);
