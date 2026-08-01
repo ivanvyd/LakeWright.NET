@@ -14,7 +14,7 @@ namespace Lakewright.Multitenancy;
 /// tenant's results with an identifier from a log line.
 ///
 /// Two methods are deliberately system-scoped and say so at their own definitions:
-/// <see cref="ClaimNextAsync"/> and <see cref="FindOrphanedForReconciliationAsync"/>. They run in
+/// <see cref="ClaimNextAsync"/> and <see cref="ClaimOrphanForReconciliationAsync"/>. They run in
 /// the worker, outside any request, and serve every tenant. Nothing else may be added to that list
 /// without the same explicit note, because a blanket guarantee in this comment that two of the
 /// methods do not honour is worse than no comment.
@@ -174,21 +174,46 @@ public sealed class OperationStore(LakewrightDbContext db)
     }
 
     /// <summary>
-    /// Operations that were submitted but whose external identifier was never written, older than
-    /// <paramref name="olderThan"/>.
+    /// Claims one operation that was claimed but never given an external identifier, and whose
+    /// grace period has elapsed. Returns null when there is nothing to reconcile.
     /// </summary>
     /// <remarks>
+    /// These are the rows left by a worker that died between submitting to Databricks and recording
+    /// the run id. The run may exist; nothing local knows its id.
+    ///
+    /// This claims atomically rather than reading a list and writing later. A read-then-write lets
+    /// reconciliation and a slow-but-alive worker both act on one row, and the later write silently
+    /// undoes the earlier. Re-stamping <c>ClaimedAt</c> is the claim: it takes the row out of the
+    /// orphan window for another grace period, so a second reconciler passes over it.
+    ///
     /// Deliberately not tenant-scoped: reconciliation is a system job, not a tenant action, and it
-    /// runs outside any request. It is the one query here without a tenant filter, which is why it
-    /// is named for what it is.
+    /// runs outside any request.
     /// </remarks>
-    public Task<List<Operation>> FindOrphanedForReconciliationAsync(
-        DateTimeOffset olderThan,
-        CancellationToken cancellationToken) =>
-        db.Operations
-            .Where(o => o.ExternalId == null
-                     && o.State == OperationState.Pending
-                     && o.ClaimedAt != null
-                     && o.ClaimedAt < olderThan)
+    public async Task<Operation?> ClaimOrphanForReconciliationAsync(
+        TimeSpan gracePeriod,
+        CancellationToken cancellationToken)
+    {
+        var cutoff = DateTimeOffset.UtcNow - gracePeriod;
+
+        var claimed = await db.Operations
+            .FromSql($"""
+                UPDATE operations o
+                SET "ClaimedAt" = now()
+                WHERE o."Id" = (
+                    SELECT c."Id" FROM operations c
+                    WHERE c."State" = {(int)OperationState.Pending}
+                      AND c."ExternalId" IS NULL
+                      AND c."ClaimedAt" IS NOT NULL
+                      AND c."ClaimedAt" < {cutoff}
+                    ORDER BY c."ClaimedAt"
+                    FOR UPDATE OF c SKIP LOCKED
+                    LIMIT 1
+                )
+                RETURNING o.*
+                """)
+            .AsNoTracking()
             .ToListAsync(cancellationToken);
+
+        return claimed.FirstOrDefault();
+    }
 }

@@ -18,69 +18,75 @@ public class StatementScopingTests
     [Fact]
     public void A_statement_takes_its_schema_from_the_context_not_the_caller()
     {
+        // Arrange
         var a = TenantContextFactory.ForTenant(TenantA, "analytics");
         var b = TenantContextFactory.ForTenant(TenantB, "analytics");
 
+        // Act
         var forA = TenantScopedStatement.Create(a, "SELECT count(*) FROM events");
         var forB = TenantScopedStatement.Create(b, "SELECT count(*) FROM events");
 
-        forA.Tenant.Schema.ShouldNotBe(forB.Tenant.Schema);
+        // Assert — identical SQL, different schema. The caller never chose the schema.
         forA.Sql.ShouldBe(forB.Sql);
+        forA.Tenant.Schema.ShouldNotBe(forB.Tenant.Schema);
     }
 
     [Fact]
     public void There_is_no_way_to_build_a_statement_without_a_tenant_context()
     {
-        // Every public factory on the statement type must demand a TenantContext. An overload
-        // that did not would be the whole vulnerability, so this asserts the absence of one.
+        // Arrange
         var factories = typeof(TenantScopedStatement)
             .GetMethods(BindingFlags.Public | BindingFlags.Static)
             .Where(m => m.Name == nameof(TenantScopedStatement.Create));
 
-        factories.ShouldNotBeEmpty();
-        factories.ShouldAllBe(m => m.GetParameters()[0].ParameterType == typeof(TenantContext));
+        // Act
+        var firstParameterTypes = factories.Select(m => m.GetParameters()[0].ParameterType).ToArray();
+
+        // Assert — an overload that did not demand a TenantContext would be the whole
+        // vulnerability, so this asserts the absence of one.
+        firstParameterTypes.ShouldNotBeEmpty();
+        firstParameterTypes.ShouldAllBe(t => t == typeof(TenantContext));
     }
 
     [Fact]
     public void The_executor_accepts_nothing_but_a_tenant_scoped_statement()
     {
-        // A convenience overload taking raw SQL, a catalog or a schema would let a caller opt out
-        // of scoping without noticing. None may exist.
-        var offending = typeof(IStatementExecutor)
+        // Arrange
+        var executeMethods = typeof(IStatementExecutor)
             .GetMethods()
-            .Where(m => m.Name == nameof(IStatementExecutor.ExecuteAsync))
-            .SelectMany(m => m.GetParameters())
+            .Where(m => m.Name == nameof(IStatementExecutor.ExecuteAsync));
+
+        // Act
+        var stringParameters = executeMethods.SelectMany(m => m.GetParameters())
             .Where(p => p.ParameterType == typeof(string))
             .ToArray();
 
-        offending.ShouldBeEmpty(
-            "ExecuteAsync must take a TenantScopedStatement and nothing that could carry SQL, " +
-            "a catalog or a schema from the caller.");
+        // Assert — a convenience overload taking raw SQL, a catalog or a schema would let a caller
+        // opt out of scoping without noticing.
+        stringParameters.ShouldBeEmpty();
     }
 
     [Fact]
     public void The_interpolation_guard_is_an_interpolated_string_handler()
     {
-        // This test previously asserted a FormattableString overload and passed while the guard
-        // was inert: C# prefers `string` over FormattableString for an interpolated literal, so
-        // interpolated SQL compiled fine. Only an [InterpolatedStringHandler] parameter is
-        // actually preferred, so that is what is asserted now.
-        //
-        // The compile failure this produces is recorded in
-        // docs/planning/spike-02-interpolation-guard.md. A reflection test cannot observe a
-        // compile error, so it guards the mechanism and the doc carries the evidence.
+        // Arrange — this test previously asserted a FormattableString overload and passed while the
+        // guard was inert: C# prefers `string` for an interpolated literal. Only an
+        // [InterpolatedStringHandler] parameter is actually preferred.
         var overload = typeof(TenantScopedStatement)
             .GetMethods(BindingFlags.Public | BindingFlags.Static)
             .Single(m => m.Name == nameof(TenantScopedStatement.Create)
                       && m.GetParameters()[1].ParameterType != typeof(string));
 
-        var handlerType = overload.GetParameters()[1].ParameterType;
-
-        handlerType.GetCustomAttribute<InterpolatedStringHandlerAttribute>()
-            .ShouldNotBeNull("without the handler attribute the compiler picks the string overload " +
-                             "and interpolated SQL compiles");
-
+        // Act
+        var handlerAttribute = overload.GetParameters()[1].ParameterType
+            .GetCustomAttribute<InterpolatedStringHandlerAttribute>();
         var obsolete = overload.GetCustomAttribute<ObsoleteAttribute>();
+
+        // Assert — the compile failure itself is evidenced in
+        // docs/planning/spike-02-interpolation-guard.md, since a test inside the built assembly
+        // cannot observe a compile error.
+        handlerAttribute.ShouldNotBeNull(
+            "without the handler attribute the compiler picks the string overload");
         obsolete.ShouldNotBeNull();
         obsolete.IsError.ShouldBeTrue("a warning would be ignored; this has to fail the build");
     }
@@ -88,54 +94,66 @@ public class StatementScopingTests
     [Fact]
     public void The_interpolation_guard_throws_if_it_is_ever_reached()
     {
-        // Belt and braces for reflection-based or dynamic callers, which skip the compile check.
-        Should.Throw<InvalidOperationException>(() => new BlockedSqlInterpolation(0, 1));
-    }
+        // Arrange — belt and braces for reflection or dynamic callers, which skip the compile check.
 
-    [Fact]
-    public void A_tenant_context_cannot_be_manufactured_from_outside()
-    {
-        // The factory was public in the first version, which let any caller build a context for
-        // any tenant with no membership check. A security review proved it with a working sample.
-        // Nothing outside the resolver assembly and this suite may construct one.
-        var factory = typeof(TenantContext).Assembly.GetType(
-            "Lakewright.Core.Tenancy.TenantContextFactory");
+        // Act
+        var thrown = Should.Throw<InvalidOperationException>(() => new BlockedSqlInterpolation(0, 1));
 
-        factory.ShouldNotBeNull();
-        factory.IsPublic.ShouldBeFalse(
-            "a public factory makes the membership check optional, which makes it useless");
-
-        typeof(TenantContext).GetConstructors().ShouldBeEmpty(
-            "TenantContext must have no public constructor");
+        // Assert
+        thrown.Message.ShouldContain("Interpolated SQL is not supported");
     }
 
     [Fact]
     public void A_default_statement_is_refused_rather_than_dereferenced()
     {
-        // A struct always has an implicit parameterless constructor, so `default` skips both
-        // factories. It must fail as a rejected argument, not as a NullReferenceException
-        // somewhere further in.
+        // Arrange — a struct always has an implicit parameterless constructor, so `default` skips
+        // both factories.
+
+        // Act
         var statement = default(TenantScopedStatement);
 
+        // Assert — it must fail as a rejected argument, not as a NullReferenceException further in.
         statement.Tenant.ShouldBeNull();
     }
 
     [Fact]
     public void An_identifier_with_a_trailing_newline_is_rejected()
     {
-        // .NET's `$` also matches immediately before a single trailing newline, so a `$`-anchored
-        // pattern accepted "tenant_a\n". The pattern uses `\z`.
-        UnityCatalogIdentifier.IsValid("tenant_a\n").ShouldBeFalse();
-        UnityCatalogIdentifier.IsValid("tenant_a\r\n").ShouldBeFalse();
-        UnityCatalogIdentifier.IsValid("tenant_a").ShouldBeTrue();
+        // Arrange — .NET's `$` also matches immediately before a single trailing newline, so a
+        // `$`-anchored pattern accepted "tenant_a\n". The pattern uses `\z`.
+        var candidates = new[] { "tenant_a\n", "tenant_a\r\n", "tenant_a" };
+
+        // Act
+        var results = candidates.Select(UnityCatalogIdentifier.IsValid).ToArray();
+
+        // Assert
+        results[0].ShouldBeFalse();
+        results[1].ShouldBeFalse();
+        results[2].ShouldBeTrue();
+    }
+
+    [Fact]
+    public void A_tenant_context_cannot_be_manufactured_from_outside()
+    {
+        // Arrange — the factory was public in the first version, which let any caller build a
+        // context for any tenant with no membership check. A security review proved it.
+        var factory = typeof(TenantContext).Assembly.GetType(
+            "Lakewright.Core.Tenancy.TenantContextFactory");
+
+        // Act
+        var publicConstructors = typeof(TenantContext).GetConstructors();
+
+        // Assert
+        factory.ShouldNotBeNull();
+        factory.IsPublic.ShouldBeFalse("a public factory makes the membership check optional");
+        publicConstructors.ShouldBeEmpty("TenantContext must have no public constructor");
     }
 
     [Fact]
     public void A_schema_name_that_needs_quoting_is_rejected()
     {
-        // Catalog and schema travel as identifiers rather than bound parameters, because the
-        // Statement Execution API has no parameter form for an identifier. They are therefore
-        // the only unparameterised values in the query path.
+        // Arrange — catalog and schema travel as identifiers rather than bound parameters, because
+        // the Statement Execution API has no parameter form for an identifier.
         var hostile = new[]
         {
             "analytics; DROP SCHEMA other",
@@ -147,20 +165,23 @@ public class StatementScopingTests
             " "
         };
 
-        foreach (var candidate in hostile)
-        {
-            UnityCatalogIdentifier.IsValid(candidate)
-                .ShouldBeFalse($"'{candidate}' must not be accepted as an identifier");
-        }
+        // Act
+        var accepted = hostile.Where(UnityCatalogIdentifier.IsValid).ToArray();
+
+        // Assert
+        accepted.ShouldBeEmpty();
     }
 
     [Fact]
     public void Two_tenants_never_resolve_to_the_same_schema()
     {
-        var schemas = Enumerable.Range(0, 500)
-            .Select(_ => UnityCatalogIdentifier.SchemaForTenant(TenantId.New()))
-            .ToArray();
+        // Arrange
+        var tenantIds = Enumerable.Range(0, 500).Select(_ => TenantId.New()).ToArray();
 
+        // Act
+        var schemas = tenantIds.Select(UnityCatalogIdentifier.SchemaForTenant).ToArray();
+
+        // Assert
         schemas.Distinct().Count().ShouldBe(schemas.Length);
         schemas.ShouldAllBe(s => UnityCatalogIdentifier.IsValid(s));
     }

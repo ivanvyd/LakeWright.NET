@@ -14,6 +14,10 @@ public class OperationClaimTests(PostgresFixture postgres)
 {
     private static readonly TenantId AcmeId = TenantId.Parse("0198f000-0000-7000-8000-0000000000e1");
 
+    /// <summary>Moves the orphan cutoff into the future, so a row ages without the test waiting.</summary>
+    private static readonly TimeSpan AlreadyOrphaned = TimeSpan.FromMinutes(-5);
+    private static readonly TimeSpan NotYetOrphaned = TimeSpan.FromMinutes(5);
+
     private static TenantContext Ctx() => TenantContextFactory.ForTenant(AcmeId, "analytics");
 
     private static async Task<LakewrightDbContext> SeedAsync(PostgresFixture postgres, int operations)
@@ -42,22 +46,31 @@ public class OperationClaimTests(PostgresFixture postgres)
     [Fact]
     public async Task Claiming_returns_null_when_there_is_nothing_pending()
     {
+        // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 0);
+        var store = new OperationStore(db);
 
-        (await new OperationStore(db).ClaimNextAsync(ct)).ShouldBeNull();
+        // Act
+        var claimed = await store.ClaimNextAsync(ct);
+
+        // Assert
+        claimed.ShouldBeNull();
     }
 
     [Fact]
     public async Task A_claimed_operation_is_not_handed_out_twice()
     {
+        // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
         var store = new OperationStore(db);
 
+        // Act
         var first = await store.ClaimNextAsync(ct);
         var second = await store.ClaimNextAsync(ct);
 
+        // Assert
         first.ShouldNotBeNull();
         second.ShouldBeNull("the only operation was already claimed");
     }
@@ -65,26 +78,24 @@ public class OperationClaimTests(PostgresFixture postgres)
     [Fact]
     public async Task Concurrent_workers_never_claim_the_same_operation()
     {
-        // Ten connections race for twenty rows; every row must go to exactly one of them.
+        // Arrange — ten connections race for twenty rows. A separate context per worker, because
+        // sharing one would serialise on the connection and the test would exercise nothing.
         //
         // This catches the realistic bug: a select-then-update claim, verified by replacing the
-        // single statement with one and watching this test go red. It does NOT prove `SKIP LOCKED`
-        // is required — that was measured too, and the test stays green without it, because the
+        // single statement with one and watching this go red. It does NOT prove `SKIP LOCKED` is
+        // required — that was measured too, and the test stays green without it, because the
         // single-statement update is atomic either way. `SKIP LOCKED` prevents the convoy, and
         // nothing here measures blocking.
         var ct = TestContext.Current.CancellationToken;
         const int Operations = 20;
         const int Workers = 10;
-
         await using var seed = await SeedAsync(postgres, Operations);
         var connectionString = seed.Database.GetConnectionString()!;
-
         var claimed = new System.Collections.Concurrent.ConcurrentBag<Guid>();
 
+        // Act
         await Task.WhenAll(Enumerable.Range(0, Workers).Select(async _ =>
         {
-            // A separate context per worker: sharing one would serialise on the connection and
-            // the test would pass without exercising SKIP LOCKED at all.
             await using var db = PostgresFixture.ContextFor(connectionString);
             var store = new OperationStore(db);
 
@@ -94,6 +105,7 @@ public class OperationClaimTests(PostgresFixture postgres)
             }
         }));
 
+        // Assert
         claimed.Count.ShouldBe(Operations, "every operation should be claimed exactly once");
         claimed.Distinct().Count().ShouldBe(Operations, "no operation may be claimed twice");
     }
@@ -101,81 +113,103 @@ public class OperationClaimTests(PostgresFixture postgres)
     [Fact]
     public async Task Work_queued_by_a_tenant_that_is_since_suspended_is_never_claimed()
     {
-        // The resolver refuses a suspended organization at request time. Without the same rule on
-        // the claim, an operation queued while the tenant was active keeps spending Databricks
-        // compute after their access was cut off, which is the case suspension exists to stop.
+        // Arrange — the resolver refuses a suspended organization at request time. Without the same
+        // rule on the claim, work queued while the tenant was active keeps spending Databricks
+        // compute after their access was cut off.
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
         var store = new OperationStore(db);
-
         var acme = await db.Organizations.FindAsync([AcmeId], ct);
         acme!.State = OrganizationState.Suspended;
         await db.SaveChangesAsync(ct);
 
-        (await store.ClaimNextAsync(ct)).ShouldBeNull();
-
-        // Reinstating the tenant makes the queued work runnable again rather than losing it.
+        // Act
+        var whileSuspended = await store.ClaimNextAsync(ct);
         acme.State = OrganizationState.Active;
         await db.SaveChangesAsync(ct);
+        var afterReinstating = await store.ClaimNextAsync(ct);
 
-        (await store.ClaimNextAsync(ct)).ShouldNotBeNull();
+        // Assert — reinstating makes the queued work runnable again rather than losing it.
+        whileSuspended.ShouldBeNull();
+        afterReinstating.ShouldNotBeNull();
     }
 
     [Fact]
     public async Task Completing_another_tenants_operation_is_refused()
     {
+        // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
         var store = new OperationStore(db);
-
         var claimed = await store.ClaimNextAsync(ct);
 
-        await Should.ThrowAsync<InvalidOperationException>(
+        // Act
+        var refused = await Should.ThrowAsync<InvalidOperationException>(
             async () => await store.CompleteAsync(
                 TenantId.New(), claimed!.Id, OperationState.Succeeded, null, ct));
 
+        // Assert
+        refused.Message.ShouldContain("does not belong to tenant");
         (await store.FindAsync(Ctx(), claimed!.Id, ct))!.State.ShouldBe(OperationState.Pending);
     }
 
     [Fact]
     public async Task An_operation_orphaned_between_submit_and_record_is_found_by_reconciliation()
     {
-        // The crash-critical window from ADR 0005: a worker dies after submitting to Databricks
-        // and before writing the run id. The row is claimed, still pending, and has no external
-        // id. Nothing else in the system can tell that run exists.
+        // Arrange — the crash-critical window from ADR 0005: a worker dies after submitting to
+        // Databricks and before writing the run id. The row is claimed, still pending, and has no
+        // external id. Nothing else in the system can tell that run exists.
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
         var store = new OperationStore(db);
-
         var claimed = await store.ClaimNextAsync(ct);
-        claimed.ShouldNotBeNull();
-        claimed.ExternalId.ShouldBeNull();
 
-        // Nothing to reconcile yet: the worker may still be mid-submit.
-        var tooSoon = await store.FindOrphanedForReconciliationAsync(
-            DateTimeOffset.UtcNow.AddMinutes(-5), ct);
-        tooSoon.ShouldBeEmpty();
+        // Act
+        var tooSoon = await store.ClaimOrphanForReconciliationAsync(NotYetOrphaned, ct);
+        var onceAged = await store.ClaimOrphanForReconciliationAsync(AlreadyOrphaned, ct);
 
-        // Once the row is older than the grace period it is an orphan.
-        var orphans = await store.FindOrphanedForReconciliationAsync(
-            DateTimeOffset.UtcNow.AddMinutes(5), ct);
-        orphans.Select(o => o.Id).ShouldContain(claimed.Id);
+        // Assert — nothing to reconcile while the worker may still be mid-submit; taking the row
+        // from a live worker is the race the grace period exists to avoid.
+        claimed!.ExternalId.ShouldBeNull();
+        tooSoon.ShouldBeNull();
+        onceAged.ShouldNotBeNull();
+        onceAged.Id.ShouldBe(claimed.Id);
+    }
+
+    [Fact]
+    public async Task Claiming_an_orphan_stops_a_second_reconciler_taking_it()
+    {
+        // Arrange — re-stamping ClaimedAt is the claim. Without it two reconcilers would both
+        // re-submit, and the second would race the first's RecordExternalIdAsync.
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await SeedAsync(postgres, operations: 1);
+        var store = new OperationStore(db);
+        await store.ClaimNextAsync(ct);
+
+        // Act
+        var first = await store.ClaimOrphanForReconciliationAsync(AlreadyOrphaned, ct);
+        var second = await store.ClaimOrphanForReconciliationAsync(NotYetOrphaned, ct);
+
+        // Assert
+        first.ShouldNotBeNull();
+        second.ShouldBeNull();
     }
 
     [Fact]
     public async Task Recording_the_external_id_takes_the_operation_out_of_reconciliation()
     {
+        // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
         var store = new OperationStore(db);
-
         var claimed = await store.ClaimNextAsync(ct);
+
+        // Act
         await store.RecordExternalIdAsync(Ctx(), claimed!.Id, "01f18d14-a905-1cef", ct);
 
-        var orphans = await store.FindOrphanedForReconciliationAsync(
-            DateTimeOffset.UtcNow.AddMinutes(5), ct);
-
-        orphans.ShouldBeEmpty();
+        // Assert — even with the cutoff pushed into the future, a row with an external id is not
+        // an orphan.
+        (await store.ClaimOrphanForReconciliationAsync(AlreadyOrphaned, ct)).ShouldBeNull();
         (await store.FindAsync(Ctx(), claimed.Id, ct))!.State.ShouldBe(OperationState.Running);
     }
 }

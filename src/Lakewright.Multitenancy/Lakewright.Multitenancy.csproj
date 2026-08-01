@@ -7,8 +7,17 @@
     <PackageReference Include="Microsoft.Extensions.Options" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Lakewright.Core\Lakewright.Core.csproj" />
+    <ProjectReference Include="..\Lakewright.Databricks\Lakewright.Databricks.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- RunOnceAsync is internal so nothing outside the worker drives a single iteration in
+         production. The isolation suite needs it to test one step at a time instead of racing
+         a background loop. -->
+    <InternalsVisibleTo Include="Lakewright.TenantIsolation.Tests" />
   </ItemGroup>
 </Project>
