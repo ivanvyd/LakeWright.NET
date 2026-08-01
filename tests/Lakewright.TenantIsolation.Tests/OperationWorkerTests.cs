@@ -1,3 +1,5 @@
+using System.Globalization;
+using Lakewright.Core.Jobs;
 using Lakewright.Core.Tenancy;
 using Lakewright.Databricks;
 using Lakewright.Multitenancy;
@@ -79,6 +81,8 @@ public class OperationWorkerTests(PostgresFixture postgres)
         var submitter = new FakeSubmitter();
         var services = new ServiceCollection();
         services.AddDbContext<LakewrightDbContext>(o => o.UseNpgsql(connectionString));
+        services.AddSingleton(TimeProvider.System);
+        services.AddScoped<AuditLog>();
         services.AddScoped<OperationStore>();
         services.AddSingleton<IJobSubmitter>(submitter);
 
@@ -89,7 +93,7 @@ public class OperationWorkerTests(PostgresFixture postgres)
         new(provider.GetRequiredService<IServiceScopeFactory>(),
             Options.Create(new OperationWorkerOptions
             {
-                JobId = JobId,
+                Jobs = { ["analysis"] = JobId },
                 InitialPollInterval = TimeSpan.FromMilliseconds(1),
                 MaxPollInterval = TimeSpan.FromMilliseconds(2),
                 ReconciliationGracePeriod = TimeSpan.FromMinutes(-5)
@@ -111,7 +115,7 @@ public class OperationWorkerTests(PostgresFixture postgres)
         await using (var scope = provider.CreateAsyncScope())
         {
             var store = scope.ServiceProvider.GetRequiredService<OperationStore>();
-            await store.CreateAsync(Ctx(), "auth0|alice", "analysis", ct);
+            await store.CreateAsync(Ctx(), "auth0|alice", "analysis", clientRequestId: null, ct);
         }
 
         // Act
@@ -143,7 +147,7 @@ public class OperationWorkerTests(PostgresFixture postgres)
         await using (var scope = provider.CreateAsyncScope())
         {
             var store = scope.ServiceProvider.GetRequiredService<OperationStore>();
-            var created = await store.CreateAsync(Ctx(), "auth0|alice", "analysis", ct);
+            var created = await store.CreateAsync(Ctx(), "auth0|alice", "analysis", clientRequestId: null, ct);
             idempotencyKey = created.IdempotencyKey;
 
             var claimed = await store.ClaimNextAsync(ct);
@@ -171,6 +175,80 @@ public class OperationWorkerTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task A_worker_that_stopped_polling_resumes_rather_than_resubmitting()
+    {
+        // Arrange — an ordinary rolling deploy, not a crash. The operation was submitted and
+        // recorded, so it is Running with a known run id, and then PollAsync exited on the
+        // shutdown token. Reconciliation used to require ExternalId IS NULL and passed straight
+        // over rows like this, leaving them Running forever.
+        var ct = TestContext.Current.CancellationToken;
+        var (provider, submitter) = await BuildAsync(postgres);
+        await using var _p = provider;
+
+        submitter.RunState = new RunOutcome.Running(0);
+
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var store = scope.ServiceProvider.GetRequiredService<OperationStore>();
+            await store.CreateAsync(Ctx(), "auth0|alice", "analysis", clientRequestId: null, ct);
+
+            var claimed = await store.ClaimNextAsync(ct);
+            var submitted = (RunOutcome.Submitted)await submitter.SubmitAsync(
+                TenantScopedJobRun.Create(Ctx(), JobId, claimed!.IdempotencyKey), ct);
+
+            await store.RecordExternalIdAsync(
+                Ctx(), claimed.Id, submitted.RunId.ToString(CultureInfo.InvariantCulture), ct);
+        }
+
+        submitter.RunState = new RunOutcome.Succeeded(0);
+
+        // Act
+        var didWork = await WorkerFor(provider).RunOnceAsync(ct);
+
+        // Assert — polling resumed on the existing run and finished it. One submission, not two:
+        // re-submitting a run already in flight is the mistake this branch avoids.
+        await using var check = provider.CreateAsyncScope();
+        var final = await check.ServiceProvider.GetRequiredService<LakewrightDbContext>()
+            .Operations.SingleAsync(ct);
+
+        didWork.ShouldBeTrue();
+        submitter.SubmittedKeys.Count.ShouldBe(1);
+        final.ExternalId.ShouldBe("1000");
+        final.State.ShouldBe(OperationState.Succeeded);
+        final.CompletedAt.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task An_operation_kind_with_no_configured_job_fails_with_that_reason()
+    {
+        // Arrange — the worker submitted one hardcoded job for every kind, so a product with more
+        // than one kind of work silently ran the wrong one. Failing is the honest answer; running
+        // some other job because it happens to be configured is not.
+        var ct = TestContext.Current.CancellationToken;
+        var (provider, submitter) = await BuildAsync(postgres);
+        await using var _p = provider;
+
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var store = scope.ServiceProvider.GetRequiredService<OperationStore>();
+            await store.CreateAsync(Ctx(), "auth0|alice", "export", clientRequestId: null, ct);
+        }
+
+        // Act
+        var didWork = await WorkerFor(provider).RunOnceAsync(ct);
+
+        // Assert
+        await using var check = provider.CreateAsyncScope();
+        var final = await check.ServiceProvider.GetRequiredService<LakewrightDbContext>()
+            .Operations.SingleAsync(ct);
+
+        didWork.ShouldBeTrue();
+        submitter.SubmittedKeys.ShouldBeEmpty("nothing should be submitted for an unmapped kind");
+        final.State.ShouldBe(OperationState.Failed);
+        final.Error.ShouldNotBeNull().ShouldContain("export");
+    }
+
+    [Fact]
     public async Task A_rejected_submission_fails_the_operation_rather_than_leaving_it_pending()
     {
         // Arrange
@@ -182,7 +260,7 @@ public class OperationWorkerTests(PostgresFixture postgres)
         await using (var scope = provider.CreateAsyncScope())
         {
             await scope.ServiceProvider.GetRequiredService<OperationStore>()
-                .CreateAsync(Ctx(), "auth0|alice", "analysis", ct);
+                .CreateAsync(Ctx(), "auth0|alice", "analysis", clientRequestId: null, ct);
         }
 
         // Act
@@ -211,7 +289,7 @@ public class OperationWorkerTests(PostgresFixture postgres)
         await using (var scope = provider.CreateAsyncScope())
         {
             await scope.ServiceProvider.GetRequiredService<OperationStore>()
-                .CreateAsync(Ctx(), "auth0|alice", "analysis", ct);
+                .CreateAsync(Ctx(), "auth0|alice", "analysis", clientRequestId: null, ct);
         }
 
         // Act

@@ -1,5 +1,7 @@
 using System.Security.Claims;
 using Lakewright.Core.Tenancy;
+using Lakewright.Multitenancy;
+using Lakewright.Multitenancy.Model;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -16,16 +18,25 @@ namespace Lakewright.AspNetCore;
 ///
 /// It answers 404, never 403. A 403 confirms the tenant exists, which is the difference between
 /// refusing a request and confirming a guess.
+///
+/// Because the refusal is a 404, the audit row it writes is the only trace of the attempt. A
+/// tenant probing for another tenant's identifiers looks like ordinary traffic in an access log.
 /// </remarks>
 public sealed class TenantResolutionMiddleware(RequestDelegate next)
 {
     /// <summary>Route value carrying the tenant. Endpoints that omit it are not tenant-scoped.</summary>
     public const string RouteValue = "organizationId";
 
-    public async Task InvokeAsync(HttpContext context, ITenantContextResolver resolver)
+    public async Task InvokeAsync(
+        HttpContext context,
+        ITenantContextResolver resolver,
+        LakewrightDbContext db,
+        AuditLog audit)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(resolver);
+        ArgumentNullException.ThrowIfNull(db);
+        ArgumentNullException.ThrowIfNull(audit);
 
         if (context.Request.RouteValues.TryGetValue(RouteValue, out var raw)
             && raw?.ToString() is { Length: > 0 } value)
@@ -51,6 +62,13 @@ public sealed class TenantResolutionMiddleware(RequestDelegate next)
 
             if (tenant is null)
             {
+                // Recorded against the tenant the caller asked for, not one it belongs to: the
+                // question "who tried to reach Acme" is the one an incident asks.
+                audit.Record(
+                    new TenantId(parsed), principalId, AuditActions.TenantAccessDenied,
+                    resourceType: nameof(Organization), resourceId: parsed.ToString());
+
+                await db.SaveChangesAsync(context.RequestAborted);
                 await WriteNotFoundAsync(context);
                 return;
             }

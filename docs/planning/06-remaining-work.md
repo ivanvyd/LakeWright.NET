@@ -196,12 +196,14 @@ Two thirds of it needs no code: chat and tool calling already work through the s
 
 ### M5. Signalboard
 
-Last, because it demonstrates everything above. Two seeded tenants, synthetic operational events, a
-dashboard, one long-running analysis, per-tenant cost attribution. Jobs and pipelines join the
-bundle here, when there is something for them to run.
+**Mostly done.** Two seeded tenants, three people, a Blazor dashboard over the operations API, and
+the same API drivable from a terminal. `docker compose up -d` plus `dotnet run` gives a working
+two-tenant application with no Databricks account, which was the acceptance criterion.
 
-**Done when:** `docker compose up` plus `dotnet run` gives a working two-tenant application with no
-Databricks account, and the same application runs against a real workspace unchanged.
+Still open here: synthetic operational events, per-tenant cost attribution, and jobs and pipelines
+joining the bundle. The unchanged-against-a-real-workspace half is untested — the sample has only
+been run against Postgres, and the managed identity path is evidenced by
+[spike 04](spike-04-managed-identity.md) rather than by the sample itself.
 
 ---
 

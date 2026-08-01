@@ -26,6 +26,17 @@ public sealed class OperationWorkerOptions
     /// <summary>Give up polling a run after this long and mark the operation failed.</summary>
     public TimeSpan RunTimeout { get; set; } = TimeSpan.FromHours(2);
 
-    /// <summary>Databricks job the worker submits to.</summary>
-    public long JobId { get; set; }
+    /// <summary>
+    /// Databricks job to submit for each operation kind.
+    /// </summary>
+    /// <remarks>
+    /// Keyed by <see cref="Model.Operation.Kind"/>, which is the product's own word for the work.
+    /// This was a single job id, so every kind ran the same job no matter what the caller asked
+    /// for — a product with both an analysis and an export had no way to express that without
+    /// forking the worker.
+    ///
+    /// A kind with no entry fails the operation with that reason rather than falling back to some
+    /// other tenant's job. Running the wrong job is worse than running none.
+    /// </remarks>
+    public Dictionary<string, long> Jobs { get; } = new(StringComparer.Ordinal);
 }

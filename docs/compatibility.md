@@ -76,8 +76,11 @@ Last updated 2026-08-01, after the asynchronous operations work landed.
 
 ## Known gaps
 
-- No ASP.NET Core integration and no sample application. The operation worker exists but nothing
-  hosts it as a running process yet, so it is exercised one iteration at a time by tests.
+- No reference deployment. The sample runs locally against a Postgres container; nothing has been
+  deployed to Azure Container Apps, so the ingress half of encryption in transit and the managed
+  identity path in a hosted process are both unproven outside the spikes.
+- No per-tenant cost attribution and no queue fairness. Both are named as unmitigated threats in
+  [the threat model](security/threat-model.md) and neither has code.
 - Live integration tests: `Category=Live` in the isolation suite, plus the four spikes. They are
   excluded from CI because they need a workspace and cost money.
 - `dependency-review`, CodeQL and Scorecard are gated off while the repository is private, because

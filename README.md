@@ -5,11 +5,14 @@ The build kit for multi-tenant .NET SaaS on Databricks.
 An opinionated reference architecture and a small set of reusable components for teams that sell
 analytics to customers who are not themselves Databricks customers.
 
-> **Status: early. The engine exists; the product around it does not.**
+> **Status: early, but you can run it.**
 > Implemented and tested: the tenant model, the tenant-scoped Databricks query layer, the
-> asynchronous operation worker with crash reconciliation, the ASP.NET Core tier (tenant
-> middleware, role policies, the operations API) and the Declarative Automation Bundle.
-> Missing: the Signalboard sample, so there is a library and an API but no product to look at. The milestone is in [ROADMAP.md](ROADMAP.md), and
+> asynchronous operation worker with crash reconciliation and resumed polling, the ASP.NET Core
+> tier (tenant middleware, role policies, the operations API with client idempotency), the audit
+> trail, the Declarative Automation Bundle, and the Signalboard sample — two organizations, three
+> people, a Blazor dashboard and the same API from a terminal.
+> Still open: per-tenant cost attribution, queue fairness, observability, and tenant provisioning
+> and deletion. The milestones are in [ROADMAP.md](ROADMAP.md), and
 > [docs/compatibility.md](docs/compatibility.md) records exactly what has been verified against a
 > live workspace and what has not.
 
@@ -61,17 +64,22 @@ Projects appear when there is code to put in them, so this grows over the milest
 
 ```
 src/
-  Lakewright.Core/            tenancy contracts
-  Lakewright.Databricks/      tenant-scoped Databricks SQL access
-  Lakewright.Multitenancy/    tenant model, resolution, operations, EF Core
+  Lakewright.Core/            tenancy and job contracts
+  Lakewright.Databricks/      tenant-scoped Databricks SQL and job access
+  Lakewright.Multitenancy/    tenant model, resolution, operations, audit, EF Core
   Lakewright.AspNetCore/      tenant middleware, role policies, operations API
+samples/
+  Signalboard/                two-tenant sample product, Blazor dashboard plus the API
 tests/
   Lakewright.TenantIsolation.Tests/   the suite the rest of it rests on
 databricks/                   Declarative Automation Bundle, dev and prod targets
 docs/                         see docs/README.md
 ```
 
-Still to come: observability, and the Signalboard sample that puts a product in front of all this.
+`Lakewright.Multitenancy` does not reference `Lakewright.Databricks`, so adopting the tenancy tier
+alone does not drag in the Databricks client. A test enforces that rather than a convention.
+
+Still to come: observability, per-tenant cost attribution, and tenant provisioning and deletion.
 
 ## Documentation
 

@@ -77,8 +77,10 @@ it when there is a sample for them to run.
 
 ### Week 7: the sample and the deployment
 
-Signalboard: two seeded tenants, synthetic operational events, a dashboard, one long-running
-analysis, and per-tenant cost attribution. Reference deployment to Azure Container Apps.
+**Partly done.** Signalboard ships two seeded tenants, three people, a Blazor dashboard over the
+operations API, and the same API drivable from a terminal — `docker compose up -d` plus `dotnet run`
+with no Databricks account. Still open from this week: synthetic operational events, per-tenant cost
+attribution, and the reference deployment to Azure Container Apps.
 
 ### Week 8: make it adoptable
 
