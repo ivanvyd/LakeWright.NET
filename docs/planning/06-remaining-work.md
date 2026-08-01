@@ -9,42 +9,24 @@ because three of them gate work in the second half, and one of them gets harder 
 
 ## Blockers
 
-### B1. Verify service principals on Databricks Free Edition
+### B1. Verify service principals on Databricks Free Edition — CLOSED
 
-**Why.** The contributor story says you can run this without a cloud account. Whether Free Edition
-supports service principals at all is **undocumented** — the Free Edition limitations page never
-mentions them, and it does say there is no access to account-level APIs. This is the single
-highest-risk assumption in the project: if it is wrong, the README is wrong and the sample's auth
-story changes.
+**Answered 2026-08-01, from documentation rather than a signup.** The
+[Free Edition limitations page](https://docs.databricks.com/aws/en/getting-started/free-edition-limitations)
+states "No account console or account-level API access" and "Authentication is limited to email OTP,
+Sign in with Google, and Sign in with Microsoft. No SSO or SCIM support." A Databricks employee
+answering a Free Edition OAuth failure on the community forum put it directly: "Free Edition does not
+provide access to the account console or account-level APIs, and service principal OAuth
+authentication depends on that account-level identity infrastructure."
 
-**Steps.**
+So service principal OAuth does not work on Free Edition. A workspace admin can add a service
+principal, but the OAuth secret it would authenticate with is account-level, and Free Edition has no
+account level to reach.
 
-1. Sign up at `databricks.com/learn/free-edition` with a **personal** email, not the employer one.
-   Free Edition forbids commercial use, and keeping it off a work identity avoids that argument.
-2. In the workspace: **Settings → Identity and access → Service principals → Add**.
-   If that section is absent or refuses, stop — that is the answer, record it.
-3. Generate an OAuth secret for the service principal.
-4. Get a token from the **workspace-level** endpoint. Account-level will not work; Free Edition has
-   no account API.
-   ```bash
-   curl -u "<client-id>:<secret>" \
-     https://<workspace-host>/oidc/v1/token \
-     -d 'grant_type=client_credentials&scope=all-apis'
-   ```
-5. Call something with it:
-   ```bash
-   curl -H "Authorization: Bearer <token>" \
-     https://<workspace-host>/api/2.0/preview/scim/v2/Me
-   ```
-6. Record the outcome in `docs/compatibility.md` under Free Edition, with the date.
-
-**If it fails.** The contributor path becomes user identity (U2M or a personal access token). That
-changes `CONTRIBUTING.md`, the README's "no cloud account needed" claim, and the local-development
-design. Say so rather than qualifying it.
-
-**Effort:** about 30 minutes. **Cost:** nothing.
-
----
+This no longer threatens the contributor story, because the story changed underneath it: Signalboard
+runs on a Postgres container with no Databricks account at all. A contributor who wants a real
+workspace uses their own user identity on Free Edition, or a paid workspace with a service
+principal. The assumption is closed by being made irrelevant as much as by being answered.
 
 ### B2. Get the Databricks trademark position in writing
 
