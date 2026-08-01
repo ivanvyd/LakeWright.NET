@@ -21,9 +21,17 @@ dotnet test --filter "Category=TenantIsolation"   # the suite the rest of it res
 dotnet format --verify-no-changes
 ```
 
-There is no application to run yet: the web tier and the Signalboard sample arrive over the
-milestones in [ROADMAP.md](ROADMAP.md), and this section grows with them. The Databricks side is
-already deployable — see [deploying-databricks.md](docs/guides/deploying-databricks.md).
+To run something rather than test it, start the sample. It needs Docker and nothing else:
+
+```bash
+cd samples/Signalboard
+docker compose up -d
+dotnet run
+```
+
+Then open <http://localhost:8080> and sign in as one of the three seeded people. See
+[samples/Signalboard/README.md](samples/Signalboard/README.md). The Databricks side is separately
+deployable — see [deploying-databricks.md](docs/guides/deploying-databricks.md).
 
 Tests tagged `Category=Live` need a real workspace and create real resources. None exist yet; the
 live verification done so far is recorded in [docs/compatibility.md](docs/compatibility.md).

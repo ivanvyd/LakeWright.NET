@@ -58,9 +58,19 @@ closed, which is the safe direction but a confusing morning.
 `AddLakewrightDatabricks` validates `WorkspaceUrl` and `WarehouseId` at startup, so a half-filled
 `Databricks` section fails immediately rather than on the first query.
 
-You supply `IDatabricksTokenSource`. On Azure that is a managed identity requesting an Entra token,
-which Databricks accepts directly with no stored secret ([ADR 0006](../decisions/0006-secretless-authentication.md),
-proved in [spike 04](../planning/spike-04-managed-identity.md)).
+You register an `Azure.Core.TokenCredential`. On Azure that is `DefaultAzureCredential` backed by a
+managed identity, which Databricks accepts directly with no stored secret
+([ADR 0006](../decisions/0006-secretless-authentication.md), proved in
+[spike 04](../planning/spike-04-managed-identity.md)):
+
+```csharp
+builder.Services.AddSingleton<TokenCredential>(new DefaultAzureCredential());
+```
+
+`TokenCredential` rather than a string, because Entra tokens expire within the hour and the
+credential is what knows how to get another one. An earlier version took a `GetToken()` string,
+which was read once at startup and left every Databricks call failing 401 a little later with
+nothing to detect it.
 
 ## Configuration
 
@@ -74,7 +84,9 @@ proved in [spike 04](../planning/spike-04-managed-identity.md)).
     "Disposition": "INLINE",
     "InlineRowLimit": 10000
   },
-  "OperationWorker": { "JobId": 123456789 }
+  "OperationWorker": {
+    "Jobs": { "analysis": 123456789, "export": 987654321 }
+  }
 }
 ```
 
@@ -82,6 +94,33 @@ proved in [spike 04](../planning/spike-04-managed-identity.md)).
 `InlineRowLimit`. Switch to `EXTERNAL_LINKS` for exports; results then arrive as
 `StatementOutcome.LargeResult` carrying presigned URLs, which you fetch **without** an
 `Authorization` header.
+
+`OperationWorker:Jobs` maps each `Operation.Kind` to the Databricks job that runs it. A kind with no
+entry fails the operation saying so, rather than running whichever job happened to be configured.
+
+## Starting work safely from a client
+
+`POST /organizations/{organizationId}/operations` accepts an `Idempotency-Key` header of up to 200
+characters. Send one and a retried request returns the original operation instead of starting a
+second Databricks run the tenant also pays for. The key is unique per organization and principal, so
+two people in the same organization cannot collide.
+
+| Situation | Response |
+|---|---|
+| First request | `202` with the new operation |
+| Same key, same `kind` | `202` with the original operation |
+| Same key, different `kind` | `422` — answering with the stored operation would answer a different question |
+| Key longer than 200 characters | `400` — truncating it would dedupe requests that are not duplicates |
+
+The key is yours and never reaches Databricks. The job idempotency token is generated server-side,
+because a caller who could choose it could choose another tenant's.
+
+## The audit trail
+
+Starting an operation, completing one, and asking for a tenant you cannot reach each write a row to
+`audit_events`, in the same transaction as the action. The denial matters most: it answers 404, so
+the audit row is the only trace that someone went looking. The table is append-only in the model and
+at the database — see [the SOC 2 mapping](../compliance/soc2-mapping.md).
 
 ## The Databricks side
 
