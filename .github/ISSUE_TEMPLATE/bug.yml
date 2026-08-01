@@ -19,7 +19,7 @@ body:
     id: repro
     attributes:
       label: Reproduction
-      description: Smallest set of steps that shows it. State whether it reproduces against the mock server, a live workspace, or both.
+      description: Smallest set of steps that shows it. The Signalboard sample runs with `docker compose up` and no Databricks account, which makes it the easiest thing to reproduce against.
     validations:
       required: true
 
@@ -28,7 +28,7 @@ body:
     attributes:
       label: Databricks environment
       options:
-        - Mock server only (no Databricks)
+        - None — reproduced with the Signalboard sample
         - Free Edition
         - Azure Databricks
         - AWS Databricks

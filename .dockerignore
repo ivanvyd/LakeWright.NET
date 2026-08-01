@@ -1,0 +1,24 @@
+# The build context is the repository root, so everything not needed to compile is excluded.
+# Copying bin/ and obj/ in would also overwrite the container's build output with host artifacts
+# built for a different runtime identifier.
+**/bin/
+**/obj/
+**/.vs/
+**/.idea/
+**/TestResults/
+**/artifacts/
+
+.git/
+.github/
+.claude/
+docs/
+databricks/
+scripts/
+tests/
+
+**/.dockerignore
+**/Dockerfile
+**/compose.yaml
+**/*.md
+**/*.user
+**/node_modules/

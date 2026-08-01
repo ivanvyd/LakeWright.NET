@@ -15,6 +15,12 @@ analytics to customers who are not themselves Databricks customers.
 > [docs/compatibility.md](docs/compatibility.md) records exactly what has been verified against a
 > live workspace and what has not.
 
+![The Signalboard sample dashboard](docs/images/signalboard-dashboard.png)
+
+The sample in [`samples/Signalboard`](samples/Signalboard): two organizations, three people, and
+`docker compose up`. Sign in as someone from the other organization and the same address answers
+404 rather than 403, because a 403 would confirm the work exists.
+
 ## What problem this solves
 
 Unity Catalog row filters resolve the caller with `session_user()`. When an ASP.NET Core backend

@@ -11,9 +11,11 @@ You need Docker and the .NET 10 SDK. You do **not** need a Databricks account.
 ```bash
 git clone https://github.com/ivanvyd/lakewright-dotnet
 cd lakewright-dotnet/samples/Signalboard
-docker compose up -d
-dotnet run
+docker compose up
 ```
+
+Docker is the only requirement. To work on the code, run `docker compose up -d postgres` and
+`dotnet run` instead, which needs the .NET 10 SDK.
 
 Open <http://localhost:8080>. The landing page seeds two organizations and three people and gives
 you the curl commands that show a cross-tenant read returning 404 rather than 403, and a Viewer

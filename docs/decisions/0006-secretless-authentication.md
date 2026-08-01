@@ -33,5 +33,7 @@ Both secretless paths are documented on the vendor's side and have not been exec
 They are week-one spikes with a stated kill condition: if the managed identity path does not work,
 the secretless claim is withdrawn from the README rather than qualified in a footnote.
 
-Contributors run against a mock server or Free Edition with their own identity, so no contributor
-needs a credential from the maintainer.
+Contributors need no credential from the maintainer. This originally said they would run against a
+mock server, which was never built; what exists is the Signalboard sample, which runs on a Postgres
+container with no Databricks account at all. Anyone who does need a workspace uses Free Edition with
+their own identity.
