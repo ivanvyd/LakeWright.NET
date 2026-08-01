@@ -51,3 +51,8 @@ __pycache__/
 ## OS
 .DS_Store
 Thumbs.db
+
+## Local working notes, never committed. The open work belongs in
+## docs/planning/06-remaining-work.md, which opens with a table of it; this pattern is for the
+## things that are one maintainer's running state and would help nobody in public.
+*.local.md
