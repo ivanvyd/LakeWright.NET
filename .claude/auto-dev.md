@@ -74,10 +74,13 @@ tested, against what, and when.
 
 ## Environment
 
-Databricks workspace for live verification: `lakewright-dev`, eastus2, premium SKU,
-`https://adb-workspace.azuredatabricks.net`. Azure subscription
-`<subscription-id>` (Visual Studio Enterprise), resource group
-`rg-lakewright-dev`.
+Databricks workspace for live verification: `lakewright-dev`, eastus2, premium SKU, in the
+Visual Studio Enterprise subscription, resource group `rg-lakewright-dev`.
+
+The workspace URL and subscription id are deliberately not written here. This file is tracked and
+the repository is going public; neither is a credential, but both identify a personal Azure account
+to anyone who reads it. Get them from `az account show` and
+`az databricks workspace show -g rg-lakewright-dev -n lakewright-dev`.
 
 Free Edition is the contributor baseline and may lack service principals; treat that as unverified
 until the week-one spike settles it.
