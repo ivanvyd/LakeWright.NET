@@ -4,6 +4,7 @@
 
 | If you want to | Read |
 |---|---|
+| Get it running | [Getting started](guides/getting-started.md) |
 | Know whether this project is for you | [Product thesis](planning/01-product-thesis.md), including the strongest argument against it existing |
 | Understand the architecture | [Architecture](planning/03-architecture.md) |
 | Understand why tenant isolation works the way it does | [Tenant model](planning/04-tenant-model.md), then [ADR 0002](decisions/0002-enforce-tenant-isolation-in-the-query-layer.md) |

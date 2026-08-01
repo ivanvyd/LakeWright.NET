@@ -4,6 +4,7 @@ using Lakewright.Multitenancy;
 using Lakewright.Multitenancy.Model;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 
 namespace Lakewright.AspNetCore;
@@ -49,9 +50,9 @@ public static class OperationEndpoints
     /// </remarks>
     private static async Task<IResult> StartAsync(
         HttpContext http,
-        ITenantContextAccessor tenants,
-        OperationStore store,
-        StartOperationRequest request,
+        [FromServices] ITenantContextAccessor tenants,
+        [FromServices] OperationStore store,
+        [FromBody] StartOperationRequest request,
         CancellationToken cancellationToken)
     {
         var tenant = tenants.Required();
@@ -82,9 +83,9 @@ public static class OperationEndpoints
     /// returns 404 rather than 403: a 403 would confirm the identifier is real.
     /// </remarks>
     private static async Task<IResult> GetAsync(
-        ITenantContextAccessor tenants,
-        OperationStore store,
-        Guid operationId,
+        [FromServices] ITenantContextAccessor tenants,
+        [FromServices] OperationStore store,
+        [FromRoute] Guid operationId,
         CancellationToken cancellationToken)
     {
         var operation = await store.FindAsync(tenants.Required(), operationId, cancellationToken);

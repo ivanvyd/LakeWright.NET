@@ -37,8 +37,8 @@ credible.
 | Control | Criteria | Implementation and evidence artifact |
 |---|---|---|
 | Tenant isolation | CC6.1, CC6.3 | Query layer that cannot build a statement without a resolved tenant context, and a context that only the resolver assembly can construct (`internal` plus `InternalsVisibleTo`). Evidence: the cross-tenant isolation suite as a required CI check, with results retained per run, plus a demonstration that it fails when isolation is removed. |
-| Authentication | CC6.1 | **Not started.** There is no web tier, so there is no `AddOpenIdConnect`, no `[Authorize]`, and no unauthenticated-request test. The design (provider-neutral OIDC, no local password store) is in ADR 0006 and arrives with M2. Do not claim this control today. |
-| Authorization | CC6.1, CC6.3 | **Partial.** The role model exists (`MembershipRole`: Viewer, Member, Admin) and membership is resolved from the database, but nothing enforces roles yet because there is no HTTP surface to enforce them on. Arrives with the ASP.NET Core tier: a default `[Authorize]` policy at endpoint routing so unprotected endpoints are opt-out, and a permission matrix generated from code by a test so the documentation cannot drift from behaviour. Do not claim this control today. |
+| Authentication | CC6.1 | **Adopter's responsibility, by design.** The web tier requires an authenticated principal carrying a stable subject claim and refuses anonymous requests through a fallback policy, evidenced by `HttpIsolationTests`. It deliberately does not register an identity provider: choosing one for an adopter is choosing their identity architecture. Call `AddAuthentication().AddOpenIdConnect(...)` yourself. |
+| Authorization | CC6.1, CC6.3 | Role policies over `MembershipRole`, enforced by `TenantRoleHandler`, with a fallback policy so an endpoint is protected by omission rather than exposed by it. Roles are a floor: an Admin satisfies a Member policy. Evidence: [permissions.md](permissions.md), generated from the routing table by a test that fails when it drifts, plus `HttpIsolationTests` asserting a Viewer is refused a Member endpoint. |
 | Audit logging | CC7.2, CC7.3 | `audit_events` written in the same transaction as the audited action. Three layers: an init-only entity, a change-tracker guard on every `SaveChanges` overload, and `REVOKE UPDATE, DELETE` from the application role so the database refuses what C# cannot see. Evidence: tests connecting **as the application role** assert `ExecuteDelete` and `ExecuteUpdate` fail with `insufficient_privilege` while insert and select still work. Note the deployment requirement: the application role must not own the tables, because an owner keeps privileges `REVOKE` does not remove. |
 | Encryption in transit | CC6.7 | **Partial.** Databricks REST and SQL run over TLS by default, and that half needs no code. The ingress half (HTTPS only, HSTS, TLS 1.2 minimum) has nothing to configure yet because there is no ingress. The scheduled TLS check that would evidence it does not exist; it arrives with M2. |
 | Encryption at rest | CC6.7, Confidentiality | Cloud provider storage encryption on Delta storage and the operational database, both provider-managed by default. No application-level column encryption, deliberately — see [data-handling.md](data-handling.md#encryption) for what that covers and what it does not. There is no ADR on this; an earlier version of this row cited one that was never written. |
@@ -62,11 +62,12 @@ Current status, so it can be checked at a glance rather than read for:
 
 | Status | Rows |
 |---|---|
-| Implemented and evidenced by a test | Tenant isolation, audit logging |
+| Implemented and evidenced by a test | Tenant isolation, authorization, audit logging |
 | Implemented, evidence is configuration or history | Change management, secret management (the architecture; the GitHub settings are still B4), encryption at rest |
 | Partial | Authorization, encryption in transit, vulnerability management (CodeQL and Scorecard are gated off while the repository is private), monitoring and alerting |
 | Design only | Access review, backup and restore, data retention and deletion, logical access provisioning |
-| Not started | Authentication, incident response beyond `SECURITY.md` |
+| Adopter's responsibility | Authentication (the seam exists; the provider is theirs) |
+| Not started | Incident response beyond `SECURITY.md` |
 
 Every row in the table above appears in this summary. Two were missing from an earlier version, which
 is exactly the failure an at-a-glance table is supposed to prevent.
