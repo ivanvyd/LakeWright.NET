@@ -1,4 +1,6 @@
-namespace Lakewright.Databricks;
+using Lakewright.Core.Tenancy;
+
+namespace Lakewright.Core.Jobs;
 
 /// <summary>
 /// Submits and tracks Lakeflow job runs for a tenant.
@@ -8,7 +10,7 @@ namespace Lakewright.Databricks;
 /// cannot submit a job without a resolved tenant.
 ///
 /// <see cref="GetRunAsync"/> takes a run id, which this layer cannot tie to a tenant, exactly as
-/// with <see cref="IStatementExecutor.GetAsync"/>. Ownership is enforced above by the operation
+/// with <c>IStatementExecutor.GetAsync</c>. Ownership is enforced above by the operation
 /// record, which stores the tenant and the run id together. An endpoint that polls a run id taken
 /// from a request is a cross-tenant read.
 /// </remarks>

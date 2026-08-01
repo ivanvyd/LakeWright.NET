@@ -27,7 +27,7 @@ public class AuditTrailTests(PostgresFixture postgres)
         // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeededAsync();
-        var store = new OperationStore(db, new AuditLog(db));
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
 
         // Act
         var operation = await store.CreateAsync(Ctx(), Alice, "analysis", clientRequestId: null, ct);
@@ -47,7 +47,7 @@ public class AuditTrailTests(PostgresFixture postgres)
         // never happened.
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeededAsync();
-        var store = new OperationStore(db, new AuditLog(db));
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
 
         // Act
         await store.CreateAsync(Ctx(), Alice, "analysis", "once", ct);
@@ -63,7 +63,7 @@ public class AuditTrailTests(PostgresFixture postgres)
         // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeededAsync();
-        var store = new OperationStore(db, new AuditLog(db));
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
         var operation = await store.CreateAsync(Ctx(), Alice, "analysis", clientRequestId: null, ct);
 
         // Act
@@ -82,7 +82,7 @@ public class AuditTrailTests(PostgresFixture postgres)
         // Arrange — reconciliation and a slow worker can both reach CompleteAsync for one row.
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeededAsync();
-        var store = new OperationStore(db, new AuditLog(db));
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
         var operation = await store.CreateAsync(Ctx(), Alice, "analysis", clientRequestId: null, ct);
 
         // Act

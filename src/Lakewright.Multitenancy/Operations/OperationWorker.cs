@@ -1,6 +1,6 @@
 using System.Globalization;
+using Lakewright.Core.Jobs;
 using Lakewright.Core.Tenancy;
-using Lakewright.Databricks;
 using Lakewright.Multitenancy.Model;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -135,7 +135,17 @@ public sealed partial class OperationWorker(
             return;
         }
 
-        var run = TenantScopedJobRun.Create(tenant, _options.JobId, operation.IdempotencyKey);
+        if (!_options.Jobs.TryGetValue(operation.Kind, out var jobId))
+        {
+            var unmapped = $"No Databricks job is configured for operations of kind '{operation.Kind}'.";
+
+            LogFailed(operation.Id, unmapped);
+            await store.CompleteAsync(
+                operation.OrganizationId, operation.Id, OperationState.Failed, unmapped, cancellationToken);
+            return;
+        }
+
+        var run = TenantScopedJobRun.Create(tenant, jobId, operation.IdempotencyKey);
         var outcome = await submitter.SubmitAsync(run, cancellationToken);
 
         if (outcome is not RunOutcome.Submitted submitted)

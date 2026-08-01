@@ -1,4 +1,5 @@
 using Azure.Core;
+using Lakewright.Core.Jobs;
 using Lakewright.Core.Tenancy;
 using Lakewright.Databricks;
 using Lakewright.Multitenancy;
@@ -46,6 +47,7 @@ public static class LakewrightServiceCollectionExtensions
 
         services.AddScoped<ITenantContextResolver, EfTenantContextResolver>();
         services.AddScoped<IMembershipReader, EfMembershipReader>();
+        services.TryAddSingletonTimeProvider();
         services.AddScoped<AuditLog>();
         services.AddScoped<OperationStore>();
 

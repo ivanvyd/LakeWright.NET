@@ -12,7 +12,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Lakewright.Core\Lakewright.Core.csproj" />
-    <ProjectReference Include="..\Lakewright.Databricks\Lakewright.Databricks.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- RunOnceAsync is internal so nothing outside the worker drives a single iteration in

@@ -93,6 +93,7 @@ public static class TestApi
                     services.AddDbContext<LakewrightDbContext>(o => o.UseNpgsql(connectionString));
                     services.AddScoped<ITenantContextResolver, EfTenantContextResolver>();
                     services.AddScoped<IMembershipReader, EfMembershipReader>();
+                    services.AddSingleton(TimeProvider.System);
                     services.AddScoped<AuditLog>();
                     services.AddScoped<OperationStore>();
                     services.AddHttpContextAccessor();

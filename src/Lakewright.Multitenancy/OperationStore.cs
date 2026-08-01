@@ -21,7 +21,7 @@ namespace Lakewright.Multitenancy;
 /// without the same explicit note, because a blanket guarantee in this comment that two of the
 /// methods do not honour is worse than no comment.
 /// </remarks>
-public sealed class OperationStore(LakewrightDbContext db, AuditLog audit)
+public sealed class OperationStore(LakewrightDbContext db, AuditLog audit, TimeProvider time)
 {
     /// <summary>The <c>Idempotency-Key</c> length a caller may send.</summary>
     public const int MaxClientRequestIdLength = 200;
@@ -70,7 +70,7 @@ public sealed class OperationStore(LakewrightDbContext db, AuditLog audit)
             // 64 characters is the Jobs API cap. A GUID in "N" form is 32.
             IdempotencyKey = Guid.CreateVersion7().ToString("N"),
             ClientRequestId = clientRequestId,
-            CreatedAt = DateTimeOffset.UtcNow
+            CreatedAt = time.GetUtcNow()
         };
 
         db.Operations.Add(operation);
@@ -272,7 +272,7 @@ public sealed class OperationStore(LakewrightDbContext db, AuditLog audit)
             .ExecuteUpdateAsync(
                 s => s.SetProperty(o => o.State, state)
                       .SetProperty(o => o.Error, error)
-                      .SetProperty(o => o.CompletedAt, DateTimeOffset.UtcNow),
+                      .SetProperty(o => o.CompletedAt, time.GetUtcNow()),
                 cancellationToken);
 
         if (updated == 0)
@@ -335,7 +335,7 @@ public sealed class OperationStore(LakewrightDbContext db, AuditLog audit)
         TimeSpan gracePeriod,
         CancellationToken cancellationToken)
     {
-        var cutoff = DateTimeOffset.UtcNow - gracePeriod;
+        var cutoff = time.GetUtcNow() - gracePeriod;
 
         var claimed = await db.Operations
             .FromSql($"""

@@ -1,4 +1,6 @@
-namespace Lakewright.Databricks;
+using Lakewright.Core.Tenancy;
+
+namespace Lakewright.Core.Jobs;
 
 /// <summary>
 /// The state of a Lakeflow job run, as this application understands it.

@@ -16,7 +16,7 @@ namespace Lakewright.Multitenancy;
 /// one. The claim is now true because this type exists and is called from the write paths, which is
 /// a different thing from the schema being append-only — that part was always real.
 /// </remarks>
-public sealed class AuditLog(LakewrightDbContext db)
+public sealed class AuditLog(LakewrightDbContext db, TimeProvider time)
 {
     public void Record(
         TenantId? tenant,
@@ -36,7 +36,7 @@ public sealed class AuditLog(LakewrightDbContext db)
             Action = action,
             ResourceType = resourceType,
             ResourceId = resourceId,
-            OccurredAt = DateTimeOffset.UtcNow,
+            OccurredAt = time.GetUtcNow(),
             Detail = detail
         });
     }

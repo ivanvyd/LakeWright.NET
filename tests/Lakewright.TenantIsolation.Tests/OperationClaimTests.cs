@@ -34,7 +34,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         });
         await db.SaveChangesAsync();
 
-        var store = new OperationStore(db, new AuditLog(db));
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
         for (var i = 0; i < operations; i++)
         {
             await store.CreateAsync(Ctx(), "auth0|alice", "analysis", clientRequestId: null, CancellationToken.None);
@@ -49,7 +49,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 0);
-        var store = new OperationStore(db, new AuditLog(db));
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
 
         // Act
         var claimed = await store.ClaimNextAsync(ct);
@@ -64,7 +64,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
-        var store = new OperationStore(db, new AuditLog(db));
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
 
         // Act
         var first = await store.ClaimNextAsync(ct);
@@ -97,7 +97,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         await Task.WhenAll(Enumerable.Range(0, Workers).Select(async _ =>
         {
             await using var db = PostgresFixture.ContextFor(connectionString);
-            var store = new OperationStore(db, new AuditLog(db));
+            var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
 
             while (await store.ClaimNextAsync(ct) is { } operation)
             {
@@ -118,7 +118,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         // compute after their access was cut off.
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
-        var store = new OperationStore(db, new AuditLog(db));
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
         var acme = await db.Organizations.FindAsync([AcmeId], ct);
         acme!.State = OrganizationState.Suspended;
         await db.SaveChangesAsync(ct);
@@ -142,7 +142,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         // reconciliation claim was missing the organization join that ClaimNextAsync has.
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
-        var store = new OperationStore(db, new AuditLog(db));
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
         await store.ClaimNextAsync(ct);
         var acme = await db.Organizations.FindAsync([AcmeId], ct);
         acme!.State = OrganizationState.Suspended;
@@ -173,7 +173,7 @@ public class OperationClaimTests(PostgresFixture postgres)
             $"UPDATE organizations SET \"Schema\" = 'legacy_schema_name' WHERE \"Id\" = {AcmeId.Value}",
             ct);
         db.ChangeTracker.Clear();
-        var store = new OperationStore(db, new AuditLog(db));
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
 
         // Act
         var resolved = await store.ResolveClaimedTenantAsync(AcmeId, "analytics", ct);
@@ -191,7 +191,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         // both can reach CompleteAsync. The first to arrive should win.
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
-        var store = new OperationStore(db, new AuditLog(db));
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
         var claimed = await store.ClaimNextAsync(ct);
 
         // Act
@@ -211,7 +211,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
-        var store = new OperationStore(db, new AuditLog(db));
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
         var claimed = await store.ClaimNextAsync(ct);
 
         // Act
@@ -232,7 +232,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         // external id. Nothing else in the system can tell that run exists.
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
-        var store = new OperationStore(db, new AuditLog(db));
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
         var claimed = await store.ClaimNextAsync(ct);
 
         // Act
@@ -254,7 +254,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         // re-submit, and the second would race the first's RecordExternalIdAsync.
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
-        var store = new OperationStore(db, new AuditLog(db));
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
         await store.ClaimNextAsync(ct);
 
         // Act
@@ -275,7 +275,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         // a Running row, so a rolling deploy mid-poll left it Running with no end.
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
-        var store = new OperationStore(db, new AuditLog(db));
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
         var claimed = await store.ClaimNextAsync(ct);
         await store.RecordExternalIdAsync(Ctx(), claimed!.Id, "994455", ct);
 
@@ -297,7 +297,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         // operation would be reclaimed forever.
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres, operations: 1);
-        var store = new OperationStore(db, new AuditLog(db));
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
         var claimed = await store.ClaimNextAsync(ct);
         await store.RecordExternalIdAsync(Ctx(), claimed!.Id, "994455", ct);
 
