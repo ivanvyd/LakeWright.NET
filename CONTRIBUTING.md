@@ -25,9 +25,12 @@ To run something rather than test it, start the sample. It needs Docker and noth
 
 ```bash
 cd samples/Signalboard
-docker compose up -d
+docker compose up -d postgres
 dotnet run
 ```
+
+`docker compose up` on its own builds and runs the application too, which is the path to check
+before opening a pull request that touches the sample.
 
 Then open <http://localhost:8080> and sign in as one of the three seeded people. See
 [samples/Signalboard/README.md](samples/Signalboard/README.md). The Databricks side is separately

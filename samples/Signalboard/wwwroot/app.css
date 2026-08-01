@@ -86,6 +86,10 @@ th { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color
 /* Wide content scrolls inside its own box rather than making the page scroll sideways. */
 .operations { display: block; overflow-x: auto; white-space: nowrap; }
 
+/* The address is the one column you are meant to copy, so it wraps rather than being clipped by
+   the scroller. Two lines beats a path that ends in an ellipsis. */
+.operations td.address { white-space: normal; word-break: break-all; min-width: 22rem; }
+
 .cta, button, .link {
     font: inherit;
     border: 1px solid var(--accent);

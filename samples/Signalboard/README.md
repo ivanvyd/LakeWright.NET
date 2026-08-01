@@ -6,12 +6,28 @@ three people, a dashboard, and an API you can drive from a terminal.
 ## Run it
 
 ```bash
-docker compose up -d
+docker compose up
+```
+
+Open <http://localhost:8080> and sign in as one of the three seeded people. Docker is the only
+requirement — no .NET SDK, no Databricks workspace.
+
+To work on the code instead, run the database in a container and the application on your machine:
+
+```bash
+docker compose up -d postgres
 dotnet run
 ```
 
-Open <http://localhost:8080> and sign in as one of the three seeded people. You need Docker and the
-.NET 10 SDK. You do not need a Databricks workspace.
+The image is a chiseled .NET runtime: 56 MB, no shell, no package manager, and a non-root user. The
+application exposes `/health`, which reports the database connection; there is no container
+healthcheck because an image with no shell cannot probe itself, and Kubernetes and Azure Container
+Apps both call `/health` from outside anyway.
+
+![The Signalboard dashboard, scoped to Acme Logistics](../../docs/images/signalboard-dashboard.png)
+
+The operations belonging to the organization you signed in as, and nothing else. The address column
+is the API path for each one — copy it and ask for it as someone from the other organization.
 
 ## What it demonstrates
 
@@ -22,6 +38,11 @@ before authorization runs, so the request stops at tenant resolution.
 **Roles are a floor inside a tenant, not the isolation boundary.** Vera is a Viewer at Acme. She
 gets 403 on a write, because she is a member and the tenant resolved. Two different denials, two
 different status codes, for two different reasons.
+
+| Vera, a Viewer at Acme | Bob, an Admin at Globex |
+|---|---|
+| ![Vera sees Acme's work and is told why she cannot start any](../../docs/images/signalboard-viewer-denied.png) | ![Bob's dashboard is empty](../../docs/images/signalboard-other-tenant.png) |
+| She reads everything Acme has, and the control to start work is disabled with the reason stated. Hiding it would not be an authorization control, so the API refuses her too. | Same application, same code path, different membership. Acme's work is not hidden from Bob; as far as his session is concerned it does not exist. |
 
 **Isolation does not depend on authentication.** Signing in picks a name from a list and believes
 it. You still cannot read another organization's data, because membership comes from the database

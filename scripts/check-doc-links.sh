@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# Fails if any relative markdown link points at a file that does not exist.
+# Fails if any relative markdown link or image points at a file that does not exist.
 #
 # Documentation rots by link before it rots by content, and a compliance document referencing an
 # evidence artifact that was never written is the specific failure this catches: the SOC 2 mapping
 # pointed at docs/compliance/permissions.md for a while, and nothing noticed.
+#
+# Images are checked for the same reason and were not, until the README grew screenshots. A broken
+# image renders as alt text, which reads as a deliberate caption rather than as a mistake.
 set -uo pipefail
 
 missing=0
@@ -13,7 +16,8 @@ for file in $(find . -name '*.md' -not -path './.git/*'); do
   dir=$(dirname "$file")
 
   # grep exits 1 on no matches, which is normal for a file with no links.
-  targets=$(grep -oE '\]\([^)#]+\.md[^)]*\)' "$file" 2>/dev/null | sed -E 's/^\]\(//; s/\)$//; s/#.*$//') || true
+  targets=$(grep -oE '\]\([^)#]+\.(md|png|jpg|jpeg|svg|gif)[^)]*\)' "$file" 2>/dev/null \
+    | sed -E 's/^\]\(//; s/\)$//; s/#.*$//') || true
   [ -z "$targets" ] && continue
 
   while IFS= read -r target; do
@@ -33,4 +37,4 @@ if [ "$missing" -ne 0 ]; then
   exit 1
 fi
 
-echo "$checked relative documentation links, all resolve."
+echo "$checked relative documentation links and images, all resolve."

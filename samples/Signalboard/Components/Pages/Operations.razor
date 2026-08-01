@@ -3,19 +3,20 @@
 @rendermode InteractiveServer
 @implements IDisposable
 @inject TenantWorkspace Workspace
+@inject PersistentComponentState PageState
 
 <PageTitle>Operations — Signalboard</PageTitle>
 
-@if (_workspace is null)
+@if (_view is null)
 {
     <p>Loading.</p>
 }
 else
 {
-    <h1>@_workspace.Organization</h1>
+    <h1>@_view.Organization</h1>
 
     <p class="scope">
-        Everything below belongs to @_workspace.Organization. There is no query in this page that
+        Everything below belongs to @_view.Organization. There is no query in this page that
         could return anything else: the operation store takes a resolved tenant and filters on it.
     </p>
 
@@ -25,12 +26,16 @@ else
             <option value="analysis">analysis</option>
             <option value="export">export</option>
         </select>
-        <button type="submit" disabled="@(_starting || !_workspace.CanStart)">Start</button>
-        @if (!_workspace.CanStart)
+        <button type="submit" disabled="@(_starting || !_interactive || !_view.CanStart)">Start</button>
+        @if (!_view.CanStart)
         {
             <span class="denied">
-                You are a @_workspace.Role. Starting work needs Member or above.
+                You are a @_view.Role. Starting work needs Member or above.
             </span>
+        }
+        else if (!_interactive)
+        {
+            <span class="hint">Connecting.</span>
         }
     </form>
 
@@ -39,7 +44,7 @@ else
         <p class="denied" role="alert">@_error</p>
     }
 
-    @if (_operations.Count == 0)
+    @if (_view.Operations.Count == 0)
     {
         <p>Nothing yet. Start one.</p>
     }
@@ -50,14 +55,14 @@ else
                 <tr><th>Started</th><th>Kind</th><th>State</th><th>By</th><th>Address</th></tr>
             </thead>
             <tbody>
-                @foreach (var operation in _operations)
+                @foreach (var operation in _view.Operations)
                 {
                     <tr>
                         <td>@operation.CreatedAt.ToLocalTime().ToString("HH:mm:ss")</td>
                         <td>@operation.Kind</td>
                         <td><span class="state @operation.State.ToString().ToLowerInvariant()">@operation.State</span></td>
                         <td>@DemoTenants.NameOf(operation.PrincipalId)</td>
-                        <td><code>@_workspace.AddressOf(operation.Id)</code></td>
+                        <td class="address"><code>@_view.AddressOf(operation.Id)</code></td>
                     </tr>
                 }
             </tbody>
@@ -72,18 +77,62 @@ else
 }
 
 @code {
-    private readonly List<OperationRow> _operations = [];
-    private TenantWorkspace.Scope? _workspace;
+    private const string StateKey = nameof(Operations);
+
+    private DashboardView? _view;
+    private TenantWorkspace.Scope? _scope;
     private string _kind = "analysis";
+    private bool _interactive;
     private bool _starting;
     private string? _error;
     private readonly CancellationTokenSource _closed = new();
+    private PersistingComponentStateSubscription _persisting;
 
+    /// <summary>
+    /// Renders from prerendered state when there is any, and refreshes behind it.
+    /// </summary>
+    /// <remarks>
+    /// This runs twice per visit: once while prerendering, once when the circuit starts. Without
+    /// the handover the second pass begins with nothing, so every visitor saw the page, then
+    /// "Loading.", then the page again. Prerendering also queried the database for a result that
+    /// was then thrown away.
+    ///
+    /// Only the view crosses over. <see cref="TenantWorkspace.Scope"/> holds a
+    /// <c>TenantContext</c>, which exists precisely because membership was checked, and shipping
+    /// one through the client would make it a claim again.
+    /// </remarks>
     protected override async Task OnInitializedAsync()
     {
-        _workspace = await Workspace.CurrentAsync(_closed.Token);
+        _persisting = PageState.RegisterOnPersisting(Persist);
+
+        if (PageState.TryTakeFromJson<DashboardView>(StateKey, out var prerendered))
+        {
+            _view = prerendered;
+        }
+
+        _scope = await Workspace.CurrentAsync(_closed.Token);
         await RefreshAsync();
+
         _ = PollAsync();
+    }
+
+    private Task Persist()
+    {
+        if (_view is not null) { PageState.PersistAsJson(StateKey, _view); }
+        return Task.CompletedTask;
+    }
+
+    /// <remarks>
+    /// Runs only once the circuit is live, which is what makes it the signal that the page is
+    /// interactive. The prerendered pass shows the same button, and a click on it goes nowhere
+    /// because no circuit exists yet to receive the event — so it stays disabled until this fires.
+    /// </remarks>
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender || _interactive) { return; }
+
+        _interactive = true;
+        StateHasChanged();
     }
 
     private async Task PollAsync()
@@ -108,22 +157,26 @@ else
 
     private async Task RefreshAsync()
     {
-        if (_workspace is null) { return; }
+        if (_scope is null) { return; }
 
-        _operations.Clear();
-        _operations.AddRange(await Workspace.RecentAsync(_workspace, _closed.Token));
+        _view = new DashboardView(
+            _scope.Organization,
+            _scope.Role.ToString(),
+            _scope.CanStart,
+            _scope.Tenant.TenantId.Value,
+            await Workspace.RecentAsync(_scope, _closed.Token));
     }
 
     private async Task StartAsync()
     {
-        if (_workspace is null || _starting) { return; }
+        if (_scope is null || _starting) { return; }
 
         _starting = true;
         _error = null;
 
         try
         {
-            await Workspace.StartAsync(_workspace, _kind, _closed.Token);
+            await Workspace.StartAsync(_scope, _kind, _closed.Token);
             await RefreshAsync();
         }
         catch (TenantWorkspace.RoleDeniedException e)
@@ -139,7 +192,20 @@ else
 
     public void Dispose()
     {
+        _persisting.Dispose();
         _closed.Cancel();
         _closed.Dispose();
+    }
+
+    /// <summary>What the page draws, and the only thing it hands from prerender to the circuit.</summary>
+    private sealed record DashboardView(
+        string Organization,
+        string Role,
+        bool CanStart,
+        Guid TenantId,
+        IReadOnlyList<OperationRow> Operations)
+    {
+        public string AddressOf(Guid operationId) =>
+            $"/organizations/{TenantId}/operations/{operationId}";
     }
 }
