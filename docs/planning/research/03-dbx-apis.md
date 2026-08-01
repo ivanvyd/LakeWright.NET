@@ -652,7 +652,9 @@ Works:
 
 Caveats:
 1. **Account-level OAuth is out.** The account token endpoint `accounts.cloud.databricks.com/oidc/accounts/<id>/v1/token` is an account-level API. **Only the workspace-level flow (`https://<instance>/oidc/v1/token`) can work.** **[INFER]** from "no account-level APIs" — not stated explicitly.
-2. **Service principals + OAuth secrets: [UNDOC] for Free Edition.** The Free Edition page never mentions service principals. Workspace admins *can* generate SP OAuth secrets in workspace settings on the general platform, so it plausibly works — but **this is unverified and it is the single highest-risk assumption for the "OSS contributor runs the sample" story.** Test it on a real Free Edition account before the README depends on it. If it fails, contributors are limited to their own user identity (PAT or U2M), which changes the sample's auth story.
+2. **Service principals + OAuth secrets: RESOLVED NEGATIVE for Free Edition (2026-08-01).** Databricks confirmed on the community forum that service principal OAuth depends on account-level identity infrastructure, which Free Edition does not expose. The original note below was written before that answer existed and is kept for the reasoning.
+
+   Original note: **[UNDOC] for Free Edition.** The Free Edition page never mentions service principals. Workspace admins *can* generate SP OAuth secrets in workspace settings on the general platform, so it plausibly works — but **this is unverified and it is the single highest-risk assumption for the "OSS contributor runs the sample" story.** Test it on a real Free Edition account before the README depends on it. If it fails, contributors are limited to their own user identity (PAT or U2M), which changes the sample's auth story.
 3. **"May not be used for commercial purposes."** Fine for contributors learning the accelerator; **not** fine as the runtime for anything an adopter ships. The README must say this plainly.
 4. **Restricted outbound internet** from Free Edition compute may break samples that call external services from inside a notebook/job (unless LinkedIn-verified).
 

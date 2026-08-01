@@ -9,7 +9,7 @@ Ordered by expected damage, not by likelihood.
 | 1 | The addressable market is the intersection of .NET-first, Databricks-standardised, and selling customer-facing analytics, and that intersection is small | Each set is large; the overlap is unmeasured | Size the project for one maintainer. Make each module useful alone so partial adoption counts | Publish the tenancy finding as an article before writing the code and measure whether anyone cares |
 | 2 | Databricks fills the quadrant | AppKit, App Spaces, Genie App Builder and Marketplace Apps all shipped or previewed within 14 months | Position on the structural gap (external customers) rather than the feature gap | Re-read the Apps external-access documentation each release. If public access ships, re-evaluate the project |
 | 3 | Preview churn outruns a solo maintainer | Query tags, AI/BI external embedding, Genie Conversation API, App Spaces and Apps user authorization are all Public Preview | Compatibility matrix with verification dates. Depend on GA surfaces on the critical path | A scheduled CI job that runs live smoke tests weekly and opens an issue on failure |
-| 4 | Free Edition cannot run the sample | Service principal and OAuth secret support on Free Edition is undocumented; account-level APIs are unavailable | Week-one spike with a stated fallback to user identity | Create a Free Edition account and try it. Half a day |
+| 4 | ~~Free Edition cannot run the sample~~ | **Retired 2026-08-01.** Service principal OAuth genuinely does not work on Free Edition — Databricks confirmed account-level identity infrastructure is required and absent. The risk is retired rather than mitigated: the sample runs on a Postgres container, so no workspace is needed to contribute | — | — |
 | 5 | The secretless auth claim does not survive contact | Managed identity to Databricks is documented on both sides but unexecuted here | Week-one spike. Withdraw the claim rather than qualify it | Deploy a minimal Container App and call one REST endpoint |
 | 6 | The tenancy finding is wrong or already widely known | It is the project's central claim | It is sourced to Databricks' own documentation. If it is well known, the value shifts to the implementation | Search for prior art before publishing. If someone got there first, cite them |
 | 7 | Scope grows into a generic .NET SaaS framework | The most common failure mode for accelerators | Written scope test in GOVERNANCE.md; the feature template asks the question | Count the issues declined. Zero declined means the test is not being applied |
@@ -23,9 +23,7 @@ Ordered so that the risky things are settled before anything is built on them.
 
 ### Spikes, week 1, all with kill conditions
 
-1. **Verify service principal auth on Databricks Free Edition.** Create an account, create a service
-   principal, generate an OAuth secret, call the workspace token endpoint and one REST endpoint.
-   Kill condition: if it fails, the contributor auth story becomes user identity and the README says so.
+1. ~~Verify service principal auth on Databricks Free Edition.~~ **Done 2026-08-01 from the vendor's own answer rather than a signup: it does not work, and no longer matters.**
 2. **Verify managed identity to Azure Databricks.** Minimal Container App, user-assigned identity,
    Entra token for `2ff814a6-3304-4ab8-85cb-cd0e6f879c1d`, one REST call. Kill condition: withdraw
    the secretless claim.
