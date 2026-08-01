@@ -90,7 +90,29 @@ and chargeback after the fact. A concurrency ceiling is the control that acts in
 ceiling is the control an auditor asks for, and this project has the first and not the second.
 
 Nothing here caps the *cost of one query*. A single operation against a large warehouse is bounded
-only by the run timeout.
+only by the run timeout — which now cancels the run rather than merely abandoning it, so the
+timeout is a real ceiling on a single operation's spend rather than a ceiling on how long anyone
+watches it.
+
+**What a currency budget would take, established 2026-08-01 rather than assumed.** Two things
+block it, and neither is the code anyone would write first:
+
+The tenant does not reach the compute in a form billing can see. `TenantScopedJobRun` passes
+`lakewright_tenant_id` as a *job parameter*, and Databricks attributes usage in
+`system.billing.usage` by `custom_tags`, which come from the job or cluster definition, not from
+per-run parameters. Tagging per run is not available on `RunNow`, and a job per tenant does not
+scale. So attribution has to go the other way: join `system.billing.usage` to a run id, and join
+that run id to `operations.ExternalId`, which this project already stores. The tenant identity
+lives in our database, not in theirs, and that is the correct place for it.
+
+Reading those tables needs a grant this project does not have. Querying `system.billing.usage` as
+the workspace identity returns `INSUFFICIENT_PERMISSIONS: User does not have USE SCHEMA on Schema
+'system.billing'`. It is a metastore-admin grant, so the prerequisite for cost attribution is an
+administrative decision rather than a feature.
+
+Until both are settled, this stays partly mitigated and says so. Attribution by elapsed compute
+time — which the `operations` table already holds, in `ClaimedAt` and `CompletedAt` — is available
+without any of that, and is a proxy for cost rather than cost.
 
 ### T6. Denial of service against the operation queue
 
