@@ -19,6 +19,9 @@ namespace Lakewright.AspNetCore;
 /// </remarks>
 public static class OperationEndpoints
 {
+    /// <summary>The header a caller sends to make a retried start safe.</summary>
+    public const string IdempotencyKeyHeader = "Idempotency-Key";
+
     public static IEndpointRouteBuilder MapLakewrightOperations(this IEndpointRouteBuilder routes)
     {
         ArgumentNullException.ThrowIfNull(routes);
@@ -47,6 +50,10 @@ public static class OperationEndpoints
     /// 202 rather than 200 because nothing has happened yet beyond a row being written. The
     /// Statement Execution API caps a synchronous wait at 50 seconds, so anything real is
     /// asynchronous whether the API admits it or not.
+    ///
+    /// Send an <c>Idempotency-Key</c> and a retried POST returns the original operation instead of
+    /// starting a second Databricks run. A replay answers 202 with the same body, because a caller
+    /// that cannot distinguish the replay from the original is exactly the point.
     /// </remarks>
     private static async Task<IResult> StartAsync(
         HttpContext http,
@@ -66,12 +73,53 @@ public static class OperationEndpoints
             });
         }
 
-        var operation = await store.CreateAsync(tenant, principalId, request.Kind, cancellationToken);
+        if (!TryReadIdempotencyKey(http, out var clientRequestId))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                [IdempotencyKeyHeader] =
+                    [$"Must be 1 to {OperationStore.MaxClientRequestIdLength} characters."]
+            });
+        }
+
+        var operation = await store.CreateAsync(
+            tenant, principalId, request.Kind, clientRequestId, cancellationToken);
+
+        // Returning the stored operation for a key the caller reused with different content would
+        // answer a question it did not ask. RFC 9110 has no status for this; the Idempotency-Key
+        // draft settles on 422, and a 409 would suggest retrying with the same key helps.
+        if (!string.Equals(operation.Kind, request.Kind, StringComparison.Ordinal))
+        {
+            return Results.Problem(
+                title: "Idempotency key reused",
+                detail: $"This key already started an operation of kind '{operation.Kind}'.",
+                statusCode: StatusCodes.Status422UnprocessableEntity);
+        }
 
         return Results.AcceptedAtRoute(
             "GetOperation",
             new { organizationId = tenant.TenantId.Value, operationId = operation.Id },
             OperationResponse.From(operation));
+    }
+
+    private static bool TryReadIdempotencyKey(HttpContext http, out string? key)
+    {
+        key = null;
+
+        if (!http.Request.Headers.TryGetValue(IdempotencyKeyHeader, out var values))
+        {
+            return true;
+        }
+
+        var value = values.ToString();
+
+        if (string.IsNullOrWhiteSpace(value) || value.Length > OperationStore.MaxClientRequestIdLength)
+        {
+            return false;
+        }
+
+        key = value;
+        return true;
     }
 
     /// <summary>

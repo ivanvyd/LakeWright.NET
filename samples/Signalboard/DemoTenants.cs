@@ -35,13 +35,19 @@ public static class DemoTenants
         db.Organizations.AddRange(
             new Organization
             {
-                Id = Acme, Name = "Acme Logistics", Slug = "acme", CreatedAt = now,
+                Id = Acme,
+                Name = "Acme Logistics",
+                Slug = "acme",
+                CreatedAt = now,
                 Schema = UnityCatalogIdentifier.SchemaForTenant(Acme),
                 State = OrganizationState.Active
             },
             new Organization
             {
-                Id = Globex, Name = "Globex Freight", Slug = "globex", CreatedAt = now,
+                Id = Globex,
+                Name = "Globex Freight",
+                Slug = "globex",
+                CreatedAt = now,
                 Schema = UnityCatalogIdentifier.SchemaForTenant(Globex),
                 State = OrganizationState.Active
             });

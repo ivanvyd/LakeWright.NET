@@ -37,7 +37,7 @@ public class OperationClaimTests(PostgresFixture postgres)
         var store = new OperationStore(db);
         for (var i = 0; i < operations; i++)
         {
-            await store.CreateAsync(Ctx(), "auth0|alice", "analysis", CancellationToken.None);
+            await store.CreateAsync(Ctx(), "auth0|alice", "analysis", clientRequestId: null, CancellationToken.None);
         }
 
         return db;

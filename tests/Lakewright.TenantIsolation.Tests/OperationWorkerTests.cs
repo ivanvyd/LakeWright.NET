@@ -111,7 +111,7 @@ public class OperationWorkerTests(PostgresFixture postgres)
         await using (var scope = provider.CreateAsyncScope())
         {
             var store = scope.ServiceProvider.GetRequiredService<OperationStore>();
-            await store.CreateAsync(Ctx(), "auth0|alice", "analysis", ct);
+            await store.CreateAsync(Ctx(), "auth0|alice", "analysis", clientRequestId: null, ct);
         }
 
         // Act
@@ -143,7 +143,7 @@ public class OperationWorkerTests(PostgresFixture postgres)
         await using (var scope = provider.CreateAsyncScope())
         {
             var store = scope.ServiceProvider.GetRequiredService<OperationStore>();
-            var created = await store.CreateAsync(Ctx(), "auth0|alice", "analysis", ct);
+            var created = await store.CreateAsync(Ctx(), "auth0|alice", "analysis", clientRequestId: null, ct);
             idempotencyKey = created.IdempotencyKey;
 
             var claimed = await store.ClaimNextAsync(ct);
@@ -182,7 +182,7 @@ public class OperationWorkerTests(PostgresFixture postgres)
         await using (var scope = provider.CreateAsyncScope())
         {
             await scope.ServiceProvider.GetRequiredService<OperationStore>()
-                .CreateAsync(Ctx(), "auth0|alice", "analysis", ct);
+                .CreateAsync(Ctx(), "auth0|alice", "analysis", clientRequestId: null, ct);
         }
 
         // Act
@@ -211,7 +211,7 @@ public class OperationWorkerTests(PostgresFixture postgres)
         await using (var scope = provider.CreateAsyncScope())
         {
             await scope.ServiceProvider.GetRequiredService<OperationStore>()
-                .CreateAsync(Ctx(), "auth0|alice", "analysis", ct);
+                .CreateAsync(Ctx(), "auth0|alice", "analysis", clientRequestId: null, ct);
         }
 
         // Act
