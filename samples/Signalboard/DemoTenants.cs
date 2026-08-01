@@ -2,6 +2,8 @@ using Lakewright.Core.Tenancy;
 using Lakewright.Multitenancy;
 using Lakewright.Multitenancy.Model;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Signalboard;
 
@@ -26,7 +28,7 @@ public static class DemoTenants
         await using var scope = services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<LakewrightDbContext>();
 
-        await db.Database.EnsureCreatedAsync();
+        await CreateSchemaAsync(db);
 
         if (await db.Organizations.AnyAsync()) { return; }
 
@@ -58,6 +60,32 @@ public static class DemoTenants
             Member(Globex, Bob, MembershipRole.Admin, now));
 
         await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Creates the tables, whether or not the database is already there.
+    /// </summary>
+    /// <remarks>
+    /// <c>EnsureCreatedAsync</c> alone is not enough: it does nothing when the database exists, and
+    /// compose creates <c>lakewright</c> through <c>POSTGRES_DB</c>. The result was an application
+    /// that started and then answered 500 to everything, which is how this was found.
+    ///
+    /// A product uses migrations. A sample wants one command and no migration history to explain,
+    /// so it asks EF for the tables directly.
+    /// </remarks>
+    private static async Task CreateSchemaAsync(LakewrightDbContext db)
+    {
+        var creator = db.GetService<IRelationalDatabaseCreator>();
+
+        if (!await creator.ExistsAsync())
+        {
+            await creator.CreateAsync();
+        }
+
+        if (!await creator.HasTablesAsync())
+        {
+            await creator.CreateTablesAsync();
+        }
     }
 
     private static Membership Member(TenantId tenant, string principal, MembershipRole role, DateTimeOffset now) =>
