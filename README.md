@@ -1,5 +1,9 @@
 # LakeWright.NET
 
+[![CI](https://github.com/ivanvyd/LakeWright.NET/actions/workflows/ci.yml/badge.svg)](https://github.com/ivanvyd/LakeWright.NET/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![.NET](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](global.json)
+
 The build kit for multi-tenant .NET SaaS on Databricks.
 
 An opinionated reference architecture and a small set of reusable components for teams that sell
