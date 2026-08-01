@@ -9,6 +9,7 @@
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="Shouldly" />
     <PackageReference Include="NSubstitute" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="WireMock.Net" />
@@ -17,6 +18,7 @@
     <ProjectReference Include="..\..\src\Lakewright.Core\Lakewright.Core.csproj" />
     <ProjectReference Include="..\..\src\Lakewright.Multitenancy\Lakewright.Multitenancy.csproj" />
     <ProjectReference Include="..\..\src\Lakewright.Databricks\Lakewright.Databricks.csproj" />
+    <ProjectReference Include="..\..\src\Lakewright.AspNetCore\Lakewright.AspNetCore.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />
