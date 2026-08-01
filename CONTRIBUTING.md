@@ -43,14 +43,27 @@ git updates its index but leaves the directories at their old casing, so `dotnet
 working while a Docker build fails with types it cannot find — the container filesystem is
 case-sensitive and the project references no longer resolve.
 
-Check with `ls src` and fix by renaming through a temporary name:
+Check every directory git tracks, not just `src` — the projects live under `src`, `tests` and
+`samples`, and a remedy naming only one of them leaves the others stale.
 
 ```bash
-cd src
-for d in Lakewright.*; do mv "$d" "${d}__tmp" && mv "${d}__tmp" "${d/Lakewright/LakeWright}"; done
+ls src tests samples
 ```
 
-A fresh clone is unaffected.
+Anything spelled `Lakewright.*` rather than `LakeWright.*` is stale. Do not reach for a scripted
+`[ -e "$path" ]` check: the shell asks the filesystem, and the filesystem is the thing being
+case-insensitive, so it answers yes for a directory whose real name differs only in case. Reading
+the listing is both simpler and correct.
+
+Fix each one by renaming through a temporary name, which is what makes a case-only rename take
+effect at all:
+
+```bash
+mv tests/Lakewright.TenantIsolation.Tests tests/tmp__
+mv tests/tmp__ tests/LakeWright.TenantIsolation.Tests
+```
+
+A fresh clone is unaffected, which is why CI never sees this.
 
 Tests tagged `Category=Live` need a real workspace and create real resources. None exist yet; the
 live verification done so far is recorded in [docs/compatibility.md](docs/compatibility.md).
