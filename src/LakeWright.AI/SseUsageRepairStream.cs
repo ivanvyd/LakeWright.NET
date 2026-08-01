@@ -44,7 +44,7 @@ internal sealed class SseUsageRepairStream(Stream inner) : Stream
     public override async ValueTask<int> ReadAsync(
         Memory<byte> buffer, CancellationToken cancellationToken = default)
     {
-        if (!await EnsurePendingAsync().ConfigureAwait(false)) { return 0; }
+        if (!await EnsurePendingAsync(cancellationToken).ConfigureAwait(false)) { return 0; }
 
         var taken = Math.Min(buffer.Length, _pending.Length - _offset);
         _pending.AsMemory(_offset, taken).CopyTo(buffer);
@@ -66,11 +66,21 @@ internal sealed class SseUsageRepairStream(Stream inner) : Stream
         return true;
     }
 
-    private async ValueTask<bool> EnsurePendingAsync()
+    private async ValueTask<bool> EnsurePendingAsync(CancellationToken cancellationToken)
     {
         while (_offset >= _pending.Length)
         {
-            if (await _reader.ReadLineAsync().ConfigureAwait(false) is not { } line) { return false; }
+            // The token has to reach here, not just the public signature. The read that blocks is
+            // this one: it waits on the network for the next chunk, and a caller cancelling a
+            // streaming completion is waiting on exactly it.
+            //
+            // Dropping it again does not compile: CA2016 fires under TreatWarningsAsErrors. The
+            // original bug got through because EnsurePendingAsync took no token at all, so there
+            // was nothing for the analyser to notice was unforwarded.
+            if (await _reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is not { } line)
+            {
+                return false;
+            }
             Load(line);
         }
 
