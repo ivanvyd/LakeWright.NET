@@ -1,7 +1,7 @@
 using System.Security.Claims;
-using Lakewright.Core.Tenancy;
-using Lakewright.Multitenancy;
-using Lakewright.Multitenancy.Model;
+using LakeWright.Core.Tenancy;
+using LakeWright.Multitenancy;
+using LakeWright.Multitenancy.Model;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,7 +11,7 @@ namespace Signalboard;
 /// What the dashboard is allowed to see and do, for whoever is signed in.
 /// </summary>
 /// <remarks>
-/// The dashboard runs on the server, so it could reach <see cref="LakewrightDbContext"/> directly
+/// The dashboard runs on the server, so it could reach <see cref="LakeWrightDbContext"/> directly
 /// and query whatever it liked. It goes through <see cref="ITenantContextResolver"/> and
 /// <see cref="OperationStore"/> instead, which is the whole point: the page gets a
 /// <see cref="TenantContext"/> only because the resolver confirmed membership, and the store
@@ -19,12 +19,12 @@ namespace Signalboard;
 /// into tenant data sitting beside the guarded one.
 ///
 /// Role is checked here as well as in the API. The dashboard does not go through
-/// <c>MapLakewrightOperations</c>, so the endpoint's authorization policy never runs for it, and a
+/// <c>MapLakeWrightOperations</c>, so the endpoint's authorization policy never runs for it, and a
 /// UI that only hides the button is not an authorization control.
 /// </remarks>
 public sealed class TenantWorkspace(
     AuthenticationStateProvider authentication,
-    LakewrightDbContext db,
+    LakeWrightDbContext db,
     ITenantContextResolver resolver,
     OperationStore operations)
 {
@@ -33,6 +33,10 @@ public sealed class TenantWorkspace(
     {
         /// <summary>Roles are a floor, so Member and Admin both qualify.</summary>
         public bool CanStart => Role >= MembershipRole.Member;
+
+        /// <summary>Where the API serves this operation, which is not where the dashboard lives.</summary>
+        public string AddressOf(Guid operationId) =>
+            $"/organizations/{Tenant.TenantId.Value}/operations/{operationId}";
     }
 
     /// <summary>Thrown where the API would answer 403.</summary>

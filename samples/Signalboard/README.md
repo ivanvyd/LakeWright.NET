@@ -1,6 +1,6 @@
 # Signalboard
 
-A two-tenant sample that demonstrates what Lakewright.NET actually enforces. Two organizations,
+A two-tenant sample that demonstrates what LakeWright.NET actually enforces. Two organizations,
 three people, a dashboard, and an API you can drive from a terminal.
 
 ## Run it

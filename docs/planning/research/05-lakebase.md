@@ -1,4 +1,4 @@
-# 05 — Lakebase vs plain managed Postgres for Lakewright.NET transactional state
+# 05 — Lakebase vs plain managed Postgres for LakeWright.NET transactional state
 
 **Research date: 2026-07-31.** All "observed" dates below are 2026-07-31 unless stated otherwise.
 Status labels (GA / Public Preview / Beta) are copied from the cited page as it read on that date.

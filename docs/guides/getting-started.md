@@ -36,26 +36,26 @@ builder.Services
     .AddAuthentication(/* your identity provider */)
     .AddOpenIdConnect(/* ... */);
 
-builder.Services.AddLakewright(builder.Configuration);
+builder.Services.AddLakeWright(builder.Configuration);
 
 // Both are optional. Tenancy, authorization and the operations API work without Databricks;
 // add these when you want queries and jobs, and omit the worker in a web-only process.
-builder.Services.AddLakewrightDatabricks(builder.Configuration);
-builder.Services.AddLakewrightOperationWorker(builder.Configuration);
+builder.Services.AddLakeWrightDatabricks(builder.Configuration);
+builder.Services.AddLakeWrightOperationWorker(builder.Configuration);
 
 var app = builder.Build();
 
 app.UseAuthentication();
-app.UseLakewrightTenancy();   // must run before UseAuthorization
+app.UseLakeWrightTenancy();   // must run before UseAuthorization
 app.UseAuthorization();
-app.MapLakewrightOperations();
+app.MapLakeWrightOperations();
 ```
 
-Order matters. `UseLakewrightTenancy` resolves the tenant that the authorization policies then read,
+Order matters. `UseLakeWrightTenancy` resolves the tenant that the authorization policies then read,
 so it sits between authentication and authorization. Put it elsewhere and every tenant policy fails
 closed, which is the safe direction but a confusing morning.
 
-`AddLakewrightDatabricks` validates `WorkspaceUrl` and `WarehouseId` at startup, so a half-filled
+`AddLakeWrightDatabricks` validates `WorkspaceUrl` and `WarehouseId` at startup, so a half-filled
 `Databricks` section fails immediately rather than on the first query.
 
 You register an `Azure.Core.TokenCredential`. On Azure that is `DefaultAzureCredential` backed by a
@@ -76,7 +76,7 @@ nothing to detect it.
 
 ```json
 {
-  "ConnectionStrings": { "Lakewright": "Host=...;Database=lakewright" },
+  "ConnectionStrings": { "LakeWright": "Host=...;Database=lakewright" },
   "Multitenancy": { "Catalog": "lakewright_prod" },
   "Databricks": {
     "WorkspaceUrl": "https://adb-....azuredatabricks.net",
@@ -114,6 +114,29 @@ two people in the same organization cannot collide.
 
 The key is yours and never reaches Databricks. The job idempotency token is generated server-side,
 because a caller who could choose it could choose another tenant's.
+
+## Watching it in production
+
+The library publishes plain `System.Diagnostics` instruments and takes no OpenTelemetry dependency,
+so it does not choose your exporter or its version. Subscribe with:
+
+```csharp
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(m => m.AddMeter(LakeWrightTelemetry.MeterName))
+    .WithTracing(t => t.AddSource(LakeWrightTelemetry.ActivitySourceName));
+```
+
+| Instrument | What it tells you |
+|---|---|
+| `lakewright.operations.started` | Accepted operations, by kind. A replayed idempotency key does not count. |
+| `lakewright.operations.completed` | Terminal operations, tagged with the state reached, so failure rate is a ratio of two series. |
+| `lakewright.operations.queue_wait` | Seconds from accepted to claimed. A rising p99 against a flat median is one tenant's backlog pushing everyone back. |
+| `lakewright.tenant.access_denied` | Refused tenant resolutions. These answer 404, so nothing in an access log separates them from a stale bookmark. |
+
+None of them carries a tenant identifier. It is the first tag anyone reaches for and it is a
+cardinality bomb in a system built to have many tenants: a thousand tenants turns four instruments
+into four thousand time series. Tenant lands on spans, where sampling bounds the volume, and
+per-tenant totals come from `operations` and `audit_events`.
 
 ## The audit trail
 

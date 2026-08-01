@@ -6,5 +6,5 @@
 /SECURITY.md        @ivanvyd
 
 # The controls the project's central claim rests on.
-/src/Lakewright.Multitenancy/ @ivanvyd
+/src/LakeWright.Multitenancy/ @ivanvyd
 /docs/decisions/              @ivanvyd

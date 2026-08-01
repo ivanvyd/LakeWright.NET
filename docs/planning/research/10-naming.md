@@ -1,4 +1,4 @@
-# Naming & Trademark Validation — "Lakewright.NET" (repo `lakewright-dotnet`)
+# Naming & Trademark Validation — "LakeWright.NET" (repo `lakewright-dotnet`)
 
 Research date: 2026-07-31. Researcher: R10-naming.
 **Not legal advice.** A trademark attorney must clear any name before commercial use or before
@@ -10,7 +10,7 @@ must not be read as clearance.
 Where a registry offered a machine-readable API, I used it rather than the HTML site, because the
 HTML pages are JS-rendered and the fetcher returns misleading partial content. Concretely:
 
-- `https://www.nuget.org/packages?q=Lakewright` (HTML) rendered a **false positive** —
+- `https://www.nuget.org/packages?q=LakeWright` (HTML) rendered a **false positive** —
   it reported `Microsoft.Azure.Management.DataFactory` as a result. That is an artifact of the
   fetch, not a real match. I therefore used the NuGet search API and the flat-container API.
 - For domains I used **RDAP** (the successor to WHOIS), and I validated every RDAP endpoint with a
@@ -22,16 +22,16 @@ HTML pages are JS-rendered and the fetcher returns misleading partial content. C
 
 ## 1. NuGet
 
-### Is the `Lakewright` prefix taken? — NO, it is free
+### Is the `LakeWright` prefix taken? — NO, it is free
 
 | Probe | URL | Result |
 |---|---|---|
-| Search API, all terms | `https://azuresearch-usnc.nuget.org/query?q=Lakewright&prerelease=true` | `totalHits: 1`, and the single hit is `Microsoft.Azure.Management.DataFactory` — a fuzzy token match on "lake"/"data", **not** a `Lakewright*` package |
-| Exact package ID | `https://azuresearch-usnc.nuget.org/query?q=PackageId:Lakewright.Core&prerelease=true` | `totalHits: 0` |
-| Direct package page | `https://www.nuget.org/packages/Lakewright.Core` | **HTTP 404** |
+| Search API, all terms | `https://azuresearch-usnc.nuget.org/query?q=LakeWright&prerelease=true` | `totalHits: 1`, and the single hit is `Microsoft.Azure.Management.DataFactory` — a fuzzy token match on "lake"/"data", **not** a `LakeWright*` package |
+| Exact package ID | `https://azuresearch-usnc.nuget.org/query?q=PackageId:LakeWright.Core&prerelease=true` | `totalHits: 0` |
+| Direct package page | `https://www.nuget.org/packages/LakeWright.Core` | **HTTP 404** |
 | Flat container (authoritative existence check) | `https://api.nuget.org/v3-flatcontainer/lakewright/index.json` | **HTTP 404** — package ID `lakewright` does not exist |
 
-**Conclusion: no package under the `Lakewright` prefix exists.** Confidence: HIGH. This is a genuine
+**Conclusion: no package under the `LakeWright` prefix exists.** Confidence: HIGH. This is a genuine
 404 on the authoritative flat-container endpoint plus a zero-hit exact-ID query, which is the
 standard used in the brief ("do not claim available unless you saw a 404 / no-results").
 
@@ -194,7 +194,7 @@ as a descriptor, and correspondingly **weak as a distinctive brand element**. Co
 
 "SaaS" is a purely generic industry acronym. It contributes essentially **zero** trademark
 distinctiveness. In a composite mark it is treated as descriptive matter and would typically be
-disclaimed. Consequence for `Lakewright`: the only distinctive element is "Lake" — which is itself
+disclaimed. Consequence for `LakeWright`: the only distinctive element is "Lake" — which is itself
 weak and crowded in the data space (Data Lake, Lake Formation, LakeSail, Lakehouse, LakeFS,
 Lakeside Software). **A `Lake` + generic-suffix name is a weak mark**: hard to register, hard to
 enforce, and easy to collide with. This is a brand-strategy problem more than a legal-risk problem.
@@ -342,7 +342,7 @@ unenforced against OSS libraries:
 
 The pattern is **acceptable in practice**, with conditions:
 
-1. **`.NET` must be the suffix/qualifier, never the distinctive element.** `Lakewright.NET` is fine in
+1. **`.NET` must be the suffix/qualifier, never the distinctive element.** `LakeWright.NET` is fine in
    form; `NET Lakehouse` would not be.
 2. **Your own brand leads and dominates.** This aligns with the "less prominently than your own
    brand" allowance.
@@ -350,7 +350,7 @@ The pattern is **acceptable in practice**, with conditions:
    licence — that prohibition is unambiguous and absolute in the guidelines.
 4. **Don't imply Microsoft authorship, endorsement, or that you are part of .NET itself.**
 5. Prefer the low-friction convention: use `.NET` in the human-readable project name and README
-   prose, and let the NuGet IDs be plain (`Lakewright.Core`, not `Lakewright.NET.Core`).
+   prose, and let the NuGet IDs be plain (`LakeWright.Core`, not `LakeWright.NET.Core`).
 
 Residual risk: **LOW but non-zero.** It is technically outside the letter of the guidelines, and
 Microsoft reserves the right to object. The realistic downside is a polite rename request years
@@ -383,15 +383,15 @@ each dilutes searchability and each is a "Lake…" data company):
 
 **No — and this is the strongest argument against it.** Three problems:
 
-1. **It describes the wrong thing.** "Lakewright" reads as *"a SaaS product that is a lake"* — i.e.
+1. **It describes the wrong thing.** "LakeWright" reads as *"a SaaS product that is a lake"* — i.e.
    a hosted lakehouse offering. The actual product is a **toolkit for building your own SaaS on
    someone else's lakehouse**. The name inverts the value proposition. Anyone landing on the repo
    expects a managed service and finds a library. (Compare: LakeStack, below, genuinely *is* the
    hosted-lakehouse product the name implies.)
 2. **It is hard to say and hard to type.** "Lake-Sass"? "Lake-Ess-Ay-Ay-Ess"? The internal
-   capitalisation `Lakewright` is unstable in the wild — people will write `LakeSaas`, `Lakesaas`,
+   capitalisation `LakeWright` is unstable in the wild — people will write `LakeSaas`, `Lakesaas`,
    `LakeSAAS`. That fragments search, package IDs and the repo slug (`lakewright-dotnet` vs the
-   `Lakewright.*` package prefix is already an inconsistency you'd carry forever).
+   `LakeWright.*` package prefix is already an inconsistency you'd carry forever).
 3. **"SaaS" dates the project and adds nothing.** It is a generic, faintly 2015-flavoured acronym
    that carries no distinctiveness (see §4) and tells a .NET developer nothing they wanted to know.
    The thing they care about — *multi-tenancy* — is the word that is missing.
@@ -423,14 +423,14 @@ have reached for.
 
 | # | Name | NuGet | GitHub | Web | Pro / Con |
 |---|---|---|---|---|---|
-| 1 | **LakeTenant** (`LakeTenant.NET`) | 0 hits | 0 repos (`in:name`) | no product found | **Pro:** says exactly what it is — multi-tenancy on a lakehouse; the missing word in Lakewright. Fully clean across every register; `laketenant.com` **and** `laketenant.dev` both free. **Con:** slightly utilitarian, "tenant" is jargon to non-SaaS devs. |
-| 2 | **Lakewright** (`Lakewright.NET`) | 0 hits | 0 repos | no product found | **Pro:** completely clean, genuinely brandable; "-wright" (shipwright, wheelwright) = *one who builds*, which is precisely the accelerator's job. Distinctive enough to be a real mark, unlike Lake+generic. **Con:** doesn't self-describe — needs a tagline to land; risk of being misspelled "Lakeright". |
+| 1 | **LakeTenant** (`LakeTenant.NET`) | 0 hits | 0 repos (`in:name`) | no product found | **Pro:** says exactly what it is — multi-tenancy on a lakehouse; the missing word in LakeWright. Fully clean across every register; `laketenant.com` **and** `laketenant.dev` both free. **Con:** slightly utilitarian, "tenant" is jargon to non-SaaS devs. |
+| 2 | **LakeWright** (`LakeWright.NET`) | 0 hits | 0 repos | no product found | **Pro:** completely clean, genuinely brandable; "-wright" (shipwright, wheelwright) = *one who builds*, which is precisely the accelerator's job. Distinctive enough to be a real mark, unlike Lake+generic. **Con:** doesn't self-describe — needs a tagline to land; risk of being misspelled "Lakeright". |
 | 3 | **TenantLake** | not separately probed | 0 repos (`in:name`) | no product found | **Pro:** same clarity as #1, clean. **Con:** strictly worse than LakeTenant — reads as "a lake of tenants"; NuGet not independently confirmed (infer LOW risk from the zero-hit `Tenant`/`Lake` searches, but **verify before committing**). |
 | 4 | **Lakehouse.NET** / **LakehouseKit** | 0 hits for both | — | category term, widely used | **Pro:** maximal SEO and instant comprehension for the target audience. **Con:** generic — near-zero trademark distinctiveness, unenforceable, and you compete for search results with every vendor's lakehouse marketing. Also mild (unverified) risk if anyone ever asserts LAKEHOUSE. |
 | 5 | **LakeVault** | 0 hits | 1 repo: `SinaVosooghi/LakeVault` — "governed Lakehouse platform on Azure" | no product found | **Pro:** clean on NuGet, evokes governance/isolation. **Con:** an existing same-domain repo, and "Vault" is strongly owned by HashiCorp Vault in dev mindshare — implies secrets management, which this isn't. |
 | 6 | **Lakeworks** | 0 hits | GitHub **user `lakeworks` is taken** (7 repos, unrelated IIS/compression work) | no product found | **Pro:** "works" nicely implies a toolkit; NuGet clear. **Con:** the org handle is gone, so you'd need `lakeworks-dotnet` or similar — a permanent papercut. |
-| 7 | **LakehouseKit** | 0 hits | — | — | **Pro:** "Kit" correctly signals accelerator/toolkit rather than a service — fixes Lakewright's core misdirection. **Con:** inherits "lakehouse" genericness; GitHub not separately probed. |
-| 8 | **Lakewright** (incumbent) | 0 hits | 0 repos, org free | no collisions | **Pro:** every register is clean, all four TLDs free. **Con:** misdescribes the product as a SaaS rather than a SaaS-building toolkit; awkward casing and pronunciation; "SaaS" adds no distinctiveness. |
+| 7 | **LakehouseKit** | 0 hits | — | — | **Pro:** "Kit" correctly signals accelerator/toolkit rather than a service — fixes LakeWright's core misdirection. **Con:** inherits "lakehouse" genericness; GitHub not separately probed. |
+| 8 | **LakeWright** (incumbent) | 0 hits | 0 repos, org free | no collisions | **Pro:** every register is clean, all four TLDs free. **Con:** misdescribes the product as a SaaS rather than a SaaS-building toolkit; awkward casing and pronunciation; "SaaS" adds no distinctiveness. |
 
 **Not yet checked for the shortlist:** domains for #2–#7 (only LakeTenant's were verified), and
 USPTO/EUIPO for *all* names. Both must happen before anything is locked in.
@@ -441,7 +441,7 @@ USPTO/EUIPO for *all* names. Both must happen before anything is locked in.
 
 **CHANGE — but not urgently, and not for legal reasons.**
 
-`Lakewright.NET` is *legally and practically usable*. Every availability check came back clean:
+`LakeWright.NET` is *legally and practically usable*. Every availability check came back clean:
 NuGet prefix free (404 on the authoritative endpoint), GitHub org and repo names free, all four
 domains unregistered, no company or product of that name anywhere on the web, no Databricks
 reference in the name at all. There is no blocking conflict. If the team wants to ship under it
@@ -452,7 +452,7 @@ The reason to change is **positioning**: the name says the product *is* a SaaS w
 for *building* one, and "SaaS" contributes no distinctiveness while making the name hard to
 pronounce and inconsistently capitalised. That cost compounds with every README, talk and package
 ID. **`LakeTenant.NET`** fixes it — same clean-across-the-board status, plus `.com` and `.dev` both
-free, and it names the actual differentiator (multi-tenancy). **`Lakewright.NET`** is the stronger
+free, and it names the actual differentiator (multi-tenancy). **`LakeWright.NET`** is the stronger
 choice if the team wants something brandable and defensible as a real mark rather than descriptive.
 
 Renaming is cheap now and expensive after the first release. This is the moment to decide.
@@ -496,5 +496,5 @@ Renaming is cheap now and expensive after the first release. This is the moment 
 | `.NET` suffix (practice) | Widely tolerated | MEDIUM-HIGH | WireMock.Net 50M+ dl, Elasticsearch.Net |
 | .NET Foundation `.NET` policy | None published | HIGH | 404s; `dotnet/brand` #10 unanswered |
 | .NET style-guide PDF contents | **UNVERIFIED** | — | 15 MB, exceeded fetch limit |
-| Lakewright name collision | None | HIGH | Zero hits across NuGet/GitHub/web |
+| LakeWright name collision | None | HIGH | Zero hits across NuGet/GitHub/web |
 | Alternatives screening | 7 eliminated, 3 clean | MEDIUM-HIGH | Registry APIs + web search per name |

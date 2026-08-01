@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Tenant resolution, membership and provisioning for LakeWright.NET.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\LakeWright.Core\LakeWright.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- RunOnceAsync is internal so nothing outside the worker drives a single iteration in
+         production. The isolation suite needs it to test one step at a time instead of racing
+         a background loop. -->
+    <InternalsVisibleTo Include="LakeWright.TenantIsolation.Tests" />
+
+    <!-- The web tier records the same instruments as the tenancy tier. They stay internal so an
+         adopter cannot write to LakeWright's meters, which would make a metric mean two things. -->
+    <InternalsVisibleTo Include="LakeWright.AspNetCore" />
+  </ItemGroup>
+</Project>

@@ -58,8 +58,8 @@ designations "confusingly similar" to a Databricks mark.
 
 1. Email `brand@databricks.com`. Copy `press@databricks.com`, which is where the public press kit
    routes trademark questions.
-2. State plainly: an independent open-source project called **Lakewright.NET**; "Databricks" appears
-   only as descriptive text and as a `Lakewright.Databricks` package name; the project name contains
+2. State plainly: an independent open-source project called **LakeWright.NET**; "Databricks" appears
+   only as descriptive text and as a `LakeWright.Databricks` package name; the project name contains
    no Databricks mark; no logo is used anywhere; the README carries a non-affiliation notice.
    Ask whether that is acceptable.
 3. Save the reply. If it needs wording changes, they are cheap now and expensive after release.
@@ -134,13 +134,13 @@ The one part that is *not* done: nothing hosts `OperationWorker` as a running pr
 `BackgroundService` with no host, driven one iteration at a time by tests, and it starts running for
 real in M2. "End to end" here means the library, not a process.
 
-- A Jobs submitter in `Lakewright.Databricks`, using `idempotency_token`.
+- A Jobs submitter in `LakeWright.Databricks`, using `idempotency_token`.
 - `OperationWorker` as a `BackgroundService`: claim, submit, record the external id, poll with
   backoff, complete. Deliberately absent until now, because a worker with nothing to submit to is
   scaffolding.
 - The reconciliation actor. **It must claim atomically**, the way `ClaimNextAsync` does — not read
   through `FindOrphanedForReconciliationAsync` and write later. An `xmin` concurrency token was
-  tried and removed; the reasoning is in `LakewrightDbContext`.
+  tried and removed; the reasoning is in `LakeWrightDbContext`.
 - Platform run states mapped into `OperationState` with an explicit unknown arm. Databricks
   documents its states as extensible, so an exhaustive switch is a future crash.
 
@@ -209,13 +209,15 @@ been run against Postgres, and the managed identity path is evidenced by
 
 ## Cross-cutting, not a milestone
 
-Two threats are named as unmitigated in `docs/security/threat-model.md` and should not quietly stay
-that way:
+Both threats that `docs/security/threat-model.md` named unmitigated now have code, and what remains
+of each is stated there rather than here:
 
-- **Cost abuse (T5).** Only warehouse auto-stop limits the blast radius. Per-tenant query budgets
-  and a cost ceiling belong with M2, where there is a request to reject.
-- **Queue starvation (T6).** The claim loop is FIFO across all tenants with no fairness rule. One
-  tenant can fill it. Belongs with M1, where the loop is being finished anyway.
+- **Cost abuse (T5).** `MaxInFlightPerTenant` caps concurrent compute per tenant. A budget in
+  currency still does not exist, and needs billing data that arrives too late to stop anything in
+  flight — it belongs with observability, as alerting and chargeback rather than enforcement.
+- **Queue starvation (T6).** Closed. The claim orders by in-flight count before age. What is left is
+  a throughput limit, not a fairness one: a worker polls one run to completion before claiming
+  again, so a burst queues even though no tenant can monopolise the workers.
 
 ## The decision worth making before M1
 

@@ -24,7 +24,7 @@ namespace Signalboard;
 /// the sample used real OIDC the isolation behaviour would be identical.
 ///
 /// Replace it with `AddOpenIdConnect` and the rest of the application is unchanged. That is the
-/// point of Lakewright not registering an identity provider itself.
+/// point of LakeWright not registering an identity provider itself.
 /// </remarks>
 public sealed class DemoAuthenticationHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,

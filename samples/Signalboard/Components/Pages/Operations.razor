@@ -57,15 +57,16 @@ else
                         <td>@operation.Kind</td>
                         <td><span class="state @operation.State.ToString().ToLowerInvariant()">@operation.State</span></td>
                         <td>@DemoTenants.NameOf(operation.PrincipalId)</td>
-                        <td><code>@Address(operation.Id)</code></td>
+                        <td><code>@_workspace.AddressOf(operation.Id)</code></td>
                     </tr>
                 }
             </tbody>
         </table>
 
         <p class="hint">
-            Copy an address, sign out, sign back in as someone from the other organization, and ask
-            for it. You get 404. Not 403 — that would confirm it exists.
+            Copy an address and ask for it as someone from the other organization — a header is
+            enough: <code>curl -i http://localhost:8080&lt;address&gt; -H "X-Demo-User: demo|bob"</code>.
+            You get 404. Not 403 — that would confirm it exists.
         </p>
     }
 }
@@ -76,26 +77,24 @@ else
     private string _kind = "analysis";
     private bool _starting;
     private string? _error;
-    private PeriodicTimer? _timer;
-    private CancellationTokenSource? _polling;
+    private readonly CancellationTokenSource _closed = new();
 
     protected override async Task OnInitializedAsync()
     {
-        _workspace = await Workspace.CurrentAsync(CancellationToken.None);
+        _workspace = await Workspace.CurrentAsync(_closed.Token);
         await RefreshAsync();
-
-        // Operations finish in the background, so the page has to ask. A circuit is what buys this
-        // over Static SSR, and it is the only reason this page is interactive at all.
-        _polling = new CancellationTokenSource();
-        _timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
-        _ = PollAsync(_polling.Token);
+        _ = PollAsync();
     }
 
-    private async Task PollAsync(CancellationToken cancellationToken)
+    private async Task PollAsync()
     {
+        // Operations finish in the background, so the page has to ask. This polling is the only
+        // reason the page takes a circuit instead of rendering once as Static SSR.
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+
         try
         {
-            while (await _timer!.WaitForNextTickAsync(cancellationToken))
+            while (await timer.WaitForNextTickAsync(_closed.Token))
             {
                 await RefreshAsync();
                 await InvokeAsync(StateHasChanged);
@@ -112,7 +111,7 @@ else
         if (_workspace is null) { return; }
 
         _operations.Clear();
-        _operations.AddRange(await Workspace.RecentAsync(_workspace, CancellationToken.None));
+        _operations.AddRange(await Workspace.RecentAsync(_workspace, _closed.Token));
     }
 
     private async Task StartAsync()
@@ -124,7 +123,7 @@ else
 
         try
         {
-            await Workspace.StartAsync(_workspace, _kind, CancellationToken.None);
+            await Workspace.StartAsync(_workspace, _kind, _closed.Token);
             await RefreshAsync();
         }
         catch (TenantWorkspace.RoleDeniedException e)
@@ -138,12 +137,9 @@ else
         }
     }
 
-    private static string Address(Guid operationId) => $"/operations/{operationId}";
-
     public void Dispose()
     {
-        _polling?.Cancel();
-        _polling?.Dispose();
-        _timer?.Dispose();
+        _closed.Cancel();
+        _closed.Dispose();
     }
 }

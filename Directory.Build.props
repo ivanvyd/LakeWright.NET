@@ -41,14 +41,14 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <Authors>Lakewright.NET contributors</Authors>
-    <Product>Lakewright.NET</Product>
+    <Authors>LakeWright.NET contributors</Authors>
+    <Product>LakeWright.NET</Product>
     <RepositoryUrl>https://github.com/ivanvyd/lakewright-dotnet</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/ivanvyd/lakewright-dotnet</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <Copyright>Copyright (c) Lakewright.NET contributors</Copyright>
+    <Copyright>Copyright (c) LakeWright.NET contributors</Copyright>
   </PropertyGroup>
 
 </Project>
