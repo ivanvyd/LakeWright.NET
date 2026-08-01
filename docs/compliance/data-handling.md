@@ -59,10 +59,16 @@ reversible until the schema drop runs. The order matters:
 deleted, which is the one fact a deletion cannot be allowed to erase. They hold identifiers and
 actions, not tenant content.
 
-**Status: not implemented.** The state exists and is honoured by resolution and the claim loop; the
-procedure above is the design, not a shipped feature. It is written here because the ordering is the
-part people get wrong, and because a compliance document that describes an unimplemented procedure
-as though it works is worse than one that says this.
+**Status: implemented.** `TenantLifecycle.BeginDeletionAsync` performs step 1 and `PurgeAsync` the
+rest, refusing a tenant that is not pending deletion, one with work still in flight, and one that
+has not been pending for the caller's stated grace period. Evidence: `TenantLifecycleTests`.
+
+Two things the procedure does not give you. The grace period has no default — a caller passes the
+window it wants, because a value chosen here would be wrong for someone — so an adopter that passes
+zero gets no cooldown and no warning. And the schema drop runs before the database transaction that
+deletes the rows, so a crash in between leaves the data gone, the row still `PendingDeletion`, and
+no audit row saying so; a retry completes it, because the drop is idempotent, but nothing retries on
+its own.
 
 ## Encryption
 
