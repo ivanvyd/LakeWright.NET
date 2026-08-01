@@ -42,7 +42,21 @@ public sealed class Operation
     /// Jobs API, and it has no documented deduplication window, which is why reconciliation is
     /// required rather than optional.
     /// </summary>
+    /// <remarks>
+    /// Generated here, never supplied by a caller. A client-supplied value would let one tenant
+    /// choose another tenant's job token. <see cref="ClientRequestId"/> is the caller-facing key
+    /// and the two are kept apart for that reason.
+    /// </remarks>
     public required string IdempotencyKey { get; init; }
+
+    /// <summary>
+    /// The caller's own <c>Idempotency-Key</c>, if it sent one. Null when it did not.
+    /// </summary>
+    /// <remarks>
+    /// Unique per (tenant, principal), so a client that retries a timed-out POST gets the original
+    /// operation back rather than starting a second Databricks run it will also be billed for.
+    /// </remarks>
+    public string? ClientRequestId { get; init; }
 
     public required DateTimeOffset CreatedAt { get; init; }
 

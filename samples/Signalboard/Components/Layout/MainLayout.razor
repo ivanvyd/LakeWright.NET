@@ -1,0 +1,29 @@
+@inherits LayoutComponentBase
+
+<header>
+    <a class="brand" href="/">Signalboard</a>
+    <nav>
+        <a href="/operations">Operations</a>
+        <AuthorizeView>
+            <Authorized>
+                <span class="who">@context.User.Identity?.Name</span>
+                <form method="post" action="/signout">
+                    <AntiforgeryToken />
+                    <button type="submit" class="link">Sign out</button>
+                </form>
+            </Authorized>
+            <NotAuthorized>
+                <a href="/signin">Sign in</a>
+            </NotAuthorized>
+        </AuthorizeView>
+    </nav>
+</header>
+
+<main>
+    @Body
+</main>
+
+<footer>
+    A sample for <a href="https://github.com/ivanvyd/lakewright-dotnet">Lakewright.NET</a>.
+    Two organizations, three people, and no way to see across the boundary.
+</footer>

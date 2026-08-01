@@ -1,0 +1,27 @@
+@page "/signin"
+@attribute [AllowAnonymous]
+
+<PageTitle>Sign in — Signalboard</PageTitle>
+
+<h1>Sign in</h1>
+
+<p>
+    Pick someone. There is no password, because there is no identity provider: see
+    <a href="/">the home page</a> for why that does not weaken what this sample demonstrates.
+</p>
+
+@*
+    A plain form post rather than an interactive component. Writing an auth cookie needs a real
+    HTTP response, and a Blazor circuit has already sent its headers by the time a handler runs.
+*@
+<form method="post" action="/signin" class="signin">
+    <AntiforgeryToken />
+
+    @foreach (var person in DemoTenants.Everyone)
+    {
+        <button type="submit" name="principal" value="@person.PrincipalId" class="person">
+            <span class="name">@person.Name</span>
+            <span class="detail">@person.Role at @person.Organization</span>
+        </button>
+    }
+</form>
