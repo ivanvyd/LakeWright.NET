@@ -52,6 +52,19 @@ public static class AuditActions
     public const string OperationStarted = "operation.started";
     public const string OperationCompleted = "operation.completed";
 
+    public const string TenantProvisioned = "tenant.provisioned";
+
+    /// <summary>
+    /// Deletion was requested. The tenant stops being served here; nothing is destroyed yet.
+    /// </summary>
+    public const string TenantDeletionRequested = "tenant.deletion_requested";
+
+    /// <summary>
+    /// The tenant and its data are gone. This row outlives the organization it names, which is
+    /// the point — it is the only remaining record that the tenant existed.
+    /// </summary>
+    public const string TenantDeleted = "tenant.deleted";
+
     /// <summary>
     /// A principal asked for a tenant it cannot reach. The response is a 404, so this row is the
     /// only place the attempt is visible.
