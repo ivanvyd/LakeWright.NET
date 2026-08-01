@@ -22,10 +22,10 @@ note.
 - `OperationWorker:MaxInFlightPerTenant`, capping the Databricks compute one tenant can hold at
   once, and fair claim ordering by in-flight count before age. Together these close threat T6 and
   bound T5.
-- `AddLakewrightDatabricks`, so tenancy, authorization and the operations API can be adopted
+- `AddLakeWrightDatabricks`, so tenancy, authorization and the operations API can be adopted
   without a Databricks workspace.
 
-- `Lakewright.AspNetCore`: tenant resolution middleware that turns the organization in a route into
+- `LakeWright.AspNetCore`: tenant resolution middleware that turns the organization in a route into
   a resolved context or a 404, role policies over `MembershipRole` with a fallback policy so
   endpoints are protected by omission, and the operations API (`202 Accepted` plus a poll endpoint).
   It deliberately registers no identity provider — that choice belongs to the adopter.
@@ -37,12 +37,12 @@ note.
   idempotency token rather than searching by tag, because the Jobs API does not expose the token on
   a run.
 - `Category=Live` tests exercising the Databricks clients against a real workspace, excluded from CI.
-- `Lakewright.Core`: `TenantId`, `TenantContext` and the resolver contract. `TenantContext` has no
+- `LakeWright.Core`: `TenantId`, `TenantContext` and the resolver contract. `TenantContext` has no
   public constructor, so holding one means a membership check ran.
-- `Lakewright.Databricks`: `TenantScopedStatement`, typed `StatementParameter` factories, and
+- `LakeWright.Databricks`: `TenantScopedStatement`, typed `StatementParameter` factories, and
   `StatementOutcome`, which unifies the client library's two failure modes. Interpolated SQL is a
   compile error.
-- `Lakewright.Multitenancy`: organization, membership and audit-event model on EF Core and Npgsql,
+- `LakeWright.Multitenancy`: organization, membership and audit-event model on EF Core and Npgsql,
   with a resolver that reads membership from the database and never from a token claim.
 - Cross-tenant isolation suite, shown to fail when isolation is deliberately broken
   (`docs/guides/testing-isolation.md`).
@@ -80,8 +80,8 @@ Found by an adversarial review of the first implementation, before any release.
 
 ### Changed
 
-- `AddLakewright` no longer registers the Databricks clients or validates `DatabricksOptions`. Call
-  `AddLakewrightDatabricks(configuration)` for those, and `AddLakewrightOperationWorker` now takes
+- `AddLakeWright` no longer registers the Databricks clients or validates `DatabricksOptions`. Call
+  `AddLakeWrightDatabricks(configuration)` for those, and `AddLakeWrightOperationWorker` now takes
   the configuration too. **Migration:** add both calls if you use Databricks; do nothing if you
   adopted only the tenancy tier, which previously could not start without a workspace configured.
 - `IDatabricksTokenSource` is replaced by `Azure.Core.TokenCredential`. **Migration:** register
@@ -90,8 +90,8 @@ Found by an adversarial review of the first implementation, before any release.
   **Migration:** change `"OperationWorker": { "JobId": 123 }` to
   `"OperationWorker": { "Jobs": { "analysis": 123 } }`. A kind with no entry now fails the
   operation saying so, rather than running whichever job was configured.
-- `IJobSubmitter`, `RunOutcome` and `TenantScopedJobRun` moved from `Lakewright.Databricks` to
-  `Lakewright.Core` (namespace `Lakewright.Core.Jobs`), so `Lakewright.Multitenancy` no longer
+- `IJobSubmitter`, `RunOutcome` and `TenantScopedJobRun` moved from `LakeWright.Databricks` to
+  `LakeWright.Core` (namespace `LakeWright.Core.Jobs`), so `LakeWright.Multitenancy` no longer
   references the Databricks integration. **Migration:** update the `using`.
 - `OperationStore.CreateAsync` takes a client request id, and `ClaimNextAsync` takes a per-tenant
   ceiling.
@@ -127,5 +127,5 @@ Found by an adversarial review of the first implementation, before any release.
 
 ### Notes
 
-- The project was named `LakeSaaS.NET` during planning and renamed to `Lakewright.NET` before any
+- The project was named `LakeSaaS.NET` during planning and renamed to `LakeWright.NET` before any
   code or package was published. The former name misdescribed a build kit as a product.

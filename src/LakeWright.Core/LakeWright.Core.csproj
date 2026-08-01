@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Tenancy contracts for LakeWright.NET.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- TenantContext must only be constructible by something that has checked membership.
+         These two assemblies are the resolver and the suite that tests it. Adding a third is a
+         security decision, not a build one. -->
+    <InternalsVisibleTo Include="LakeWright.Multitenancy" />
+    <InternalsVisibleTo Include="LakeWright.TenantIsolation.Tests" />
+  </ItemGroup>
+</Project>

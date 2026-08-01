@@ -58,7 +58,7 @@ And critically:
 > This name change is non-breaking. The `bundle` CLI command and all of your existing configuration does not need
 > to be modified.
 
-### Guidance for Lakewright.NET docs
+### Guidance for LakeWright.NET docs
 
 - Use **Declarative Automation Bundles** as the product name throughout.
 - The CLI verb is still `databricks bundle …` and the file is still `databricks.yml`. Nothing in code changes.
@@ -172,7 +172,7 @@ This is the single most consequential recent change for our accelerator:
 - Direct-engine-only resources: **Unity Catalog catalogs, external locations, Genie spaces, vector/AI search
   endpoints.**
 
-**Recommendation for Lakewright.NET:** pin `bundle.engine: direct` explicitly rather than relying on the default, and
+**Recommendation for LakeWright.NET:** pin `bundle.engine: direct` explicitly rather than relying on the default, and
 set `bundle.databricks_cli_version: ">=1.3.0"` (or higher) so a contributor on an old CLI fails fast instead of
 deploying with different semantics. The no-Terraform-binary property is also a real win for locked-down enterprise
 networks, which is our target audience.
@@ -360,7 +360,7 @@ And on the tempting workaround:
 OIDC is subject to the same restriction — `id-token: write` is not granted to fork PRs, so an OIDC-authenticated
 deploy job simply cannot run from a fork. That is the desired behaviour.
 
-**Recommended job split for Lakewright.NET:**
+**Recommended job split for LakeWright.NET:**
 
 | Job | Trigger | Auth | Runs on fork PRs? |
 |---|---|---|---|
@@ -450,7 +450,7 @@ Source: <https://docs.databricks.com/aws/en/dev-tools/bundles/run-as> (last upda
 - Settable at three levels: top-level `run_as`, per-target `targets.*.run_as`, and per-resource.
 - When the **deploying** identity differs from the `run_as` identity, **only jobs and pipelines are supported**.
 - **Not supported for model serving endpoints** — "An error occurs if these resources are defined in a bundle where
-  `run_as` is also configured." **This matters for Lakewright.NET**: if our accelerator ships a model serving
+  `run_as` is also configured." **This matters for LakeWright.NET**: if our accelerator ships a model serving
   endpoint in the same bundle as a service-principal `run_as`, deployment fails. Plan to split serving endpoints
   into a separate bundle, or set `run_as` per-resource on jobs/pipelines only.
 - The deploying identity needs `CAN_USE` on the service principal.
@@ -529,7 +529,7 @@ preset keyed on the PR number or run ID to isolate concurrent CI runs. Two thing
   ephemeral-target teardown can drop real tables. Keep data resources out of the ephemeral bundle, or point them at
   a throwaway catalog.
 
-Since this is a documented gap rather than a documented pattern, Lakewright.NET shipping a working, tested
+Since this is a documented gap rather than a documented pattern, LakeWright.NET shipping a working, tested
 ephemeral-CI-target recipe is a genuine differentiator — but we must build and verify it ourselves rather than
 citing Databricks for it.
 
@@ -549,7 +549,7 @@ networking, private endpoints), identity (SCIM users, groups, service principals
 their assignments, permissions and grants, plus all the workspace-level objects. Bundles deliberately scope
 themselves to *the artifacts a project deploys*; Terraform covers *the platform the project runs on*.
 
-**When to pick Terraform for an accelerator like Lakewright.NET:** for anything that provisions the platform rather
+**When to pick Terraform for an accelerator like LakeWright.NET:** for anything that provisions the platform rather
 than deploying a workload — creating the workspaces themselves, wiring the metastore, managing per-tenant catalogs
 and grants at scale, network config, and account-level identity. This is directly relevant to the multi-tenancy
 story (cross-ref R04): if tenant onboarding means "create a catalog, create groups, apply grants", Terraform (or
@@ -575,7 +575,7 @@ party and directs users to Pulumi Support rather than Databricks. The provider i
 Pulumi and is not deprecated — but Databricks no longer documents or supports the path.
 
 **When to pick Pulumi:** essentially only if the consuming organisation has already standardised on Pulumi.
-For Lakewright.NET I'd recommend against making it the documented default despite the C# appeal — an open-source
+For LakeWright.NET I'd recommend against making it the documented default despite the C# appeal — an open-source
 accelerator should sit on the paths the vendor documents and supports, and we would be adopting a bridged provider
 plus a retired documentation trail in exchange for language ergonomics on what is a small amount of infrastructure
 code. Worth one paragraph in an "alternatives" appendix, not a supported path.
@@ -591,7 +591,7 @@ Constructed from verified keys on the reference (Jul 24, 2026), deployment-modes
 as schema-correct-by-construction; validate with `databricks bundle validate` before publishing.
 
 ```yaml
-# databricks.yml — Lakewright.NET
+# databricks.yml — LakeWright.NET
 bundle:
   name: lakewright
   # Pin the engine explicitly rather than relying on the CLI-version default.

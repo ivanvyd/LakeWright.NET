@@ -1,4 +1,4 @@
-# Lakewright.NET — OSS Governance / Supply-Chain Hygiene and Honest SOC 2 Positioning
+# LakeWright.NET — OSS Governance / Supply-Chain Hygiene and Honest SOC 2 Positioning
 
 Research date: 2026-07-31. Every claim below is tagged **[VERIFIED]** (fetched live this session, URL given) or **[RECALLED]** (from prior knowledge, not re-confirmed this session — treat as a hypothesis to check).
 
@@ -92,7 +92,7 @@ jobs:
 
 **[VERIFIED]** Constraints when `publish_results: true`: no top-level env vars or defaults, no workflow-level write permissions, only the scorecard job may hold `id-token: write`, must run on Ubuntu hosted runners, limited to an approved set of Actions. **[VERIFIED]** Classic branch-protection detection may need a fine-grained PAT; newer **Repository Rules (rulesets) work with the default token** — another reason to prefer rulesets.
 
-### Realistic target for Lakewright.NET
+### Realistic target for LakeWright.NET
 
 **[RECALLED / analysis, not sourced]** — there is no official "target score" from OpenSSF; the FAQ deliberately does not set one (checked <https://github.com/ossf/scorecard/blob/main/docs/faq.md>, no guidance found).
 
@@ -135,11 +135,11 @@ Arithmetic from the verified weights: total weight = 10+10 + 7.5×8 + 5×6 + 2.5
 - **Security** — at least one primary developer who knows how to design secure software and knows the common classes of error; only publicly published, reviewed crypto protocols/algorithms; no publicly known unpatched medium/high vulnerabilities older than 60 days; credentials not leaked; passwords stored with iterated salted hashes; CSPRNG for key generation.
 - **Analysis** — static analysis applied before major releases; medium/high severity findings fixed promptly.
 
-**[VERIFIED]** Most crypto criteria carry an explicit **"N/A allowed"** escape hatch when the software does not use cryptography or crypto is not its primary purpose. Lakewright.NET will legitimately be N/A on the password-storage criteria if it delegates auth to Entra ID / Databricks OAuth.
+**[VERIFIED]** Most crypto criteria carry an explicit **"N/A allowed"** escape hatch when the software does not use cryptography or crypto is not its primary purpose. LakeWright.NET will legitimately be N/A on the password-storage criteria if it delegates auth to Entra ID / Databricks OAuth.
 
-**Practical read for Lakewright.NET:** the passing badge is achievable in roughly a day of documentation work, and it is worth doing because it also feeds the Scorecard `CII-Best-Practices` check. The two criteria with real teeth are *private vulnerability disclosure supported* (solved by GitHub private vulnerability reporting, A5) and *response within 14 days* (a commitment, put it in SECURITY.md and honour it).
+**Practical read for LakeWright.NET:** the passing badge is achievable in roughly a day of documentation work, and it is worth doing because it also feeds the Scorecard `CII-Best-Practices` check. The two criteria with real teeth are *private vulnerability disclosure supported* (solved by GitHub private vulnerability reporting, A5) and *response within 14 days* (a commitment, put it in SECURITY.md and honour it).
 
-**[VERIFIED]** OpenSSF Security Baseline (OSPS Baseline) is a separate, live artifact: <https://baseline.openssf.org/>, current version **v2026.02.19**. Three maturity levels — Level 1 (any project, any number of maintainers), Level 2 (≥2 maintainers, consistent users), Level 3 (large consistent user base) — across categories Access Control (AC), Build and Release (BR), Documentation (DO), Governance (GV), Legal (LE), Quality (QA), Security Assessment (SA), Vulnerability Management (VM). Level 1 wants MFA on sensitive repo access, restricted new-collaborator permissions, protected primary branch, sanitised CI/CD inputs, no credentials in VCS, published user guide and defect-reporting process, open-source licence, documented contribution process, public source with change history, no binary artifacts, and a published security contact. **Lakewright.NET should target OSPS Baseline Level 1 explicitly — every Level 1 item is also a Scorecard cheap win.**
+**[VERIFIED]** OpenSSF Security Baseline (OSPS Baseline) is a separate, live artifact: <https://baseline.openssf.org/>, current version **v2026.02.19**. Three maturity levels — Level 1 (any project, any number of maintainers), Level 2 (≥2 maintainers, consistent users), Level 3 (large consistent user base) — across categories Access Control (AC), Build and Release (BR), Documentation (DO), Governance (GV), Legal (LE), Quality (QA), Security Assessment (SA), Vulnerability Management (VM). Level 1 wants MFA on sensitive repo access, restricted new-collaborator permissions, protected primary branch, sanitised CI/CD inputs, no credentials in VCS, published user guide and defect-reporting process, open-source licence, documented contribution process, public source with change history, no binary artifacts, and a published security contact. **LakeWright.NET should target OSPS Baseline Level 1 explicitly — every Level 1 item is also a Scorecard cheap win.**
 
 ## A3. SLSA
 
@@ -177,7 +177,7 @@ jobs:
 
 **[VERIFIED]** Permissions required: `id-token: write`, `attestations: write`, `contents: read`; `packages: write` additionally for container images; `artifact-metadata: write` when using `push-to-registry: true` or the linked-artifacts page (<https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations>).
 
-**Realistic level for Lakewright.NET:** **[RECALLED]** GitHub-hosted runners with `actions/attest` are generally regarded as reaching **SLSA Build L2** out of the box (hosted platform generates and signs provenance; the signing key is Sigstore-issued and never exposed to the job). Neither `actions/attest` nor the GitHub docs page I fetched *states* a level — **do not put an "SLSA Level N" badge on the repo.** Say instead: "releases carry GitHub-generated, Sigstore-signed SLSA build provenance, verifiable with `gh attestation verify`." That is verifiable and does not overclaim.
+**Realistic level for LakeWright.NET:** **[RECALLED]** GitHub-hosted runners with `actions/attest` are generally regarded as reaching **SLSA Build L2** out of the box (hosted platform generates and signs provenance; the signing key is Sigstore-issued and never exposed to the job). Neither `actions/attest` nor the GitHub docs page I fetched *states* a level — **do not put an "SLSA Level N" badge on the repo.** Say instead: "releases carry GitHub-generated, Sigstore-signed SLSA build provenance, verifiable with `gh attestation verify`." That is verifiable and does not overclaim.
 
 Verification command for the README: `gh attestation verify <artifact> --repo <owner>/<repo>`. **[RECALLED]** — not re-confirmed this session.
 
@@ -203,7 +203,7 @@ Recommendation: **produce CycloneDX JSON as the primary artifact** and, if a con
 ```yaml
 # in the release job
 - run: dotnet tool install --global CycloneDX
-- run: dotnet-CycloneDX ./Lakewright.sln -o ./sbom -F Json
+- run: dotnet-CycloneDX ./LakeWright.sln -o ./sbom -F Json
 - uses: actions/attest@v4          # pin to SHA
   with:
     subject-path: './artifacts/*.nupkg'
@@ -241,7 +241,7 @@ Attach the SBOM file to the GitHub Release **and** attest it. Attaching alone sa
 
 The eleven classic protection settings, which rulesets mirror: require PR reviews, require status checks, require conversation resolution, require signed commits, require linear history, require merge queue, require deployments to succeed, lock branch, do not allow bypassing, restrict who can push, allow force pushes / deletions.
 
-### Recommended baseline ruleset for Lakewright.NET
+### Recommended baseline ruleset for LakeWright.NET
 - Target: default branch (`main`)
 - Block force pushes; block deletions
 - Require a pull request before merging; 1 approving review; require approval of the most recent push; require conversation resolution
@@ -299,7 +299,7 @@ Mechanics: `git commit -s` appends `Signed-off-by: Name <email>`; enforce with t
 Why DCO over CLA for this project:
 - A CLA requires a legal entity to receive the grant. A personal-account project has no such entity, so a CLA would assign rights to *you personally* — which is a red flag for corporate contributors and materially depresses contribution.
 - **[VERIFIED]** the real-world split confirms this. CLA is used where a foundation backs it: `App-vNext/Polly` requires the **.NET Foundation CLA** at `cla.dotnetfoundation.org` (<https://github.com/App-vNext/Polly/blob/main/CONTRIBUTING.md>); `open-telemetry/opentelemetry-dotnet` requires a **CLA** (CNCF). DCO is used where the barrier should be low: **`delta-io/delta` requires DCO sign-off** — "you just add a line to every git commit message: `Signed-off-by: Jane Smith <jane.smith@email.com>`" (<https://github.com/delta-io/delta/blob/master/CONTRIBUTING.md>).
-- If Lakewright.NET is ever donated to a foundation, the DCO history is clean enough to relicense-forward; a bespoke personal CLA is the harder thing to unwind.
+- If LakeWright.NET is ever donated to a foundation, the DCO history is clean enough to relicense-forward; a bespoke personal CLA is the harder thing to unwind.
 
 ### ⚠️ The Databricks licensing trap — this is the most important finding in Part A
 
@@ -316,16 +316,16 @@ By contrast, `databricks/databricks-sdk-go` **is** Apache-2.0 — the first-part
 
 **[VERIFIED]** Databricks documentation itself: <https://www.databricks.com/legal/terms-of-use> — you may not "copy, collect, modify, create derivative works or uses of, translate, distribute, transmit, publish, re-publish… the Content or any other part of the Services, except solely as necessary to access the Sites for the intended purpose."
 
-**Practical rules for Lakewright.NET:**
-1. **Never paste code from a Databricks-Licensed repo or from docs.databricks.com into an Apache-2.0 repo.** Publishing Lakewright.NET under Apache-2.0 with Databricks-Licensed code inside is a licence violation and makes the whole repo unsafe for the enterprises you want adopting it.
+**Practical rules for LakeWright.NET:**
+1. **Never paste code from a Databricks-Licensed repo or from docs.databricks.com into an Apache-2.0 repo.** Publishing LakeWright.NET under Apache-2.0 with Databricks-Licensed code inside is a licence violation and makes the whole repo unsafe for the enterprises you want adopting it.
 2. Use Databricks docs and Labs repos **as reference only** — read, understand, then write original code against the public REST API surface.
 3. **Only take code from Databricks repos that are demonstrably Apache-2.0** (the first-party SDKs). Record each such borrowing in `THIRD-PARTY-NOTICES.md` with repo URL, commit SHA, licence, and copyright line; carry over any upstream NOTICE content per Apache-2.0 §4.
 4. **OpenAPI-generated clients:** **[RECALLED — verify before relying on it]** code generated by OpenAPI Generator / NSwag / Kiota from a spec is generally treated as your own work, and OpenAPI Generator explicitly disclaims any licence on generated output. The risk is not the generator, it is **the spec**: if you fetch Databricks' OpenAPI spec from a Databricks-Licensed source, the derived client may be a derivative work of that spec. **Action: (a) confirm the licence on whatever Databricks OpenAPI/spec artefact you use; (b) if in doubt, generate from your own hand-written spec derived from the public REST documentation's endpoint list rather than from a downloaded spec file; (c) record the provenance in an ADR.** Treat this as an open legal question to resolve, not a settled one.
-5. Add a short "Relationship to Databricks" section to the README: Lakewright.NET is an independent, unaffiliated project; Databricks is a trademark of Databricks, Inc.; no endorsement implied. Apache-2.0 §6 does not grant trademark rights.
+5. Add a short "Relationship to Databricks" section to the README: LakeWright.NET is an independent, unaffiliated project; Databricks is a trademark of Databricks, Inc.; no endorsement implied. Apache-2.0 §6 does not grant trademark rights.
 
 ## A8. Governance documents worth modelling
 
-**[VERIFIED]** `cncf/project-template` — <https://github.com/cncf/project-template>, docs at <https://contribute.cncf.io/maintainers/templates/>. Templates: `GOVERNANCE-maintainer.md` (self-selecting Maintainer Council — "the most common form of governance for CNCF projects"), `GOVERNANCE-elections.md` (Steering Committee elections), `GOVERNANCE-subprojects.md` (umbrella project of projects). Adoption: rename the chosen `GOVERNANCE-xxx.md` to `GOVERNANCE.md` and fill in the `TODO` comments. **This is the right starting point for Lakewright.NET — take the Maintainer Council template and strip it down to one maintainer with a documented path to adding more.** Files: <https://github.com/cncf/project-template/blob/main/GOVERNANCE-maintainer.md>, <https://github.com/cncf/project-template/blob/main/GOVERNANCE.md>.
+**[VERIFIED]** `cncf/project-template` — <https://github.com/cncf/project-template>, docs at <https://contribute.cncf.io/maintainers/templates/>. Templates: `GOVERNANCE-maintainer.md` (self-selecting Maintainer Council — "the most common form of governance for CNCF projects"), `GOVERNANCE-elections.md` (Steering Committee elections), `GOVERNANCE-subprojects.md` (umbrella project of projects). Adoption: rename the chosen `GOVERNANCE-xxx.md` to `GOVERNANCE.md` and fill in the `TODO` comments. **This is the right starting point for LakeWright.NET — take the Maintainer Council template and strip it down to one maintainer with a documented path to adding more.** Files: <https://github.com/cncf/project-template/blob/main/GOVERNANCE-maintainer.md>, <https://github.com/cncf/project-template/blob/main/GOVERNANCE.md>.
 
 **[VERIFIED]** `open-telemetry/opentelemetry-dotnet` — <https://github.com/open-telemetry/opentelemetry-dotnet/blob/main/CONTRIBUTING.md>. Best-in-class for a .NET project with a real role ladder. What is good: it defines **Member / Triager / Approver / Maintainer** by reference to a shared community-membership doc (<https://github.com/open-telemetry/community/blob/main/community-membership.md>) rather than reinventing it; it distinguishes *approve* from *merge* authority; it mandates a **minimum one-day review window** before merge (a genuinely good rule for a project with few reviewers — it prevents rubber-stamping); it runs a **buddy system** for new contributors; it requires third-party files to be permissively licensed with attribution in a third-party notices file. Apache-2.0.
 
@@ -337,7 +337,7 @@ By contrast, `databricks/databricks-sdk-go` **is** Apache-2.0 — the first-part
 
 **[VERIFIED]** `dotnet/runtime/CONTRIBUTING.md` — <https://github.com/dotnet/runtime/blob/main/CONTRIBUTING.md>. Good for its **DO / DON'T prescriptive style with reasons attached** ("DO follow our coding style", "DO include tests when adding new features"), its emphasis on minimal reproductions and *why* they help, and its numbered issue-to-merge workflow.
 
-### Recommended file set for Lakewright.NET
+### Recommended file set for LakeWright.NET
 
 `LICENSE` (Apache-2.0) · `NOTICE` · `THIRD-PARTY-NOTICES.md` · `README.md` (with a "Relationship to Databricks" section) · `CONTRIBUTING.md` (DCO sign-off; a >100-line design-discussion threshold à la Delta; a PR label/status table à la dbt) · `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1) · `GOVERNANCE.md` (CNCF Maintainer Council template, reduced to one maintainer plus a documented path to more) · `SECURITY.md` (private vulnerability reporting link, 14-day response commitment to satisfy the Best Practices badge, "do not open public issues for security") · `MAINTAINERS.md` · `SUPPORT.md` · `.github/dependabot.yml` · `.github/workflows/` with pinned actions and top-level `permissions: contents: read` · `docs/adr/` · `docs/compliance/soc2-mapping.md` (Part B).
 
@@ -361,15 +361,15 @@ By contrast, `databricks/databricks-sdk-go` **is** Apache-2.0 — the first-part
 2. **Software is never "SOC 2 compliant."** Only an organization can obtain a SOC 2 report. A tool can *support* an organization's controls; it cannot hold the attestation.
 3. **The controls SOC 2 examines are largely organizational.** Look at the common criteria: CC1 (control environment: board oversight, hiring, ethics), CC2 (internal and external communication), CC3 (risk assessment), CC4 (monitoring/evaluations), CC5 (control selection and deployment), CC9 (vendor risk management). Roughly half the framework is about how a company is run. An accelerator can move the needle on CC6, CC7, CC8 — access control, system operations, change management — and essentially nothing on CC1–CC5 and CC9.
 
-### What Lakewright.NET *can* legitimately claim
+### What LakeWright.NET *can* legitimately claim
 
-> The Lakewright.NET reference architecture implements technical controls that **map to** the SOC 2 Trust Services Criteria. A team adopting it starts with audit-relevant primitives — tenant-scoped access control, immutable audit logging, encryption in transit and at rest, reviewed change management, and vulnerability management — already in place, so their own SOC 2 readiness effort begins from a shorter list. The SOC 2 report remains theirs to obtain from a licensed CPA firm; Lakewright.NET does not and cannot hold one.
+> The LakeWright.NET reference architecture implements technical controls that **map to** the SOC 2 Trust Services Criteria. A team adopting it starts with audit-relevant primitives — tenant-scoped access control, immutable audit logging, encryption in transit and at rest, reviewed change management, and vulnerability management — already in place, so their own SOC 2 readiness effort begins from a shorter list. The SOC 2 report remains theirs to obtain from a licensed CPA firm; LakeWright.NET does not and cannot hold one.
 
 Second useful framing: **shared responsibility.** **[VERIFIED]** Databricks issues SOC 1 Type II, SOC 2 Type II, and a publicly downloadable SOC 3, "three times a year on a continuous rolling basis, with a reporting period of 12 months… refreshed in June, August and December" — <https://www.databricks.com/trust/compliance/soc>. SOC 1/SOC 2 Type II require asking your Databricks account team; SOC 3 is public. **[VERIFIED]** Databricks operates a documented shared responsibility model (<https://www.databricks.com/trust/trust>, <https://www.databricks.com/legal/security-addendum>).
 
 That gives a clean, honest three-layer story for the docs:
 
-| Layer | Who holds the attestation | What Lakewright.NET does |
+| Layer | Who holds the attestation | What LakeWright.NET does |
 |---|---|---|
 | Cloud + Databricks platform | Databricks (SOC 2 Type II, SOC 3 public); the CSP (ISO 27001, SOC 1/2, PCI-DSS) | Nothing — inherit it, and link to Databricks' SOC 3 |
 | Application controls | **The adopting team** — they get the SOC 2 report | Ships the implementation: RBAC, tenant isolation, audit trail, secret handling, monitoring |
@@ -399,7 +399,7 @@ That gives a clean, honest three-layer story for the docs:
 
 ## B11. Control mapping table
 
-Every criterion ID here is **[RECALLED]** and must be verified against the official TSC before publication. Implementation artifacts are Lakewright.NET design proposals, not verified facts.
+Every criterion ID here is **[RECALLED]** and must be verified against the official TSC before publication. Implementation artifacts are LakeWright.NET design proposals, not verified facts.
 
 | # | Control | TSC criterion | Concrete .NET / Databricks implementation artifact |
 |---|---|---|---|
@@ -441,15 +441,15 @@ Every criterion ID here is **[RECALLED]** and must be verified against the offic
 
 Short form (README, one line):
 
-> Implements technical controls that map to the SOC 2 Trust Services Criteria. Lakewright.NET is software and cannot itself hold a SOC 2 report — see `docs/compliance/soc2-mapping.md`.
+> Implements technical controls that map to the SOC 2 Trust Services Criteria. LakeWright.NET is software and cannot itself hold a SOC 2 report — see `docs/compliance/soc2-mapping.md`.
 
 Long form (top of the compliance docs page):
 
-> **What this page is.** SOC 2 is an attestation engagement performed by a licensed CPA firm on the controls of a *service organization* — an operating company — over a defined period. Software cannot be "SOC 2 compliant"; only an organization can obtain a SOC 2 report. This page maps the technical controls Lakewright.NET implements to the AICPA Trust Services Criteria, so that a team building on it can see which of their audit-relevant controls are already implemented and which they must build and operate themselves.
+> **What this page is.** SOC 2 is an attestation engagement performed by a licensed CPA firm on the controls of a *service organization* — an operating company — over a defined period. Software cannot be "SOC 2 compliant"; only an organization can obtain a SOC 2 report. This page maps the technical controls LakeWright.NET implements to the AICPA Trust Services Criteria, so that a team building on it can see which of their audit-relevant controls are already implemented and which they must build and operate themselves.
 >
-> **What this page is not.** It is not a certification, an attestation, an audit, or advice from an auditor. Roughly half the SOC 2 common criteria — the control environment (CC1), communication (CC2), risk assessment (CC3), monitoring (CC4), control activities (CC5), and risk mitigation and vendor management (CC9) — are organizational and cannot be addressed by any software. Lakewright.NET contributes to the logical access (CC6), system operations (CC7), and change management (CC8) criteria. Your auditor decides what counts as evidence; nothing here binds them.
+> **What this page is not.** It is not a certification, an attestation, an audit, or advice from an auditor. Roughly half the SOC 2 common criteria — the control environment (CC1), communication (CC2), risk assessment (CC3), monitoring (CC4), control activities (CC5), and risk mitigation and vendor management (CC9) — are organizational and cannot be addressed by any software. LakeWright.NET contributes to the logical access (CC6), system operations (CC7), and change management (CC8) criteria. Your auditor decides what counts as evidence; nothing here binds them.
 >
-> **Platform controls are inherited, not provided.** Databricks publishes SOC 1 Type II, SOC 2 Type II, and a public SOC 3 report, and operates a documented shared responsibility model. Controls at the platform layer are Databricks'; controls at the application layer are yours; Lakewright.NET is a starting implementation of the latter.
+> **Platform controls are inherited, not provided.** Databricks publishes SOC 1 Type II, SOC 2 Type II, and a public SOC 3 report, and operates a documented shared responsibility model. Controls at the platform layer are Databricks'; controls at the application layer are yours; LakeWright.NET is a starting implementation of the latter.
 
 ---
 

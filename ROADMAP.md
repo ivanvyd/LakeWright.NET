@@ -108,4 +108,4 @@ Ordered by how often the question is likely to be asked, not by how interesting 
 2. Tenant-scoped Genie for external customers. Research found this unserved in every language.
 3. Vector Search with tenant-safe filtering.
 4. Lakebase as a documented alternative to PostgreSQL, once it is generally available on Azure.
-5. A `Lakewright.Databricks` package, if the client wrappers prove stable and independently useful.
+5. A `LakeWright.Databricks` package, if the client wrappers prove stable and independently useful.

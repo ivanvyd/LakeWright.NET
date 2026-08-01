@@ -4,7 +4,7 @@ Research date: 2026-07-31. Every claim below traces to a source in `docs/plannin
 
 ## The one-sentence version
 
-Lakewright.NET is the reference architecture and reusable primitives for .NET teams that sell
+LakeWright.NET is the reference architecture and reusable primitives for .NET teams that sell
 analytics to customers who are not themselves Databricks customers.
 
 ## The thesis changed during research

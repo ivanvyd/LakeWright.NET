@@ -1,4 +1,4 @@
-# Lakewright.NET
+# LakeWright.NET
 
 The build kit for multi-tenant .NET SaaS on Databricks.
 
@@ -33,7 +33,7 @@ App identity means you filter. User identity means Unity Catalog filters. There 
 and there is no general on-behalf-of flow for a service hosted outside Databricks.
 
 You find this in an audit rather than in testing, because every tenant's request returns a
-plausible-looking result. Lakewright.NET handles it in the query layer, along with the pieces such a
+plausible-looking result. LakeWright.NET handles it in the query layer, along with the pieces such a
 product needs anyway: durable asynchronous operations, a per-tenant ceiling on Databricks compute,
 an audit trail, and the Databricks side deployed as code.
 
@@ -63,19 +63,19 @@ Projects appear when there is code to put in them, so this grows over the milest
 
 ```
 src/
-  Lakewright.Core/            tenancy and job contracts
-  Lakewright.Databricks/      tenant-scoped Databricks SQL and job access
-  Lakewright.Multitenancy/    tenant model, resolution, operations, audit, EF Core
-  Lakewright.AspNetCore/      tenant middleware, role policies, operations API
+  LakeWright.Core/            tenancy and job contracts
+  LakeWright.Databricks/      tenant-scoped Databricks SQL and job access
+  LakeWright.Multitenancy/    tenant model, resolution, operations, audit, EF Core
+  LakeWright.AspNetCore/      tenant middleware, role policies, operations API
 samples/
   Signalboard/                two-tenant sample product, Blazor dashboard plus the API
 tests/
-  Lakewright.TenantIsolation.Tests/   the suite the rest of it rests on
+  LakeWright.TenantIsolation.Tests/   the suite the rest of it rests on
 databricks/                   Declarative Automation Bundle, dev and prod targets
 docs/                         see docs/README.md
 ```
 
-`Lakewright.Multitenancy` does not reference `Lakewright.Databricks`, so adopting the tenancy tier
+`LakeWright.Multitenancy` does not reference `LakeWright.Databricks`, so adopting the tenancy tier
 alone does not drag in the Databricks client. A test enforces that rather than a convention.
 
 Still to come: observability, per-tenant cost attribution, and tenant provisioning and deletion.

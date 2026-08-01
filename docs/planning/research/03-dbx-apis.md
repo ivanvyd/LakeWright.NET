@@ -1,7 +1,7 @@
 # Databricks API Surface & Operational Gotchas for a .NET SaaS Backend
 
 **Research date:** 2026-07-31
-**Scope:** The precise REST API surface a .NET SaaS backend (Lakewright.NET) would call, plus operational limits and gotchas.
+**Scope:** The precise REST API surface a .NET SaaS backend (LakeWright.NET) would call, plus operational limits and gotchas.
 **Method:** Every claim below was read from a live docs page during this session unless explicitly marked otherwise.
 
 **Legend**
@@ -40,7 +40,7 @@ Quoted: *"The `all-apis` scope requests an OAuth access token that allows the se
 
 **Secret creation path:** Settings → Identity and access → Service principals → (select SP) → Secrets → Generate secret. Lifetime up to 730 days. Both **account admins and workspace admins** can do this; account admins can alternatively use the account console (User management → SP → Credentials & secrets). **[V-search]** https://docs.databricks.com/aws/en/admin/users-groups/manage-service-principals
 
-> **Gotcha for Lakewright.NET:** the client_credentials access token is 1 hour with no refresh token. Any HTTP client must cache the token and refresh proactively (e.g. at T-5min), not react to a 401. The Databricks SDK for .NET does this for you; a hand-rolled `HttpClient` does not.
+> **Gotcha for LakeWright.NET:** the client_credentials access token is 1 hour with no refresh token. Any HTTP client must cache the token and refresh proactively (e.g. at T-5min), not react to a 401. The Databricks SDK for .NET does this for you; a hand-rolled `HttpClient` does not.
 
 ### 1.2 U2M — authorization code + PKCE
 
@@ -131,7 +131,7 @@ There **is** an on-behalf-of-user mechanism, but it is **scoped to Databricks Ap
 - Contrast: **app authorization** gives the app a dedicated service principal via injected `DATABRICKS_CLIENT_ID` / `DATABRICKS_CLIENT_SECRET` env vars; limitation quoted: *"All users who interact with the app share the same permissions."*
 - Stated limitation: users **can't revoke** consent once granted. Token lifetime/refresh for the forwarded token: **[UNDOC]**.
 
-> **Integration-boundary implication:** if Lakewright.NET runs **outside** Databricks (Azure Container Apps), there is **no documented OBO/token-exchange flow** to act as an arbitrary end user against Unity Catalog. The realistic options are (a) run U2M authorization-code+PKCE and hold each user's Databricks OAuth token, (b) run as one service principal and enforce tenancy in your own SQL/app layer, or (c) host the user-facing surface as a Databricks App and use `x-forwarded-access-token`. This is the single most load-bearing finding for the integration-boundary decision.
+> **Integration-boundary implication:** if LakeWright.NET runs **outside** Databricks (Azure Container Apps), there is **no documented OBO/token-exchange flow** to act as an arbitrary end user against Unity Catalog. The realistic options are (a) run U2M authorization-code+PKCE and hold each user's Databricks OAuth token, (b) run as one service principal and enforce tenancy in your own SQL/app layer, or (c) host the user-facing surface as a Databricks App and use `x-forwarded-access-token`. This is the single most load-bearing finding for the integration-boundary decision.
 
 ---
 
@@ -223,7 +223,7 @@ This is the precise syntax. Named parameters prefixed with `:` in the statement,
 
 Databricks' own words **[V]**: *"Databricks strongly recommends that you use parameters as a best practice for your SQL statements... Parameterized queries help protect against SQL injections attacks by handling input arguments separately from the rest of your SQL code and interpreting these arguments as literal values."*
 
-> **Gotcha:** identifiers (table/column/catalog names) are **not** parameterizable. If Lakewright.NET needs dynamic table names for multi-tenancy, that must be an allow-list validated in .NET, not a parameter.
+> **Gotcha:** identifiers (table/column/catalog names) are **not** parameterizable. If LakeWright.NET needs dynamic table names for multi-tenancy, that must be an allow-list validated in .NET, not a parameter.
 
 ### 2.9 Other limits
 
@@ -410,7 +410,7 @@ All are **requests per second per workspace** unless noted. "Fixed = No" means a
 | MLflow `*/search`, `experiments/list` | 7/s | Workspace |
 | Model Registry (most) | 40/s | Workspace |
 
-> **Critical gap:** the table contains **no row for `/api/2.0/sql/statements`**, **no row for Unity Catalog CRUD** (`/unity-catalog/catalogs|schemas|tables`), and **no row for `/serving-endpoints/*/invocations`**. Rate limits for the three APIs Lakewright.NET would lean on hardest are **[UNDOC]**. Design for backoff regardless; do not assume unlimited.
+> **Critical gap:** the table contains **no row for `/api/2.0/sql/statements`**, **no row for Unity Catalog CRUD** (`/unity-catalog/catalogs|schemas|tables`), and **no row for `/serving-endpoints/*/invocations`**. Rate limits for the three APIs LakeWright.NET would lean on hardest are **[UNDOC]**. Design for backoff regardless; do not assume unlimited.
 
 ### 4.2 Throttling response and retry guidance
 
@@ -494,7 +494,7 @@ ALTER TABLE table_name ALTER COLUMN column_name SET MASK mask_name;
 
 Limitations **[V]**: DBR <12.2 LTS unsupported; dedicated access mode not supported on DBR ≤15.3; DBR 15.4+ for reads, 16.3+ for writes; cannot apply to views; **incompatible with the Iceberg REST catalog and Unity REST APIs**; Delta Lake APIs unsupported; `MERGE` fails with nested/aggregated/windowed/limited policies; no time travel, cloning, or AI Search indexing; a policy cannot reference tables that themselves have active policies.
 
-> **This is the key tenancy lever.** Because the Statement Execution API runs statements as the authenticated principal and *"only the user who executes a statement can make fetch requests for the statement's results"*, row filters keyed on `current_user()` / `is_account_group_member()` give real per-tenant isolation **only if Lakewright.NET calls with the end user's identity** — i.e. U2M tokens or a Databricks App. With a single shared service principal, every tenant is the same `current_user()` and UC row filters do nothing for you.
+> **This is the key tenancy lever.** Because the Statement Execution API runs statements as the authenticated principal and *"only the user who executes a statement can make fetch requests for the statement's results"*, row filters keyed on `current_user()` / `is_account_group_member()` give real per-tenant isolation **only if LakeWright.NET calls with the end user's identity** — i.e. U2M tokens or a Databricks App. With a single shared service principal, every tenant is the same `current_user()` and UC row filters do nothing for you.
 
 ### 5.3 Credential vending / temporary credentials — yes, it exists
 
@@ -518,7 +518,7 @@ Limitations **[V]**: DBR <12.2 LTS unsupported; dedicated access mode not suppor
 
 **Auth for the Unity REST API path:** PAT or **OAuth M2M** (M2M *"Supports automatic credential and token refresh for long-running Spark jobs (>1 hour)"*). **[V]**
 
-> **Read this as a red flag for Lakewright.NET:** credential vending and row-filters/column-masks are **mutually exclusive**. If the accelerator's tenancy story is UC row filters, credential vending is off the table for those tables, and vice versa. Pick one.
+> **Read this as a red flag for LakeWright.NET:** credential vending and row-filters/column-masks are **mutually exclusive**. If the accelerator's tenancy story is UC row filters, credential vending is off the table for those tables, and vice versa. Pick one.
 
 ---
 
@@ -639,7 +639,7 @@ R and Scala; custom workspace storage locations; online tables; clean rooms; all
 - Cannot become Marketplace providers.
 - Databricks may delete accounts inactive for a prolonged period.
 
-### 7.6 Verdict for Lakewright.NET
+### 7.6 Verdict for LakeWright.NET
 
 **Workable for an OSS sample, with three real caveats.**
 

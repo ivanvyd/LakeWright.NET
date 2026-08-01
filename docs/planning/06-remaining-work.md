@@ -58,8 +58,8 @@ designations "confusingly similar" to a Databricks mark.
 
 1. Email `brand@databricks.com`. Copy `press@databricks.com`, which is where the public press kit
    routes trademark questions.
-2. State plainly: an independent open-source project called **Lakewright.NET**; "Databricks" appears
-   only as descriptive text and as a `Lakewright.Databricks` package name; the project name contains
+2. State plainly: an independent open-source project called **LakeWright.NET**; "Databricks" appears
+   only as descriptive text and as a `LakeWright.Databricks` package name; the project name contains
    no Databricks mark; no logo is used anywhere; the README carries a non-affiliation notice.
    Ask whether that is acceptable.
 3. Save the reply. If it needs wording changes, they are cheap now and expensive after release.
@@ -134,13 +134,13 @@ The one part that is *not* done: nothing hosts `OperationWorker` as a running pr
 `BackgroundService` with no host, driven one iteration at a time by tests, and it starts running for
 real in M2. "End to end" here means the library, not a process.
 
-- A Jobs submitter in `Lakewright.Databricks`, using `idempotency_token`.
+- A Jobs submitter in `LakeWright.Databricks`, using `idempotency_token`.
 - `OperationWorker` as a `BackgroundService`: claim, submit, record the external id, poll with
   backoff, complete. Deliberately absent until now, because a worker with nothing to submit to is
   scaffolding.
 - The reconciliation actor. **It must claim atomically**, the way `ClaimNextAsync` does — not read
   through `FindOrphanedForReconciliationAsync` and write later. An `xmin` concurrency token was
-  tried and removed; the reasoning is in `LakewrightDbContext`.
+  tried and removed; the reasoning is in `LakeWrightDbContext`.
 - Platform run states mapped into `OperationState` with an explicit unknown arm. Databricks
   documents its states as extensible, so an exhaustive switch is a future crash.
 
