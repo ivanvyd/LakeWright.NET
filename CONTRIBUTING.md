@@ -36,6 +36,22 @@ Then open <http://localhost:8080> and sign in as one of the three seeded people.
 [samples/Signalboard/README.md](samples/Signalboard/README.md). The Databricks side is separately
 deployable — see [deploying-databricks.md](docs/guides/deploying-databricks.md).
 
+### If you cloned before 2026-08-01, on Windows or macOS
+
+The projects were renamed from `Lakewright.*` to `LakeWright.*`. On a case-insensitive filesystem
+git updates its index but leaves the directories at their old casing, so `dotnet build` keeps
+working while a Docker build fails with types it cannot find — the container filesystem is
+case-sensitive and the project references no longer resolve.
+
+Check with `ls src` and fix by renaming through a temporary name:
+
+```bash
+cd src
+for d in Lakewright.*; do mv "$d" "${d}__tmp" && mv "${d}__tmp" "${d/Lakewright/LakeWright}"; done
+```
+
+A fresh clone is unaffected.
+
 Tests tagged `Category=Live` need a real workspace and create real resources. None exist yet; the
 live verification done so far is recorded in [docs/compatibility.md](docs/compatibility.md).
 
