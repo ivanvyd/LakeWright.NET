@@ -77,6 +77,7 @@ src/
   LakeWright.Databricks/      tenant-scoped Databricks SQL and job access
   LakeWright.Multitenancy/    tenant model, resolution, operations, audit, EF Core
   LakeWright.AspNetCore/      tenant middleware, role policies, operations API
+  LakeWright.AI/              Databricks model serving as an IChatClient, optional
 samples/
   Signalboard/                two-tenant sample product, Blazor dashboard plus the API
 tests/

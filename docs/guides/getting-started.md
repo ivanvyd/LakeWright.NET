@@ -140,6 +140,26 @@ cardinality bomb in a system built to have many tenants: a thousand tenants turn
 into four thousand time series. Tenant lands on spans, where sampling bounds the volume, and
 per-tenant totals come from `operations` and `audit_events`.
 
+## Talking to a model
+
+Optional, and a separate package so a product that only queries a warehouse takes no
+dependency on an AI client ([ADR 0009](../decisions/0009-a-separate-optional-ai-module.md)):
+
+```csharp
+builder.Services.AddSingleton<TokenCredential>(new DefaultAzureCredential());
+builder.Services.AddDatabricksChatClient(
+    new Uri("https://adb-....azuredatabricks.net"), "databricks-claude-sonnet-5");
+```
+
+You then inject `IChatClient` and use `Microsoft.Extensions.AI` as normal. The registration
+authenticates with the same `TokenCredential` as everything else, so a deployment holds one
+identity rather than an Entra token for Databricks and a separate key for the model.
+
+Streaming works because the client carries a shim. Databricks attaches `usage` to every streaming
+chunk with `completion_tokens` and `total_tokens` null, and the OpenAI deserialiser types them as
+numbers, so an unpatched client throws part-way through the response. The shim strips the
+incomplete object; the final chunk keeps its real numbers, so token counts still work.
+
 ## The audit trail
 
 Starting an operation, completing one, and asking for a tenant you cannot reach each write a row to
