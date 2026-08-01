@@ -101,7 +101,20 @@ public sealed partial class OperationWorker(
         Operation operation,
         CancellationToken cancellationToken)
     {
-        var tenant = TenantContextFactory.ForTenant(operation.OrganizationId, _tenancy.Catalog);
+        // Reads the organization's stored schema rather than deriving it. See
+        // OperationStore.ResolveClaimedTenantAsync for why deriving it was wrong.
+        var tenant = await store.ResolveClaimedTenantAsync(
+            operation.OrganizationId, _tenancy.Catalog, cancellationToken);
+
+        if (tenant is null)
+        {
+            // The tenant went inactive between the claim and here. Not an error worth retrying.
+            await store.CompleteAsync(
+                operation.OrganizationId, operation.Id, OperationState.Cancelled,
+                "The organization is no longer active.", cancellationToken);
+            return;
+        }
+
         var run = TenantScopedJobRun.Create(tenant, _options.JobId, operation.IdempotencyKey);
 
         var outcome = await submitter.SubmitAsync(run, cancellationToken);
@@ -137,7 +150,17 @@ public sealed partial class OperationWorker(
         Operation orphan,
         CancellationToken cancellationToken)
     {
-        var tenant = TenantContextFactory.ForTenant(orphan.OrganizationId, _tenancy.Catalog);
+        var tenant = await store.ResolveClaimedTenantAsync(
+            orphan.OrganizationId, _tenancy.Catalog, cancellationToken);
+
+        if (tenant is null)
+        {
+            await store.CompleteAsync(
+                orphan.OrganizationId, orphan.Id, OperationState.Cancelled,
+                "The organization is no longer active.", cancellationToken);
+            return;
+        }
+
         var run = TenantScopedJobRun.Create(tenant, _options.JobId, orphan.IdempotencyKey);
 
         var outcome = await submitter.SubmitAsync(run, cancellationToken);

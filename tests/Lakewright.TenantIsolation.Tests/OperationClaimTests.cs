@@ -135,6 +135,77 @@ public class OperationClaimTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task An_orphan_belonging_to_a_suspended_tenant_is_never_reconciled()
+    {
+        // Arrange — a suspension and a crashed worker often share a cause, so this is the case
+        // where re-submitting is most likely and least wanted. The first version of the
+        // reconciliation claim was missing the organization join that ClaimNextAsync has.
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await SeedAsync(postgres, operations: 1);
+        var store = new OperationStore(db);
+        await store.ClaimNextAsync(ct);
+        var acme = await db.Organizations.FindAsync([AcmeId], ct);
+        acme!.State = OrganizationState.Suspended;
+        await db.SaveChangesAsync(ct);
+
+        // Act
+        var whileSuspended = await store.ClaimOrphanForReconciliationAsync(AlreadyOrphaned, ct);
+        acme.State = OrganizationState.Active;
+        await db.SaveChangesAsync(ct);
+        var afterReinstating = await store.ClaimOrphanForReconciliationAsync(AlreadyOrphaned, ct);
+
+        // Assert
+        whileSuspended.ShouldBeNull();
+        afterReinstating.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task The_worker_uses_the_stored_schema_rather_than_deriving_it()
+    {
+        // Arrange — Organization.Schema is stored precisely so a later change to the naming
+        // convention cannot repoint existing tenants. The worker derived it anyway in the first
+        // version, which would have sent every job to a schema that may belong to someone else.
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await SeedAsync(postgres, operations: 0);
+        var acme = await db.Organizations.FindAsync([AcmeId], ct);
+        acme!.Slug = "acme_moved";
+        await db.Database.ExecuteSqlAsync(
+            $"UPDATE organizations SET \"Schema\" = 'legacy_schema_name' WHERE \"Id\" = {AcmeId.Value}",
+            ct);
+        db.ChangeTracker.Clear();
+        var store = new OperationStore(db);
+
+        // Act
+        var resolved = await store.ResolveClaimedTenantAsync(AcmeId, "analytics", ct);
+
+        // Assert
+        resolved.ShouldNotBeNull();
+        resolved.Schema.ShouldBe("legacy_schema_name");
+        resolved.Schema.ShouldNotBe(UnityCatalogIdentifier.SchemaForTenant(AcmeId));
+    }
+
+    [Fact]
+    public async Task Completing_an_operation_twice_does_not_overwrite_the_first_outcome()
+    {
+        // Arrange — reconciliation can claim a row a slow-but-alive worker is still processing, so
+        // both can reach CompleteAsync. The first to arrive should win.
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await SeedAsync(postgres, operations: 1);
+        var store = new OperationStore(db);
+        var claimed = await store.ClaimNextAsync(ct);
+
+        // Act
+        await store.CompleteAsync(AcmeId, claimed!.Id, OperationState.Succeeded, null, ct);
+        await store.CompleteAsync(AcmeId, claimed.Id, OperationState.Failed, "late writer", ct);
+
+        // Assert
+        db.ChangeTracker.Clear();
+        var final = await store.FindAsync(Ctx(), claimed.Id, ct);
+        final!.State.ShouldBe(OperationState.Succeeded);
+        final.Error.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task Completing_another_tenants_operation_is_refused()
     {
         // Arrange
