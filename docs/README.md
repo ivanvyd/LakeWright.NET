@@ -9,6 +9,8 @@
 | Understand why tenant isolation works the way it does | [Tenant model](planning/04-tenant-model.md), then [ADR 0002](decisions/0002-enforce-tenant-isolation-in-the-query-layer.md) |
 | Know what actually works against a real workspace | [Compatibility matrix](compatibility.md) |
 | Contribute | [CONTRIBUTING.md](../CONTRIBUTING.md) and [Testing isolation](guides/testing-isolation.md) |
+| Know what is next, and what is blocked | [Remaining work](planning/06-remaining-work.md) |
+| Deploy the Databricks side | [Deploying Databricks](guides/deploying-databricks.md) |
 | Assess it for security or compliance | [Threat model](security/threat-model.md), [SOC 2 mapping](compliance/soc2-mapping.md), [Data handling](compliance/data-handling.md) |
 
 ## Decisions
