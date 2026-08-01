@@ -4,6 +4,11 @@ on:
   pull_request:
   push:
     branches: [main]
+  # So a scan can be run on demand rather than only on a push or the weekly cron. The gap that
+  # showed the need: the visibility gate below evaluates per run, so after the repository went
+  # public the last run still showed all three jobs skipped, and there was no way to ask for a
+  # fresh one.
+  workflow_dispatch:
   schedule:
     # CodeQL and Scorecard find things that were not findings when the code merged,
     # because the advisory database moves. Without this trigger they only ever see
@@ -14,9 +19,9 @@ permissions:
   contents: read
 
 # CodeQL, dependency review and Scorecard are free on public repositories and need GitHub Advanced
-# Security on private ones. This repository is private until v0.1, so they are gated on visibility
-# rather than left to fail every run: a permanently red check trains people to ignore red checks.
-# They start working on their own when the repository is made public.
+# Security on private ones. The gate is on visibility rather than removed, so that a fork kept
+# private does not get three permanently red checks — a permanently red check trains people to
+# ignore red checks. The repository went public on 2026-08-01 and all three now run here.
 jobs:
   codeql:
     if: github.event.repository.private == false
