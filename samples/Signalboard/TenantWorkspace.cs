@@ -33,6 +33,10 @@ public sealed class TenantWorkspace(
     {
         /// <summary>Roles are a floor, so Member and Admin both qualify.</summary>
         public bool CanStart => Role >= MembershipRole.Member;
+
+        /// <summary>Where the API serves this operation, which is not where the dashboard lives.</summary>
+        public string AddressOf(Guid operationId) =>
+            $"/organizations/{Tenant.TenantId.Value}/operations/{operationId}";
     }
 
     /// <summary>Thrown where the API would answer 403.</summary>

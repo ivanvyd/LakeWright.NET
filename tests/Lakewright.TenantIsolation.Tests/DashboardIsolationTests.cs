@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -81,6 +82,37 @@ public sealed class DashboardIsolationTests(PostgresFixture postgres) : IAsyncLi
         bobsPage.ShouldContain("Globex Freight");
         bobsPage.ShouldNotContain("Acme Logistics");
         bobsPage.ShouldContain("Nothing yet");
+    }
+
+    [Fact]
+    public async Task The_address_the_dashboard_prints_resolves_for_its_owner()
+    {
+        // Arrange — the dashboard prints an address and invites you to try it as someone from the
+        // other organization. It printed the page route rather than the API route, which 404s for
+        // everyone including the owner, so the demonstration proved nothing and looked like it
+        // proved everything. A wrong address here is worse than a broken one.
+        var ct = TestContext.Current.CancellationToken;
+        var alice = Browser();
+        await SignInAsync(alice, DemoTenants.Alice, ct);
+
+        await alice.PostAsJsonAsync(
+            new Uri($"/organizations/{DemoTenants.Acme.Value}/operations", UriKind.Relative),
+            new { kind = "analysis" }, ct);
+
+        var page = await alice.GetStringAsync(new Uri("/operations", UriKind.Relative), ct);
+        var address = Regex.Match(page, @"/organizations/[0-9a-f-]+/operations/[0-9a-f-]+").Value;
+
+        // Act
+        var asOwner = await alice.GetAsync(new Uri(address, UriKind.Relative), ct);
+
+        var bob = Browser();
+        await SignInAsync(bob, DemoTenants.Bob, ct);
+        var asOutsider = await bob.GetAsync(new Uri(address, UriKind.Relative), ct);
+
+        // Assert — the 404 only means something because the same address answers 200 for its owner.
+        address.ShouldNotBeEmpty();
+        asOwner.StatusCode.ShouldBe(HttpStatusCode.OK);
+        asOutsider.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
     [Fact]

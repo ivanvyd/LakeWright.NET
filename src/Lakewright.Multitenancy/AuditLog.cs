@@ -26,8 +26,6 @@ public sealed class AuditLog(LakewrightDbContext db, TimeProvider time)
         string? resourceId = null,
         string? detail = null)
     {
-        ArgumentNullException.ThrowIfNull(db);
-
         db.AuditEvents.Add(new AuditEvent
         {
             Id = Guid.CreateVersion7(),

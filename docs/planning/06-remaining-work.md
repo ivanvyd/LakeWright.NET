@@ -209,13 +209,15 @@ been run against Postgres, and the managed identity path is evidenced by
 
 ## Cross-cutting, not a milestone
 
-Two threats are named as unmitigated in `docs/security/threat-model.md` and should not quietly stay
-that way:
+Both threats that `docs/security/threat-model.md` named unmitigated now have code, and what remains
+of each is stated there rather than here:
 
-- **Cost abuse (T5).** Only warehouse auto-stop limits the blast radius. Per-tenant query budgets
-  and a cost ceiling belong with M2, where there is a request to reject.
-- **Queue starvation (T6).** The claim loop is FIFO across all tenants with no fairness rule. One
-  tenant can fill it. Belongs with M1, where the loop is being finished anyway.
+- **Cost abuse (T5).** `MaxInFlightPerTenant` caps concurrent compute per tenant. A budget in
+  currency still does not exist, and needs billing data that arrives too late to stop anything in
+  flight — it belongs with observability, as alerting and chargeback rather than enforcement.
+- **Queue starvation (T6).** Closed. The claim orders by in-flight count before age. What is left is
+  a throughput limit, not a fairness one: a worker polls one run to completion before claiming
+  again, so a burst queues even though no tenant can monopolise the workers.
 
 ## The decision worth making before M1
 
