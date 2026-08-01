@@ -6,7 +6,6 @@
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
     <PackageReference Include="OpenAI" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
-    <PackageReference Include="Microsoft.Extensions.Options" />
     <PackageReference Include="Azure.Core" />
   </ItemGroup>
   <ItemGroup>

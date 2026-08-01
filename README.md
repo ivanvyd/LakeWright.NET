@@ -15,7 +15,7 @@ analytics to customers who are not themselves Databricks customers.
 > tier (tenant middleware, role policies, the operations API with client idempotency), the audit
 > trail, the Declarative Automation Bundle, and the Signalboard sample — two organizations, three
 > people, a Blazor dashboard and the same API from a terminal.
-> Still open: cost budgets in currency, observability, and tenant provisioning and deletion. The milestones are in [ROADMAP.md](ROADMAP.md), and
+> Still open: cost budgets in currency, observability, and a reference deployment. The milestones are in [ROADMAP.md](ROADMAP.md), and
 > [docs/compatibility.md](docs/compatibility.md) records exactly what has been verified against a
 > live workspace and what has not.
 
@@ -89,7 +89,7 @@ docs/                         see docs/README.md
 `LakeWright.Multitenancy` does not reference `LakeWright.Databricks`, so adopting the tenancy tier
 alone does not drag in the Databricks client. A test enforces that rather than a convention.
 
-Still to come: observability, per-tenant cost attribution, and tenant provisioning and deletion.
+Still to come: observability, per-tenant cost attribution in currency, and a reference deployment.
 
 ## Documentation
 
