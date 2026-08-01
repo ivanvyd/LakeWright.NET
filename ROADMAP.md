@@ -2,6 +2,11 @@
 
 Dates are targets, not commitments. This is maintained in personal time.
 
+**For what is next and what is blocking, see
+[docs/planning/06-remaining-work.md](docs/planning/06-remaining-work.md)** — four blockers with
+unblock steps, and five milestones with acceptance criteria. This file records the original plan and
+what has landed against it.
+
 ## v0.1 — the eight-week milestone
 
 The goal is one thing: an experienced .NET team reads the repository and understands how a
