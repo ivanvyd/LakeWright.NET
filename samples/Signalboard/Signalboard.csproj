@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
-    <Description>Signalboard: the sample product that proves the Lakewright.NET architecture.</Description>
+    <Description>Signalboard: the sample product that proves the LakeWright.NET architecture.</Description>
     <IsPackable>false</IsPackable>
     <UserSecretsId>lakewright-signalboard</UserSecretsId>
   </PropertyGroup>
@@ -9,6 +9,6 @@
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Lakewright.AspNetCore\Lakewright.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\src\LakeWright.AspNetCore\LakeWright.AspNetCore.csproj" />
   </ItemGroup>
 </Project>

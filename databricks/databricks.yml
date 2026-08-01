@@ -1,7 +1,7 @@
 # Declarative Automation Bundle (formerly Databricks Asset Bundles; renamed 2026-03-16).
 # The CLI command is still `databricks bundle`.
 #
-# This deploys the Databricks side of Lakewright: the catalog tenant schemas live in, and the
+# This deploys the Databricks side of LakeWright: the catalog tenant schemas live in, and the
 # warehouse the application queries through. Tenant schemas themselves are NOT here. They are
 # created per tenant at provisioning time by the application, because a bundle describes a fixed
 # set of resources and tenants arrive at runtime. See ADR 0002.

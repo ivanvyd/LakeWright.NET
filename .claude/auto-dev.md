@@ -1,4 +1,4 @@
-# Auto-development adapter: Lakewright.NET
+# Auto-development adapter: LakeWright.NET
 
 ## Project shape
 
