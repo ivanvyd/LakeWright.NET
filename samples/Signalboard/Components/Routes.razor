@@ -1,0 +1,14 @@
+@*
+    Static SSR is the default. Only the operations dashboard opts into Interactive Server, so a
+    circuit exists for the one page that needs live updates rather than for every visitor
+    (ADR 0007 calls the per-user circuit out as the cost of this choice).
+*@
+<Router AppAssembly="typeof(Program).Assembly">
+    <Found Context="routeData">
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(MainLayout)">
+            <NotAuthorized>
+                <SignInPrompt />
+            </NotAuthorized>
+        </AuthorizeRouteView>
+    </Found>
+</Router>

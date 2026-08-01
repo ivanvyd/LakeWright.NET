@@ -1,12 +1,13 @@
+
 using Lakewright.Core.Tenancy;
 
-namespace Lakewright.Databricks;
+namespace Lakewright.Core.Jobs;
 
 /// <summary>
 /// A Lakeflow job run requested for exactly one tenant.
 /// </summary>
 /// <remarks>
-/// Same shape as <see cref="TenantScopedStatement"/> and for the same reason: it cannot be built
+/// Same shape as <c>TenantScopedStatement</c> and for the same reason: it cannot be built
 /// without a <see cref="TenantContext"/>, and <see cref="IJobSubmitter"/> accepts nothing else.
 ///
 /// The tenant reaches the job as a parameter rather than through the connection, because a job runs

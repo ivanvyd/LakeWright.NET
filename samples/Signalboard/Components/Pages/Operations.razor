@@ -1,0 +1,149 @@
+@page "/operations"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@implements IDisposable
+@inject TenantWorkspace Workspace
+
+<PageTitle>Operations — Signalboard</PageTitle>
+
+@if (_workspace is null)
+{
+    <p>Loading.</p>
+}
+else
+{
+    <h1>@_workspace.Organization</h1>
+
+    <p class="scope">
+        Everything below belongs to @_workspace.Organization. There is no query in this page that
+        could return anything else: the operation store takes a resolved tenant and filters on it.
+    </p>
+
+    <form class="start" @onsubmit="StartAsync" @formname="start-operation">
+        <label for="kind">Kind</label>
+        <select id="kind" @bind="_kind">
+            <option value="analysis">analysis</option>
+            <option value="export">export</option>
+        </select>
+        <button type="submit" disabled="@(_starting || !_workspace.CanStart)">Start</button>
+        @if (!_workspace.CanStart)
+        {
+            <span class="denied">
+                You are a @_workspace.Role. Starting work needs Member or above.
+            </span>
+        }
+    </form>
+
+    @if (_error is not null)
+    {
+        <p class="denied" role="alert">@_error</p>
+    }
+
+    @if (_operations.Count == 0)
+    {
+        <p>Nothing yet. Start one.</p>
+    }
+    else
+    {
+        <table class="operations">
+            <thead>
+                <tr><th>Started</th><th>Kind</th><th>State</th><th>By</th><th>Address</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var operation in _operations)
+                {
+                    <tr>
+                        <td>@operation.CreatedAt.ToLocalTime().ToString("HH:mm:ss")</td>
+                        <td>@operation.Kind</td>
+                        <td><span class="state @operation.State.ToString().ToLowerInvariant()">@operation.State</span></td>
+                        <td>@DemoTenants.NameOf(operation.PrincipalId)</td>
+                        <td><code>@Address(operation.Id)</code></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <p class="hint">
+            Copy an address, sign out, sign back in as someone from the other organization, and ask
+            for it. You get 404. Not 403 — that would confirm it exists.
+        </p>
+    }
+}
+
+@code {
+    private readonly List<OperationRow> _operations = [];
+    private TenantWorkspace.Scope? _workspace;
+    private string _kind = "analysis";
+    private bool _starting;
+    private string? _error;
+    private PeriodicTimer? _timer;
+    private CancellationTokenSource? _polling;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _workspace = await Workspace.CurrentAsync(CancellationToken.None);
+        await RefreshAsync();
+
+        // Operations finish in the background, so the page has to ask. A circuit is what buys this
+        // over Static SSR, and it is the only reason this page is interactive at all.
+        _polling = new CancellationTokenSource();
+        _timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+        _ = PollAsync(_polling.Token);
+    }
+
+    private async Task PollAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (await _timer!.WaitForNextTickAsync(cancellationToken))
+            {
+                await RefreshAsync();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // The visitor navigated away.
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (_workspace is null) { return; }
+
+        _operations.Clear();
+        _operations.AddRange(await Workspace.RecentAsync(_workspace, CancellationToken.None));
+    }
+
+    private async Task StartAsync()
+    {
+        if (_workspace is null || _starting) { return; }
+
+        _starting = true;
+        _error = null;
+
+        try
+        {
+            await Workspace.StartAsync(_workspace, _kind, CancellationToken.None);
+            await RefreshAsync();
+        }
+        catch (TenantWorkspace.RoleDeniedException e)
+        {
+            // The same refusal the API answers with 403, surfaced where the visitor is looking.
+            _error = e.Message;
+        }
+        finally
+        {
+            _starting = false;
+        }
+    }
+
+    private static string Address(Guid operationId) => $"/operations/{operationId}";
+
+    public void Dispose()
+    {
+        _polling?.Cancel();
+        _polling?.Dispose();
+        _timer?.Dispose();
+    }
+}

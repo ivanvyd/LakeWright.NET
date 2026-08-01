@@ -61,20 +61,25 @@ deployment option rather than a fork. Revisit when Lakebase reaches GA on Azure.
 whether we like it or not, so asynchrony is the default path rather than an escalation.
 
 ```
-POST /analyses            -> insert operation row (Pending), return 202 + operation URL
+POST /organizations/{organizationId}/operations
+                         -> insert operation row (Pending) + audit row, return 202 + operation URL
+                            honours Idempotency-Key: a retry returns the original operation
 worker: claim            -> SELECT ... FOR UPDATE SKIP LOCKED
-worker: submit           -> Databricks run, with idempotency_token
+worker: submit           -> Databricks run for the job mapped to Kind, with idempotency_token
 worker: record run id    -> the crash-critical write
 worker: poll             -> exponential backoff with jitter
-worker: complete         -> store result reference, mark Succeeded
-GET /operations/{id}     -> product-facing state, never a raw Databricks state
+worker: complete         -> mark Succeeded, audit row in the same transaction
+GET /organizations/{organizationId}/operations/{operationId}
+                         -> product-facing state, never a raw Databricks state
 ```
 
-**The failure this design exists to prevent:** a worker that crashes between submitting to Databricks
-and recording the run ID. Without a recorded ID the operation is orphaned, and the retry submits a
-second run. Reconciliation closes it by re-submitting with the original `idempotency_token`, which returns the
-run that token already started. This is the case the integration test suite covers, because it
-is invisible to every happy-path test.
+**The two failures this design exists to prevent.** A worker that crashes between submitting to
+Databricks and recording the run ID leaves an operation with no ID, and a naive retry submits a
+second run; reconciliation re-submits with the original `idempotency_token`, which returns the run
+that token already started. A worker that stops *after* recording the ID — which an ordinary rolling
+deploy causes, because the poll loop exits on the shutdown token — leaves an operation nothing is
+watching; reconciliation reclaims it and resumes the poll on the recorded run rather than submitting
+again. Both are invisible to every happy-path test and both are covered by the integration suite.
 
 **Platform states are open-ended.** Databricks documents job run states as extensible. An exhaustive
 `switch` over them is a future crash. Platform states map at the boundary into a closed internal
@@ -82,8 +87,10 @@ enum with an explicit `Unknown` arm that logs and treats the run as still runnin
 
 ## Result handling
 
-`INLINE` disposition hard-fails at 25 MiB and cancels the statement rather than truncating. The
-default is `EXTERNAL_LINKS` with `ARROW_STREAM`.
+`INLINE` disposition hard-fails at 25 MiB and cancels the statement rather than truncating. It is
+still the default, because a customer-facing query is dashboard sized and `INLINE` returns the rows
+in the response. `EXTERNAL_LINKS` with `ARROW_STREAM` is the export path, and results then arrive as
+`StatementOutcome.LargeResult` carrying presigned URLs.
 
 Two details that are security-relevant rather than performance-relevant:
 

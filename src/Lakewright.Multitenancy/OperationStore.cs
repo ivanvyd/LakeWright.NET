@@ -1,6 +1,8 @@
+using System.Text.Json;
 using Lakewright.Core.Tenancy;
 using Lakewright.Multitenancy.Model;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace Lakewright.Multitenancy;
 
@@ -19,15 +21,44 @@ namespace Lakewright.Multitenancy;
 /// without the same explicit note, because a blanket guarantee in this comment that two of the
 /// methods do not honour is worse than no comment.
 /// </remarks>
-public sealed class OperationStore(LakewrightDbContext db)
+public sealed class OperationStore(LakewrightDbContext db, AuditLog audit, TimeProvider time)
 {
+    /// <summary>The <c>Idempotency-Key</c> length a caller may send.</summary>
+    public const int MaxClientRequestIdLength = 200;
+
+    /// <summary>
+    /// Starts an operation, or returns the one this caller already started under the same
+    /// <paramref name="clientRequestId"/>.
+    /// </summary>
+    /// <remarks>
+    /// Replay matters more here than in a typical API: a duplicate operation is a duplicate
+    /// Databricks run, which the tenant is billed for and which no amount of retry-safety in the
+    /// worker prevents, because the second POST is a genuinely different operation as far as the
+    /// worker can tell.
+    ///
+    /// The unique index is what enforces this, not the lookup below. Two retries arriving together
+    /// both find nothing, both insert, and one loses on the constraint — which is the path that
+    /// returns the winner.
+    ///
+    /// A returned operation whose <see cref="Operation.Kind"/> differs from
+    /// <paramref name="kind"/> is a key the caller reused for different content: an insert always
+    /// carries the requested kind, so only a replay can disagree.
+    /// </remarks>
     public async Task<Operation> CreateAsync(
         TenantContext tenant,
         string principalId,
         string kind,
+        string? clientRequestId,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(tenant);
+
+        if (clientRequestId is not null
+            && await FindByClientRequestIdAsync(tenant, principalId, clientRequestId, cancellationToken)
+                is { } existing)
+        {
+            return existing;
+        }
 
         var operation = new Operation
         {
@@ -38,13 +69,51 @@ public sealed class OperationStore(LakewrightDbContext db)
             State = OperationState.Pending,
             // 64 characters is the Jobs API cap. A GUID in "N" form is 32.
             IdempotencyKey = Guid.CreateVersion7().ToString("N"),
-            CreatedAt = DateTimeOffset.UtcNow
+            ClientRequestId = clientRequestId,
+            CreatedAt = time.GetUtcNow()
         };
 
         db.Operations.Add(operation);
-        await db.SaveChangesAsync(cancellationToken);
+        audit.Record(
+            tenant.TenantId, principalId, AuditActions.OperationStarted,
+            resourceType: nameof(Operation), resourceId: operation.Id.ToString());
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException e) when (clientRequestId is not null && IsUniqueViolation(e))
+        {
+            // Detaching the operation alone would leave its audit row queued, and the next
+            // SaveChanges on this context would record a start that never happened.
+            db.ChangeTracker.Clear();
+
+            var winner = await FindByClientRequestIdAsync(
+                tenant, principalId, clientRequestId, cancellationToken);
+
+            // A unique violation with no matching row means some other constraint failed, and
+            // reporting that as a replay would hide it.
+            if (winner is null) { throw; }
+
+            return winner;
+        }
+
         return operation;
     }
+
+    private Task<Operation?> FindByClientRequestIdAsync(
+        TenantContext tenant,
+        string principalId,
+        string clientRequestId,
+        CancellationToken cancellationToken) =>
+        db.Operations.SingleOrDefaultAsync(
+            o => o.OrganizationId == tenant.TenantId
+                && o.PrincipalId == principalId
+                && o.ClientRequestId == clientRequestId,
+            cancellationToken);
+
+    private static bool IsUniqueViolation(DbUpdateException e) =>
+        e.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
 
     /// <summary>
     /// Finds an operation the tenant owns, or null.
@@ -191,6 +260,11 @@ public sealed class OperationStore(LakewrightDbContext db)
         // Guarded on the current state so a second completer is a no-op rather than a blind
         // overwrite. Reconciliation can claim a row a slow-but-alive worker is still processing, in
         // which case both reach here; the first one to arrive wins and the second changes nothing.
+        // ExecuteUpdate and SaveChanges are separate statements, so an explicit transaction is what
+        // makes the audit row and the completion land together. Without it, a crash between them
+        // leaves an audit trail that disagrees with the operation it describes.
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+
         var updated = await db.Operations
             .Where(o => o.Id == operationId
                      && o.OrganizationId == tenantId
@@ -198,24 +272,51 @@ public sealed class OperationStore(LakewrightDbContext db)
             .ExecuteUpdateAsync(
                 s => s.SetProperty(o => o.State, state)
                       .SetProperty(o => o.Error, error)
-                      .SetProperty(o => o.CompletedAt, DateTimeOffset.UtcNow),
+                      .SetProperty(o => o.CompletedAt, time.GetUtcNow()),
                 cancellationToken);
 
-        if (updated == 0 && !await db.Operations
-                .AnyAsync(o => o.Id == operationId && o.OrganizationId == tenantId, cancellationToken))
+        if (updated == 0)
         {
-            throw new InvalidOperationException(
-                $"Operation {operationId} does not belong to tenant {tenantId}.");
+            if (!await db.Operations
+                    .AnyAsync(o => o.Id == operationId && o.OrganizationId == tenantId, cancellationToken))
+            {
+                throw new InvalidOperationException(
+                    $"Operation {operationId} does not belong to tenant {tenantId}.");
+            }
+
+            // Someone else completed it first. A second audit row would show the operation
+            // finishing twice.
+            await transaction.CommitAsync(cancellationToken);
+            return;
         }
+
+        audit.Record(
+            tenantId, SystemPrincipal.Worker, AuditActions.OperationCompleted,
+            resourceType: nameof(Operation), resourceId: operationId.ToString(),
+            detail: JsonSerializer.Serialize(new { state = state.ToString() }));
+
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
     }
 
     /// <summary>
-    /// Claims one operation that was claimed but never given an external identifier, and whose
-    /// grace period has elapsed. Returns null when there is nothing to reconcile.
+    /// Claims one operation that a worker stopped watching, whose grace period has elapsed.
+    /// Returns null when there is nothing to reconcile.
     /// </summary>
     /// <remarks>
-    /// These are the rows left by a worker that died between submitting to Databricks and recording
-    /// the run id. The run may exist; nothing local knows its id.
+    /// Two shapes of abandoned row, and the caller tells them apart by whether
+    /// <see cref="Operation.ExternalId"/> is set.
+    ///
+    /// Without one, the worker died between submitting to Databricks and recording the run id. The
+    /// run may exist; nothing local knows its id, so it is re-submitted under the original
+    /// idempotency key.
+    ///
+    /// With one, the run is known and the worker simply stopped polling it — which an ordinary
+    /// rolling deploy causes, because <c>PollAsync</c> exits on the shutdown token and nothing
+    /// resumes it. That case was missed at first: reconciliation required
+    /// <c>ExternalId IS NULL</c>, so a redeploy while any operation was mid-poll left it
+    /// <see cref="OperationState.Running"/> forever, reported to the tenant as still in progress
+    /// with no error and no end.
     ///
     /// This claims atomically rather than reading a list and writing later. A read-then-write lets
     /// reconciliation and a slow-but-alive worker both act on one row, and the later write silently
@@ -234,7 +335,7 @@ public sealed class OperationStore(LakewrightDbContext db)
         TimeSpan gracePeriod,
         CancellationToken cancellationToken)
     {
-        var cutoff = DateTimeOffset.UtcNow - gracePeriod;
+        var cutoff = time.GetUtcNow() - gracePeriod;
 
         var claimed = await db.Operations
             .FromSql($"""
@@ -243,8 +344,8 @@ public sealed class OperationStore(LakewrightDbContext db)
                 WHERE o."Id" = (
                     SELECT c."Id" FROM operations c
                     JOIN organizations org ON org."Id" = c."OrganizationId"
-                    WHERE c."State" = {(int)OperationState.Pending}
-                      AND c."ExternalId" IS NULL
+                    WHERE c."State" IN ({(int)OperationState.Pending}, {(int)OperationState.Running})
+                      AND c."CompletedAt" IS NULL
                       AND c."ClaimedAt" IS NOT NULL
                       AND c."ClaimedAt" < {cutoff}
                       AND org."State" = {(int)OrganizationState.Active}
@@ -260,3 +361,4 @@ public sealed class OperationStore(LakewrightDbContext db)
         return claimed.FirstOrDefault();
     }
 }
+

@@ -1,3 +1,4 @@
+using Lakewright.Core.Jobs;
 using Microsoft.Azure.Databricks.Client;
 using Microsoft.Azure.Databricks.Client.Models;
 using Microsoft.Extensions.Logging;

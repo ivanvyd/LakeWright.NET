@@ -19,6 +19,8 @@
     <ProjectReference Include="..\..\src\Lakewright.Multitenancy\Lakewright.Multitenancy.csproj" />
     <ProjectReference Include="..\..\src\Lakewright.Databricks\Lakewright.Databricks.csproj" />
     <ProjectReference Include="..\..\src\Lakewright.AspNetCore\Lakewright.AspNetCore.csproj" />
+    <!-- The sample is a second route into tenant data, so it is tested, not just built. -->
+    <ProjectReference Include="..\..\samples\Signalboard\Signalboard.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

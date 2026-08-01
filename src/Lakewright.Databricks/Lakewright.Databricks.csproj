@@ -3,6 +3,7 @@
     <Description>Tenant-scoped Databricks SQL access for Lakewright.NET.</Description>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Azure.Core" />
     <PackageReference Include="Microsoft.Azure.Databricks.Client" />
     <PackageReference Include="Microsoft.Extensions.Options" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />

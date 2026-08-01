@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/samples/">
+    <Project Path="samples/Signalboard/Signalboard.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/Lakewright.AspNetCore/Lakewright.AspNetCore.csproj" />
     <Project Path="src/Lakewright.Core/Lakewright.Core.csproj" />

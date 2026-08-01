@@ -46,8 +46,8 @@ public class OperationOwnershipTests(PostgresFixture postgres)
         // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres);
-        var store = new OperationStore(db);
-        var acmeOperation = await store.CreateAsync(Ctx(AcmeId), "auth0|alice", "analysis", ct);
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
+        var acmeOperation = await store.CreateAsync(Ctx(AcmeId), "auth0|alice", "analysis", clientRequestId: null, ct);
 
         // Act — Globex knows the id. That is the realistic case: ids leak through logs, support
         // tickets and browser history. Knowing one must not be enough.
@@ -64,8 +64,8 @@ public class OperationOwnershipTests(PostgresFixture postgres)
         // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres);
-        var store = new OperationStore(db);
-        var acmeOperation = await store.CreateAsync(Ctx(AcmeId), "auth0|alice", "analysis", ct);
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
+        var acmeOperation = await store.CreateAsync(Ctx(AcmeId), "auth0|alice", "analysis", clientRequestId: null, ct);
 
         // Act
         var notYours = await store.FindAsync(Ctx(GlobexId), acmeOperation.Id, ct);
@@ -82,8 +82,8 @@ public class OperationOwnershipTests(PostgresFixture postgres)
         // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres);
-        var store = new OperationStore(db);
-        var acmeOperation = await store.CreateAsync(Ctx(AcmeId), "auth0|alice", "analysis", ct);
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
+        var acmeOperation = await store.CreateAsync(Ctx(AcmeId), "auth0|alice", "analysis", clientRequestId: null, ct);
 
         // Act
         var refused = await Should.ThrowAsync<InvalidOperationException>(
@@ -103,8 +103,8 @@ public class OperationOwnershipTests(PostgresFixture postgres)
         // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var db = await SeedAsync(postgres);
-        var store = new OperationStore(db);
-        var first = await store.CreateAsync(Ctx(AcmeId), "auth0|alice", "analysis", ct);
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
+        var first = await store.CreateAsync(Ctx(AcmeId), "auth0|alice", "analysis", clientRequestId: null, ct);
 
         db.Operations.Add(new Operation
         {

@@ -58,6 +58,7 @@ public sealed class LakewrightDbContext(DbContextOptions<LakewrightDbContext> op
             e.Property(x => x.PrincipalId).HasMaxLength(200).IsRequired();
             e.Property(x => x.Kind).HasMaxLength(100).IsRequired();
             e.Property(x => x.IdempotencyKey).HasMaxLength(64).IsRequired();
+            e.Property(x => x.ClientRequestId).HasMaxLength(OperationStore.MaxClientRequestIdLength);
             e.Property(x => x.ExternalId).HasMaxLength(200);
             e.Property(x => x.Error).HasMaxLength(2000);
             e.HasOne(x => x.Organization).WithMany()
@@ -69,6 +70,15 @@ public sealed class LakewrightDbContext(DbContextOptions<LakewrightDbContext> op
 
             // A second run for the same key is the duplicate-submission bug this exists to stop.
             e.HasIndex(x => x.IdempotencyKey).IsUnique();
+
+            // Enforces client idempotency in the database rather than in a read-then-write, which
+            // two simultaneous retries would both pass. Scoped to the principal so one tenant's
+            // members cannot collide with each other, and filtered so the callers that send no key
+            // do not all collide on NULL.
+            e.HasIndex(x => new { x.OrganizationId, x.PrincipalId, x.ClientRequestId })
+                .IsUnique()
+                .HasFilter("\"ClientRequestId\" IS NOT NULL")
+                .HasDatabaseName("IX_operations_client_request");
 
             // Reconciliation scans for rows stuck without an external id, ordered by ClaimedAt,
             // which is the trailing column here, so it reads straight from the index.

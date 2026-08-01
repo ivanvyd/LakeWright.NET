@@ -1,3 +1,4 @@
+using Lakewright.Core.Jobs;
 using Lakewright.Core.Tenancy;
 using Lakewright.Databricks;
 using Microsoft.Azure.Databricks.Client;
