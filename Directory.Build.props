@@ -48,7 +48,19 @@
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/ivanvyd/LakeWright.NET</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+
+    <!-- Before 1.0, and the default is 1.0.0, which would have signalled the opposite. The release
+         workflow overrides this from the tag so a package can never claim a version the tag does
+         not; this value is what a local `dotnet pack` produces. -->
+    <VersionPrefix>0.1.0</VersionPrefix>
     <Copyright>Copyright (c) LakeWright.NET contributors</Copyright>
   </PropertyGroup>
+
+  <!-- PackageReadmeFile names the file; it does not put it in the package. Without this, `dotnet
+       pack` fails with NU5039 on every packable project — which is how the release workflow would
+       have failed on its first run, having never been executed. -->
+  <ItemGroup Condition="'$(IsPackable)' != 'false'">
+    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
 
 </Project>
