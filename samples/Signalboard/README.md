@@ -54,6 +54,16 @@ queried the tables directly. It goes through the tenant resolver and the operati
 a page with its own unguarded query beside the guarded one is the bug this project exists to
 demonstrate. `DashboardIsolationTests` fails if that changes.
 
+## It is a real interface, not a screenshot
+
+| Dark | Narrow |
+|---|---|
+| ![The dashboard in a dark colour scheme](../../docs/images/signalboard-dashboard-dark.png) | ![The dashboard at 390 pixels wide](../../docs/images/signalboard-mobile.png) |
+
+One stylesheet, no build step and no CDN — ADR 0007 chose Blazor partly to keep Node out of CI, and
+fetching a framework at runtime would hand that back. `tests/ui/smoke.mjs` drives the pages in a
+browser and takes these; it is how the two prerender defects in the dashboard were found.
+
 ## The same thing from a terminal
 
 The API is the one the dashboard uses. Authenticate with a header instead of a cookie:

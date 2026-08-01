@@ -38,8 +38,13 @@ async function signIn(page, name) {
   await page.goto(`${BASE}/signin`);
   await page.getByRole('button', { name: new RegExp(name, 'i') }).click();
   await page.waitForURL('**/operations');
-  await page.getByRole('button', { name: 'Start' })
-    .waitFor({ state: 'attached', timeout: 15000 });
+
+  // Settle before doing anything: the page renders prerendered content first and the Start button
+  // stays disabled until the circuit connects. Acting or screenshotting before that catches a
+  // transient state rather than the page a visitor sees.
+  await page.locator('.hint', { hasText: 'Connecting' })
+    .waitFor({ state: 'detached', timeout: 20000 })
+    .catch(() => {});
 }
 
 // ---- home, anonymous -------------------------------------------------------
