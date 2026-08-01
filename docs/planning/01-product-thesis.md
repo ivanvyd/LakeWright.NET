@@ -50,7 +50,7 @@ analogue to this architecture:
 > defined for the service principal, which prevents the app from enforcing fine-grained policies
 > based on individual user identity.
 
-�?" Databricks Apps authentication, doc dated 2026-07-21
+— Databricks Apps authentication, doc dated 2026-07-21
 
 **App identity means you filter. User identity means Unity Catalog filters.** There is no third
 option, and there is no general on-behalf-of flow for an externally hosted service.

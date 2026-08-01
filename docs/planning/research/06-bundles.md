@@ -1,4 +1,4 @@
-# 06 �?" Deploying Databricks assets as code, and the CI/CD story
+# 06 — Deploying Databricks assets as code, and the CI/CD story
 
 Research date: **2026-07-31**. All findings below are VERIFIED against live primary sources on this date unless
 explicitly labelled RECALLED or UNVERIFIED. Databricks docs pages carry a "Last updated" date; I record it per page
@@ -9,7 +9,7 @@ content is the same across all three. I cite the AWS path as canonical and the L
 
 ---
 
-## 1. NAMING �?" the headline finding
+## 1. NAMING — the headline finding
 
 ### VERIFIED: the current official name is **Declarative Automation Bundles**
 
@@ -20,7 +20,7 @@ only used parenthetically in the docs.
 
 > # What are Declarative Automation Bundles?
 
-�?" <https://docs.databricks.com/aws/en/dev-tools/bundles/> (page last updated **Jul 10, 2026**)
+— <https://docs.databricks.com/aws/en/dev-tools/bundles/> (page last updated **Jul 10, 2026**)
 
 The same page carries the standing gloss:
 
@@ -37,13 +37,13 @@ Release notes entry, quoted verbatim:
 > Databricks Asset Bundles has been renamed to Declarative Automation Bundles. See [Why was Databricks Asset
 > Bundles renamed to Declarative Automation Bundles?](../../dev-tools/bundles/faqs#rename).
 
-�?" <https://learn.microsoft.com/en-us/azure/databricks/release-notes/dev-tools/bundles>
+— <https://learn.microsoft.com/en-us/azure/databricks/release-notes/dev-tools/bundles>
 (also at <https://docs.databricks.com/aws/en/release-notes/dev-tools/bundles>)
 
 **Correction to a bad intermediate reading (recorded so nobody re-derives it):** a first summarising pass over the
 release-notes page attributed the rename to "Databricks CLI 0.218.0". That is wrong. The March 16, 2026 rename
-entry cites **no CLI version at all** �?" it is a documentation/branding change, not a CLI feature. CLI **0.218.0** is
-a different, much older entry: *"Declarative Automation Bundles is generally available �?" April 23, 2024"*. Do not
+entry cites **no CLI version at all** — it is a documentation/branding change, not a CLI feature. CLI **0.218.0** is
+a different, much older entry: *"Declarative Automation Bundles is generally available — April 23, 2024"*. Do not
 put "0.218.0" next to the rename in our docs.
 
 ### Why they renamed, and whether anything breaks
@@ -61,19 +61,19 @@ And critically:
 ### Guidance for Lakewright.NET docs
 
 - Use **Declarative Automation Bundles** as the product name throughout.
-- The CLI verb is still `databricks bundle �?�` and the file is still `databricks.yml`. Nothing in code changes.
+- The CLI verb is still `databricks bundle …` and the file is still `databricks.yml`. Nothing in code changes.
 - On first mention, write "Declarative Automation Bundles (formerly Databricks Asset Bundles)". The community and
-  virtually all blog content, Stack Overflow answers, and conference talks still say "DABs" �?" one parenthetical
+  virtually all blog content, Stack Overflow answers, and conference talks still say "DABs" — one parenthetical
   buys us searchability without looking dated.
 - The docs do **not** state that the "DAB" acronym is deprecated; they simply stop using it. I'd avoid it in prose
   but keep it in a glossary entry.
 - **Do not** confuse this with **Lakeflow**, which is a separate 2025 product umbrella (Lakeflow Connect, Spark
-  Declarative Pipelines �?" formerly DLT, and Lakeflow Jobs �?" formerly Workflows). Lakeflow is *what you deploy*;
+  Declarative Pipelines — formerly DLT, and Lakeflow Jobs — formerly Workflows). Lakeflow is *what you deploy*;
   bundles are *how you deploy it*.
 
 ---
 
-## 2. Bundle mechanics �?" `databricks.yml`
+## 2. Bundle mechanics — `databricks.yml`
 
 Primary source: <https://docs.databricks.com/aws/en/dev-tools/bundles/reference> (last updated **Jul 24, 2026**)
 and <https://docs.databricks.com/aws/en/dev-tools/bundles/settings> (last updated **Mar 16, 2026**).
@@ -127,16 +127,16 @@ experiment               postgres_catalog
 
 Answering the specific questions in the brief:
 
-- **jobs** �?" yes (`job`).
-- **pipelines** �?" yes (`pipeline`, i.e. Spark Declarative Pipelines on Lakeflow).
-- **model serving endpoints** �?" yes (`model_serving_endpoint`). Note the `run_as` incompatibility in §5.3.
-- **schemas / volumes** �?" yes (`schema`, `volume`), since CLI 0.225.0 and 0.236.0 respectively.
-- **apps** �?" yes (`app`), since CLI 0.239.0 (Jan 2025).
-- **dashboards** �?" yes (`dashboard`), AI/BI dashboards, since CLI 0.232.0.
-- **SQL warehouses** �?" yes (`sql_warehouse`).
-- **catalogs** �?" **yes** (`catalog`) �?" but see the engine caveat in §2.3: UC catalogs and external locations are
+- **jobs** — yes (`job`).
+- **pipelines** — yes (`pipeline`, i.e. Spark Declarative Pipelines on Lakeflow).
+- **model serving endpoints** — yes (`model_serving_endpoint`). Note the `run_as` incompatibility in §5.3.
+- **schemas / volumes** — yes (`schema`, `volume`), since CLI 0.225.0 and 0.236.0 respectively.
+- **apps** — yes (`app`), since CLI 0.239.0 (Jan 2025).
+- **dashboards** — yes (`dashboard`), AI/BI dashboards, since CLI 0.232.0.
+- **SQL warehouses** — yes (`sql_warehouse`).
+- **catalogs** — **yes** (`catalog`) — but see the engine caveat in §2.3: UC catalogs and external locations are
   supported **only on the direct deployment engine**, not the legacy Terraform engine.
-- **grants** �?" **not** a standalone top-level resource type. UNVERIFIED whether grants can be expressed nested
+- **grants** — **not** a standalone top-level resource type. UNVERIFIED whether grants can be expressed nested
   inside `catalog` / `schema` / `volume` resource bodies; the resource docs say each resource's keys mirror the
   corresponding REST API create-request fields, which *suggests* nested grants where the API supports them, but I
   did not confirm this against a concrete example. **Flag for the implementation spike.** If grants are not
@@ -165,7 +165,7 @@ This is the single most consequential recent change for our accelerator:
   engine's `resources.json`.
 - Claimed benefits: "up to 40% faster" deploys, granular validation with detailed diffs, replayable plans, simpler
   setup (no Terraform binary download, so fewer corporate-firewall problems).
-- **Semantic difference that will bite people** �?" quoted behaviour: on the Terraform engine, *removing a field from
+- **Semantic difference that will bite people** — quoted behaviour: on the Terraform engine, *removing a field from
   your config leaves the deployed value unchanged*; on the direct engine, *removing a field reverts it to the
   resource's default*. The direct engine is the more correct declarative semantic, but it means a config cleanup
   can silently change deployed behaviour during migration.
@@ -183,13 +183,13 @@ networks, which is our target audience.
 
 ### 3.1 Version (VERIFIED 2026-07-31)
 
-Latest release: **v1.10.0**, released **29 Jul 2026** �?" <https://github.com/databricks/cli/releases>
+Latest release: **v1.10.0**, released **29 Jul 2026** — <https://github.com/databricks/cli/releases>
 
 Recent cadence is roughly weekly: v1.10.0 (29 Jul), v1.9.0 (22 Jul), v1.8.0 (15 Jul), v1.7.0 (09 Jul),
 v1.6.0 (02 Jul), v1.5.0 (24 Jun).
 
-The install docs state a **minimum supported version of 0.205.0**, but that floor is meaningless for us �?" we need
-�?�1.3.0 for the direct engine.
+The install docs state a **minimum supported version of 0.205.0**, but that floor is meaningless for us — we need
+≥1.3.0 for the direct engine.
 
 ### 3.2 Install methods
 
@@ -213,22 +213,22 @@ Source: <https://docs.databricks.com/aws/en/dev-tools/cli/bundle-commands> (last
 
 | Command | Description (quoted) | Notable flags |
 |---|---|---|
-| `validate` | "Validate bundle configuration files are syntactically correct" | �?" |
+| `validate` | "Validate bundle configuration files are syntactically correct" | — |
 | `plan` | "Show the deployment plan for the current bundle configuration" | `--cluster-id`, `--force`, `--select` |
 | `deploy` | Deploy the bundle to the remote workspace | `--auto-approve`, `--cluster-id`, `--fail-on-active-runs`, `--force`, `--force-lock`, `--plan`, `--select` |
 | `run` | Execute a job, pipeline, or script from the bundle | `--no-wait`, `--restart`, `--only`, `--params`, `--validate-only` |
 | `destroy` | "Delete jobs, pipelines, other resources, and artifacts that were previously deployed" | `--auto-approve`, `--force-lock` |
 | `summary` | Output bundle identity and resources with deep links | `--force-pull` |
-| `deployment` | `bind`, `unbind`, `migrate` | �?" |
+| `deployment` | `bind`, `unbind`, `migrate` | — |
 | `generate` | Generate config from existing workspace resources | `--key`, `--bind`, `--force` |
 | `init` | "Initialize a new bundle using a bundle template" | `--branch`, `--config-file`, `--output-dir`, `--tag`, `--template-dir` |
 | `open` | Navigate to a bundle resource in the workspace | `--force-pull` |
-| `schema` | "Display JSON Schema for the bundle configuration" | �?" |
+| `schema` | "Display JSON Schema for the bundle configuration" | — |
 | `sync` | Sync file changes to the remote workspace | `--dry-run`, `--full`, `--interval`, `--output`, `--watch` |
 
 **Does a plan/dry-run exist today? YES.** `databricks bundle plan` is a documented, first-class command (shipped
 alongside the direct engine work). `databricks bundle deploy --plan` also exists. As of CLI 1.2.0 (June 4, 2026)
-both `plan` and `deploy` take `--select` to target individual resources �?" but the release note explicitly warns
+both `plan` and `deploy` take `--select` to target individual resources — but the release note explicitly warns
 **"This option is not intended for use in production."**
 
 Stability: everything in the table above is documented as generally available except **`bundle deployment migrate`**,
@@ -251,17 +251,17 @@ IntelliSense/validation for `databricks.yml` in VS Code and Rider.
 
 <https://docs.databricks.com/aws/en/dev-tools/ci-cd/flows> (last updated **Jul 10, 2026**) gives four stages:
 
-1. **Compile and test** �?" "Triggered on a pull request or a commit to the main branch. Compile code and run unit
+1. **Compile and test** — "Triggered on a pull request or a commit to the main branch. Compile code and run unit
    tests. Output a versioned file, for example, `my-app-1.0.jar`."
-2. **Upload artifacts** �?" store built files in Unity Catalog volumes or an external repo, keyed by Git commit hash
+2. **Upload artifacts** — store built files in Unity Catalog volumes or an external repo, keyed by Git commit hash
    or semver.
-3. **Validate bundle** �?" "Run `databricks bundle validate` to ensure that the `databricks.yml` configuration is
+3. **Validate bundle** — "Run `databricks bundle validate` to ensure that the `databricks.yml` configuration is
    correct."
-4. **Deploy bundle** �?" "Use `databricks bundle deploy` to deploy the bundle to a staging or production environment."
+4. **Deploy bundle** — "Use `databricks bundle deploy` to deploy the bundle to a staging or production environment."
 
 ### 4.3 Is there an official GitHub Action? YES
 
-**`databricks/setup-cli`** �?" <https://github.com/databricks/setup-cli> �?" described in the Databricks docs as
+**`databricks/setup-cli`** — <https://github.com/databricks/setup-cli> — described in the Databricks docs as
 "A composite action that sets up the Databricks CLI in a GitHub Actions workflow."
 
 It accepts a `version` input; omitting it installs the latest.
@@ -277,24 +277,24 @@ pin to a tag (e.g. `databricks/setup-cli@v1.10.0`) or, stricter, to a commit SHA
 builds are reproducible. The Databricks docs examples use `@main`; that is convenience, not a security
 recommendation, and we should say so in our docs rather than copying it blindly.
 
-### 4.4 Auth in CI �?" both options, and which to prefer
+### 4.4 Auth in CI — both options, and which to prefer
 
 Databricks' GitHub Actions page (<https://docs.databricks.com/aws/en/dev-tools/ci-cd/github>, last updated
 **Jun 11, 2026**) shows **both**:
 
-**(a) OAuth M2M service principal secret** �?" used in the page's bundle-deployment examples, passing a token via the
+**(a) OAuth M2M service principal secret** — used in the page's bundle-deployment examples, passing a token via the
 `DATABRICKS_TOKEN` env var from a GitHub secret. Underlying mechanism documented at
 <https://docs.databricks.com/aws/en/dev-tools/auth/oauth-m2m> (last updated **Jul 22, 2026**):
 
 - Env vars: `DATABRICKS_HOST`, `DATABRICKS_CLIENT_ID`, `DATABRICKS_CLIENT_SECRET`
   (plus `DATABRICKS_ACCOUNT_ID` and an accounts-console host for account-level ops).
-- Secrets are created under Settings �?' Identity and access �?' Service principals �?' Secrets �?' Generate secret.
+- Secrets are created under Settings → Identity and access → Service principals → Secrets → Generate secret.
 - **Max 5 secrets per service principal; max lifetime 730 days.** So this option carries a mandatory rotation
-  obligation �?" at minimum a 2-year hard expiry, and realistically much shorter.
+  obligation — at minimum a 2-year hard expiry, and realistically much shorter.
 - Note: this page does **not** contain a statement recommending federation over secrets. The preference below is
   my engineering judgement plus the existence of the federation feature, not a quoted Databricks directive.
 
-**(b) GitHub OIDC �?' Databricks workload identity federation (no stored secret)** �?" this is the better option and it
+**(b) GitHub OIDC → Databricks workload identity federation (no stored secret)** — this is the better option and it
 is fully documented: <https://docs.databricks.com/aws/en/dev-tools/auth/provider-github> (last updated
 **Apr 21, 2026**).
 
@@ -336,7 +336,7 @@ jobs:
 Key gotcha, quoted: **"Set `permissions: id-token: write` on the calling workflow, not the reusable workflow."**
 GitHub only mints the required claim when the permission is on the caller.
 
-Note that `DATABRICKS_CLIENT_ID` and `DATABRICKS_HOST` are **not secrets** �?" they are a service principal UUID and
+Note that `DATABRICKS_CLIENT_ID` and `DATABRICKS_HOST` are **not secrets** — they are a service principal UUID and
 a workspace URL. They belong in GitHub *variables*, not *secrets*. That means an OIDC-based pipeline can have
 literally zero repository secrets, which is a genuinely strong story for an OSS accelerator.
 
@@ -357,7 +357,7 @@ And on the tempting workaround:
 > Running untrusted code on the `pull_request_target` trigger may lead to security vulnerabilities. These
 > vulnerabilities include cache poisoning and granting unintended access to write privileges or secrets.
 
-OIDC is subject to the same restriction �?" `id-token: write` is not granted to fork PRs, so an OIDC-authenticated
+OIDC is subject to the same restriction — `id-token: write` is not granted to fork PRs, so an OIDC-authenticated
 deploy job simply cannot run from a fork. That is the desired behaviour.
 
 **Recommended job split for Lakewright.NET:**
@@ -378,11 +378,11 @@ if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
 and for the plan job, `if: github.event.pull_request.head.repo.full_name == github.repository`.
 
-Use **GitHub Environments** for `staging` and `prod` �?" this pairs with the Databricks federation policy's
+Use **GitHub Environments** for `staging` and `prod` — this pairs with the Databricks federation policy's
 recommended entity type ("Environment"), so the trust relationship is scoped to a reviewed environment rather than
 to any branch. Do **not** reach for `pull_request_target`.
 
-**CAVEAT �?" UNVERIFIED, needs a spike:** I have assumed `databricks bundle validate` runs without workspace
+**CAVEAT — UNVERIFIED, needs a spike:** I have assumed `databricks bundle validate` runs without workspace
 credentials. That is true for pure syntax/schema checking, but a bundle using **`lookup` variables** (which resolve
 object IDs by querying the workspace) will need auth to validate, and `targets.*.workspace.host` resolution may
 also require a reachable workspace. **Action: test `bundle validate --target dev` with no credentials in a clean
@@ -401,7 +401,7 @@ staging, and production."** Environment differences are handled by parameterisin
 Databricks CI/CD best practices additionally recommend branching strategies aligned to those environments, and
 service principals for production deploys.
 
-### 5.2 Development mode �?" documented behaviour
+### 5.2 Development mode — documented behaviour
 
 Source: <https://docs.databricks.com/aws/en/dev-tools/bundles/deployment-modes> (last updated **Jul 24, 2026**)
 
@@ -419,10 +419,10 @@ The name prefix is what delivers **per-developer isolation**: every developer de
 dev workspace gets their own uniquely-named copy of every resource, keyed on their short name. Combined with a
 per-user `workspace.root_path` (the default layout is
 `/Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}`), developers do not
-collide. This is the documented answer to "per-developer isolated dev deployments" �?" we should not invent our own
+collide. This is the documented answer to "per-developer isolated dev deployments" — we should not invent our own
 prefixing scheme.
 
-### 5.3 Production mode �?" validations
+### 5.3 Production mode — validations
 
 `mode: production` enforces:
 
@@ -433,7 +433,7 @@ prefixing scheme.
 - No cluster override is permitted.
 - Databricks recommends service principals for `run_as` so workspace security policies are enforced.
 
-### 5.4 `presets` �?" the customisation escape hatch
+### 5.4 `presets` — the customisation escape hatch
 
 Full list (VERIFIED from the reference page): `artifacts_dynamic_version`, `jobs_max_concurrent_runs`,
 `name_prefix`, `pipelines_development`, `source_linked_deployment`, `tags`, `trigger_pause_status`.
@@ -449,7 +449,7 @@ Source: <https://docs.databricks.com/aws/en/dev-tools/bundles/run-as> (last upda
   their own email."
 - Settable at three levels: top-level `run_as`, per-target `targets.*.run_as`, and per-resource.
 - When the **deploying** identity differs from the `run_as` identity, **only jobs and pipelines are supported**.
-- **Not supported for model serving endpoints** �?" "An error occurs if these resources are defined in a bundle where
+- **Not supported for model serving endpoints** — "An error occurs if these resources are defined in a bundle where
   `run_as` is also configured." **This matters for Lakewright.NET**: if our accelerator ships a model serving
   endpoint in the same bundle as a service-principal `run_as`, deployment fails. Plan to split serving endpoints
   into a separate bundle, or set `run_as` per-resource on jobs/pipelines only.
@@ -467,7 +467,7 @@ Value precedence, highest first:
 5. the variable's `default`
 
 Variable kinds: plain (string), `type: complex` (structured objects), and `lookup` (resolve an object's ID by name
-�?" supported for alert, cluster_policy, cluster, dashboard, job, pipeline, warehouse, notification destinations,
+— supported for alert, cluster_policy, cluster, dashboard, job, pipeline, warehouse, notification destinations,
 and others).
 
 Substitutions available include `${bundle.name}`, `${bundle.target}`, `${workspace.host}`,
@@ -489,11 +489,11 @@ Source: <https://docs.databricks.com/aws/en/developers/best-practices> (last upd
 
 Databricks recommends a three-layer approach, quoted:
 
-1. **Unit tests** �?" "Keep business logic in importable `src/` modules and cover it with `pytest` or an equivalent
+1. **Unit tests** — "Keep business logic in importable `src/` modules and cover it with `pytest` or an equivalent
    framework. Run these on every pull request so failures block merges."
-2. **Bundle validation** �?" "Run `bundle validate` locally. In CI, prefer `bundle deploy` to a non-production
+2. **Bundle validation** — "Run `bundle validate` locally. In CI, prefer `bundle deploy` to a non-production
    workspace to catch YAML and resource-mapping issues before production deploys."
-3. **Integration tests in staging** �?" "After deploying to staging, run end-to-end jobs with completion checks and
+3. **Integration tests in staging** — "After deploying to staging, run end-to-end jobs with completion checks and
    critical data-quality assertions such as row-count or schema expectations."
 
 The promotion gate, quoted: **"Treat 'all tests pass on the main branch and in staging' as the gate for promoting
@@ -504,7 +504,7 @@ than ad-hoc notebook runs", and testing against small datasets that deliberately
 Declarative Pipelines **expectations** surface data-quality results in a table, which integration tests can assert
 against.
 
-Development workflow: trunk-based �?" develop in a dev workspace, short-lived feature branches, merge to `main`,
+Development workflow: trunk-based — develop in a dev workspace, short-lived feature branches, merge to `main`,
 CI/CD auto-deploys to staging for automated tests, then promote to production.
 
 ### The ephemeral-target gap
@@ -530,52 +530,52 @@ preset keyed on the PR number or run ID to isolate concurrent CI runs. Two thing
   a throwaway catalog.
 
 Since this is a documented gap rather than a documented pattern, Lakewright.NET shipping a working, tested
-ephemeral-CI-target recipe is a genuine differentiator �?" but we must build and verify it ourselves rather than
+ephemeral-CI-target recipe is a genuine differentiator — but we must build and verify it ourselves rather than
 citing Databricks for it.
 
 ---
 
 ## 7. Alternatives
 
-### Terraform �?" `databricks/databricks` provider
+### Terraform — `databricks/databricks` provider
 
-VERIFIED: latest **v1.123.0**, released **2026-07-29** �?"
+VERIFIED: latest **v1.123.0**, released **2026-07-29** —
 <https://raw.githubusercontent.com/databricks/terraform-provider-databricks/main/CHANGELOG.md>,
 repo <https://github.com/databricks/terraform-provider-databricks>. It lives under the official `databricks` GitHub
 org and is linked from the Databricks CI/CD landing page as a supported approach.
 
-Its coverage is materially **broader** than bundles: account-level resources (`mws_*` �?" workspace provisioning,
+Its coverage is materially **broader** than bundles: account-level resources (`mws_*` — workspace provisioning,
 networking, private endpoints), identity (SCIM users, groups, service principals), Unity Catalog metastores and
 their assignments, permissions and grants, plus all the workspace-level objects. Bundles deliberately scope
 themselves to *the artifacts a project deploys*; Terraform covers *the platform the project runs on*.
 
 **When to pick Terraform for an accelerator like Lakewright.NET:** for anything that provisions the platform rather
-than deploying a workload �?" creating the workspaces themselves, wiring the metastore, managing per-tenant catalogs
+than deploying a workload — creating the workspaces themselves, wiring the metastore, managing per-tenant catalogs
 and grants at scale, network config, and account-level identity. This is directly relevant to the multi-tenancy
 story (cross-ref R04): if tenant onboarding means "create a catalog, create groups, apply grants", Terraform (or
 the REST API) is the better-fitting tool, since `grants` is not a bundle resource type (§2.2). Note the irony that
-bundles are *moving away* from Terraform internally (§2.3), which decouples the two �?" a Terraform layer for
+bundles are *moving away* from Terraform internally (§2.3), which decouples the two — a Terraform layer for
 platform provisioning is no longer double-counting the same dependency.
 
 **Recommended split:** Terraform (or Bicep/ARM on Azure) for platform and tenant provisioning; bundles for the
-application workloads �?" jobs, pipelines, apps, dashboards, serving endpoints. Do not use Terraform to deploy jobs
+application workloads — jobs, pipelines, apps, dashboards, serving endpoints. Do not use Terraform to deploy jobs
 and pipelines when bundles exist; you lose dev-mode isolation, `bundle run`, and the whole local dev loop.
 
-### Pulumi �?" `pulumi-databricks`
+### Pulumi — `pulumi-databricks`
 
-VERIFIED: latest **v1.98.0**, published **3 July 2026** �?" <https://www.pulumi.com/registry/packages/databricks/>,
+VERIFIED: latest **v1.98.0**, published **3 July 2026** — <https://www.pulumi.com/registry/packages/databricks/>,
 source <https://github.com/pulumi/pulumi-databricks>. It is a bridged provider over the Terraform provider, so
-resource coverage tracks Terraform's closely, with the benefit of real languages �?" **including C#**, which is
+resource coverage tracks Terraform's closely, with the benefit of real languages — **including C#**, which is
 superficially attractive for a .NET accelerator.
 
 **The signal against it:** Databricks has **retired its own Pulumi documentation.** The page now sits at
 <https://docs.databricks.com/aws/en/archive/dev-tools/pulumi> under an `/archive/` path and carries the banner
 **"This documentation has been retired and might not be updated."** It further notes Pulumi is developed by a third
 party and directs users to Pulumi Support rather than Databricks. The provider itself is actively maintained by
-Pulumi and is not deprecated �?" but Databricks no longer documents or supports the path.
+Pulumi and is not deprecated — but Databricks no longer documents or supports the path.
 
 **When to pick Pulumi:** essentially only if the consuming organisation has already standardised on Pulumi.
-For Lakewright.NET I'd recommend against making it the documented default despite the C# appeal �?" an open-source
+For Lakewright.NET I'd recommend against making it the documented default despite the C# appeal — an open-source
 accelerator should sit on the paths the vendor documents and supports, and we would be adopting a bridged provider
 plus a retired documentation trail in exchange for language ergonomics on what is a small amount of infrastructure
 code. Worth one paragraph in an "alternatives" appendix, not a supported path.
@@ -587,11 +587,11 @@ code. Worth one paragraph in an "alternatives" appendix, not a supported path.
 Constructed from verified keys on the reference (Jul 24, 2026), deployment-modes (Jul 24, 2026), run-as
 (Jul 29, 2026), and examples (Jul 8, 2026) pages. Every key used below appears in the verified key lists in §2.1.
 
-**Not deployed against a live workspace** �?" no Databricks workspace was available in this research session. Treat
+**Not deployed against a live workspace** — no Databricks workspace was available in this research session. Treat
 as schema-correct-by-construction; validate with `databricks bundle validate` before publishing.
 
 ```yaml
-# databricks.yml �?" Lakewright.NET
+# databricks.yml — Lakewright.NET
 bundle:
   name: lakewright
   # Pin the engine explicitly rather than relying on the CLI-version default.
@@ -650,11 +650,11 @@ targets:
 Notes on the skeleton:
 
 - `run_as` takes the service principal's **application ID (UUID)**, not a display name.
-- Because `run_as` is set, do **not** put a `model_serving_endpoint` in this bundle (§5.3) �?" it will error. Either
+- Because `run_as` is set, do **not** put a `model_serving_endpoint` in this bundle (§5.3) — it will error. Either
   move serving endpoints to their own bundle or set `run_as` per-resource on jobs and pipelines only.
 - The `ci` target's `name_prefix` preset needs `ci_run_id` declared as a variable and supplied via
   `BUNDLE_VAR_ci_run_id=${{ github.run_id }}`. UNVERIFIED that a variable substitution is legal inside a
-  `presets.name_prefix` value �?" confirm during the spike; the fallback is `--var` at deploy time or a literal.
+  `presets.name_prefix` value — confirm during the spike; the fallback is `--var` at deploy time or a literal.
 - Workspace paths are auto-prefixed with `/Workspace` (behaviour change in CLI 0.230.0), so do not write
   `/Workspace/${workspace.root_path}/...`.
 
@@ -662,12 +662,12 @@ Notes on the skeleton:
 
 ## 9. Open items for the implementation spike
 
-1. **`bundle validate` without credentials** �?" does it work? Determines whether fork PRs can run it (§4.5).
-2. **Grants in bundles** �?" can grants be expressed nested in `catalog`/`schema`/`volume`, or is Terraform required
+1. **`bundle validate` without credentials** — does it work? Determines whether fork PRs can run it (§4.5).
+2. **Grants in bundles** — can grants be expressed nested in `catalog`/`schema`/`volume`, or is Terraform required
    for tenant grant management? Load-bearing for the multi-tenancy design (§2.2, §7).
-3. **Variable substitution inside `presets.name_prefix`** �?" legal or not (§8).
-4. **Ephemeral CI target + `bundle destroy`** �?" build and verify the recipe end to end; it is undocumented (§6).
-5. **Direct-engine field-removal semantics** �?" confirm the "removed field reverts to default" behaviour against a
+3. **Variable substitution inside `presets.name_prefix`** — legal or not (§8).
+4. **Ephemeral CI target + `bundle destroy`** — build and verify the recipe end to end; it is undocumented (§6).
+5. **Direct-engine field-removal semantics** — confirm the "removed field reverts to default" behaviour against a
    real resource before we advertise the engine pin (§2.3).
 
 ---
@@ -678,7 +678,7 @@ Notes on the skeleton:
 |---|---|---|
 | 1 | <https://docs.databricks.com/aws/en/dev-tools/bundles/> | Jul 10, 2026 |
 | 2 | <https://learn.microsoft.com/en-us/azure/databricks/release-notes/dev-tools/bundles> | Jul 14, 2026 |
-| 3 | <https://docs.databricks.com/aws/en/dev-tools/bundles/faqs> | �?" |
+| 3 | <https://docs.databricks.com/aws/en/dev-tools/bundles/faqs> | — |
 | 4 | <https://docs.databricks.com/aws/en/dev-tools/bundles/reference> | Jul 24, 2026 |
 | 5 | <https://docs.databricks.com/aws/en/dev-tools/bundles/settings> | Mar 16, 2026 |
 | 6 | <https://docs.databricks.com/aws/en/dev-tools/bundles/resources> | Jul 27, 2026 |
@@ -690,21 +690,21 @@ Notes on the skeleton:
 | 12 | <https://docs.databricks.com/aws/en/dev-tools/cli/bundle-commands> | Jul 23, 2026 |
 | 13 | <https://docs.databricks.com/aws/en/dev-tools/cli/install> | Jun 24, 2026 |
 | 14 | <https://github.com/databricks/cli/releases> | v1.10.0, Jul 29, 2026 |
-| 15 | <https://github.com/databricks/setup-cli> | �?" |
+| 15 | <https://github.com/databricks/setup-cli> | — |
 | 16 | <https://docs.databricks.com/aws/en/dev-tools/ci-cd/> | Jul 10, 2026 |
 | 17 | <https://docs.databricks.com/aws/en/dev-tools/ci-cd/flows> | Jul 10, 2026 |
 | 18 | <https://docs.databricks.com/aws/en/dev-tools/ci-cd/github> | Jun 11, 2026 |
 | 19 | <https://docs.databricks.com/aws/en/dev-tools/auth/provider-github> | Apr 21, 2026 |
 | 20 | <https://docs.databricks.com/aws/en/dev-tools/auth/oauth-m2m> | Jul 22, 2026 |
 | 21 | <https://docs.databricks.com/aws/en/developers/best-practices> | Jul 10, 2026 |
-| 22 | <https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows> | �?" |
+| 22 | <https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows> | — |
 | 23 | <https://github.com/databricks/terraform-provider-databricks> | v1.123.0, Jul 29, 2026 |
 | 24 | <https://www.pulumi.com/registry/packages/databricks/> | v1.98.0, Jul 3, 2026 |
 | 25 | <https://docs.databricks.com/aws/en/archive/dev-tools/pulumi> | RETIRED |
 
 ### Dead links encountered (do not cite)
 
-- `docs.databricks.com/aws/en/dev-tools/bundles/targets` �?' 404 (content lives in `reference`)
-- `docs.databricks.com/aws/en/dev-tools/ci-cd/best-practices` �?' 404 on the AWS path
-- `learn.microsoft.com/en-us/azure/databricks/dev-tools/ci-cd/best-practices` �?' 404
-- `docs.azure.cn/en-us/databricks/dev-tools/ci-cd/best-practices` �?' 404
+- `docs.databricks.com/aws/en/dev-tools/bundles/targets` → 404 (content lives in `reference`)
+- `docs.databricks.com/aws/en/dev-tools/ci-cd/best-practices` → 404 on the AWS path
+- `learn.microsoft.com/en-us/azure/databricks/dev-tools/ci-cd/best-practices` → 404
+- `docs.azure.cn/en-us/databricks/dev-tools/ci-cd/best-practices` → 404

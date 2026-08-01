@@ -1,4 +1,4 @@
-﻿using Lakewright.Core.Tenancy;
+using Lakewright.Core.Tenancy;
 using Lakewright.Databricks;
 using Lakewright.Multitenancy;
 using Lakewright.Multitenancy.Model;
