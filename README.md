@@ -11,8 +11,7 @@ analytics to customers who are not themselves Databricks customers.
 > tier (tenant middleware, role policies, the operations API with client idempotency), the audit
 > trail, the Declarative Automation Bundle, and the Signalboard sample — two organizations, three
 > people, a Blazor dashboard and the same API from a terminal.
-> Still open: per-tenant cost attribution, queue fairness, observability, and tenant provisioning
-> and deletion. The milestones are in [ROADMAP.md](ROADMAP.md), and
+> Still open: cost budgets in currency, observability, and tenant provisioning and deletion. The milestones are in [ROADMAP.md](ROADMAP.md), and
 > [docs/compatibility.md](docs/compatibility.md) records exactly what has been verified against a
 > live workspace and what has not.
 
@@ -35,8 +34,8 @@ and there is no general on-behalf-of flow for a service hosted outside Databrick
 
 You find this in an audit rather than in testing, because every tenant's request returns a
 plausible-looking result. Lakewright.NET handles it in the query layer, along with the pieces such a
-product needs anyway: durable asynchronous operations, per-tenant cost attribution, and the
-Databricks side deployed as code.
+product needs anyway: durable asynchronous operations, a per-tenant ceiling on Databricks compute,
+an audit trail, and the Databricks side deployed as code.
 
 ## What this is not
 

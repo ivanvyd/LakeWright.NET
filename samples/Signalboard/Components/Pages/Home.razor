@@ -13,14 +13,21 @@
 
 <h2>Who you can be</h2>
 
+@* Rendered from the same list the sign-in page and the seeder read, so a fourth person is one
+   entry rather than three places to remember. *@
 <table>
     <thead>
         <tr><th>Organization</th><th>Person</th><th>Role</th></tr>
     </thead>
     <tbody>
-        <tr><td rowspan="2">Acme Logistics</td><td>Alice</td><td>Admin</td></tr>
-        <tr><td>Vera</td><td>Viewer</td></tr>
-        <tr><td>Globex Freight</td><td>Bob</td><td>Admin</td></tr>
+        @foreach (var person in DemoTenants.Everyone)
+        {
+            <tr>
+                <td>@person.Organization</td>
+                <td>@person.Name</td>
+                <td>@person.Role</td>
+            </tr>
+        }
     </tbody>
 </table>
 
