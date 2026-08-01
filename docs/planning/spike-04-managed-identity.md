@@ -26,7 +26,7 @@ Result:
 ```
 TOKEN_ACQUIRED_FROM_IMDS
 {"displayName":"id-lakewright-probe", ...
- "userName":"6cc29c5b-87b4-42ca-8b48-8f4904629bc9",
+ "userName":"<managed identity application id>",
  "entitlements":[{"value":"workspace-access"}]}
 DATABRICKS_HTTP=200
 ```
