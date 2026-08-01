@@ -1,5 +1,6 @@
 using Azure.Core;
 using LakeWright.AspNetCore;
+using LakeWright.Multitenancy;
 using Signalboard;
 using Signalboard.Components;
 
@@ -23,6 +24,11 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration["Databricks:WorkspaceUrl"])
     builder.Services.AddLakeWrightOperationWorker(builder.Configuration);
 }
 
+// Readiness means "can serve a request", which for this application means the database answers.
+// An orchestrator that routes traffic before that is routing it to 500s.
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<LakeWrightDbContext>(name: "database");
+
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<TenantWorkspace>();
@@ -41,6 +47,7 @@ app.UseAuthorization();
 // AddLakeWright sets a fallback policy requiring an authenticated user, so this needs the opt-out
 // or the document is a 401. Publishing it anonymously suits a sample; a product would not.
 app.MapOpenApi().AllowAnonymous();
+app.MapHealthChecks("/health").AllowAnonymous();
 
 app.MapLakeWrightOperations();
 app.MapDemoAuthentication();
