@@ -6,7 +6,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Before 1.0, minor versions may contain breaking changes. Each one is listed here with a migration
 note.
 
-## [Unreleased]
+## [0.1.0] — 2026-08-01
+
+First tagged release. Everything below shipped before it; the tag exists to give the work a
+boundary and to prove the release pipeline, which had never been run.
+
+Packages are built and attested but **not published to NuGet**. Build from source, or take the
+artifacts attached to the release.
 
 ### Added
 

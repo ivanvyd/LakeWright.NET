@@ -23,10 +23,25 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # The tag is the single source of the version. Deriving it here rather than reading
+      # VersionPrefix means a package can never claim a version the tag does not.
+      - name: Derive version from the tag
+        id: version
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
       - run: dotnet restore --locked-mode
-      - run: dotnet build --no-restore -c Release
+      - run: dotnet build --no-restore -c Release -p:Version=${{ steps.version.outputs.value }}
       - run: dotnet test --no-build -c Release --filter "Category!=Live"
-      - run: dotnet pack --no-build -c Release -o artifacts
+      - run: dotnet pack --no-build -c Release -o artifacts -p:Version=${{ steps.version.outputs.value }}
+
+      # A tag that does not produce a package is a release with nothing in it, and both the
+      # attestation and `gh release create` below would fail on an empty glob with a less
+      # obvious message.
+      - name: Confirm packages were produced
+        run: |
+          count=$(find artifacts -name '*.nupkg' | wc -l)
+          echo "packed $count package(s)"
+          test "$count" -gt 0
 
       # CycloneDX over the solution: one tool, matches the NuGet dependency graph.
       # actions/attest accepts either CycloneDX or SPDX, so this does not lock out
