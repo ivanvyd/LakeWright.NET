@@ -58,7 +58,7 @@ jobs:
         with:
           fail-on-severity: moderate
           # A copyleft dependency would make the Apache-2.0 promise in the README false.
-          deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0, LGPL-3.0
+          deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0, LGPL-2.1, LGPL-3.0
           comment-summary-in-pr: on-failure
 
   scorecard:

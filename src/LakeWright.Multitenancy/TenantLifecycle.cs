@@ -20,6 +20,18 @@ namespace LakeWright.Multitenancy;
 /// <see cref="ITenantSchemaProvisioner"/> is optional. Without it a tenant gets its row and no
 /// Unity Catalog schema, which is the same bargain <c>AddLakeWright</c> makes everywhere else:
 /// the tenancy tier works on PostgreSQL alone, and Databricks is something you add.
+///
+/// <b>This class checks no authorization, and it is the only one here that does not.</b> Everywhere
+/// else a caller must hold a <see cref="TenantContext"/>, and holding one proves the resolver
+/// checked membership. These methods take a bare <see cref="TenantId"/>, because provisioning
+/// happens before anyone is a member and deletion is an operator action rather than a tenant one.
+/// The <c>principalId</c> each method takes names who asked, for the audit trail. It is not a
+/// permission.
+///
+/// So gate this yourself, at the platform-admin level. Do **not** wire it to a route under
+/// <c>/organizations/{organizationId}</c> and pass the route value through: every other endpoint in
+/// this library is safe to do that with, and this one would let any authenticated member delete any
+/// tenant.
 /// </remarks>
 public sealed class TenantLifecycle(
     LakeWrightDbContext db,
@@ -160,6 +172,19 @@ public sealed class TenantLifecycle(
     /// flight, because dropping a schema under a running query fails the query in a way that looks
     /// like a platform fault rather than a deletion.
     ///
+    /// And refuses one that has not been pending for <paramref name="minimumPendingAge"/>. The
+    /// data-handling document calls deletion "reversible until the schema drop runs", which was
+    /// only true if the adopter happened to build a cooldown: nothing stopped a caller running
+    /// both halves back to back and destroying a tenant with no interval to catch the mistake.
+    /// There is no default — a caller states the window it wants, because a value chosen here
+    /// would be wrong for someone.
+    ///
+    /// The schema drop happens before the transaction opens, and it is the irreversible step. A
+    /// crash between the drop and the commit leaves the tenant's data gone, the row still
+    /// <see cref="OrganizationState.PendingDeletion"/>, and no audit row saying so. Retrying
+    /// completes it — <see cref="ITenantSchemaProvisioner.DropAsync"/> is idempotent — but until
+    /// something retries, the bookkeeping does not reflect that the destruction already happened.
+    ///
     /// The audit row is written before the organization row is deleted and committed in the same
     /// transaction as the delete. Writing it after would leave a window where the tenant is gone
     /// and nothing records that anyone asked for it; the audit table survives the cascade because
@@ -169,8 +194,11 @@ public sealed class TenantLifecycle(
     public async Task<TenantPurgeResult> PurgeAsync(
         TenantId tenantId,
         string principalId,
+        TimeSpan minimumPendingAge,
         CancellationToken cancellationToken)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(minimumPendingAge, TimeSpan.Zero);
+
         var organization = await db.Organizations
             .SingleOrDefaultAsync(o => o.Id == tenantId, cancellationToken);
 
@@ -185,6 +213,22 @@ public sealed class TenantLifecycle(
             .CountAsync(o => o.OrganizationId == tenantId && o.CompletedAt == null, cancellationToken);
 
         if (inFlight > 0) { return TenantPurgeResult.OperationsInFlight; }
+
+        // How long the tenant has been pending, taken from the audit row rather than a column on
+        // the organization: the row already records when someone asked, and a second source of the
+        // same fact is a second thing that can disagree.
+        var requestedAt = await db.AuditEvents
+            .Where(a => a.OrganizationId == tenantId && a.Action == AuditActions.TenantDeletionRequested)
+            .OrderByDescending(a => a.OccurredAt)
+            .Select(a => (DateTimeOffset?)a.OccurredAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (requestedAt is null || time.GetUtcNow() - requestedAt < minimumPendingAge)
+        {
+            return TenantPurgeResult.StillWithinGracePeriod;
+        }
+
+
 
         if (schemas is not null)
         {
@@ -216,5 +260,8 @@ public enum TenantPurgeResult
     Deleted,
     NotFound,
     NotPendingDeletion,
-    OperationsInFlight
+    OperationsInFlight,
+
+    /// <summary>Pending, but not for long enough yet. Ask again later.</summary>
+    StillWithinGracePeriod
 }
