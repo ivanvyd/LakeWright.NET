@@ -203,7 +203,7 @@ Recommendation: **produce CycloneDX JSON as the primary artifact** and, if a con
 ```yaml
 # in the release job
 - run: dotnet tool install --global CycloneDX
-- run: dotnet-CycloneDX ./LakeWright.sln -o ./sbom -F Json
+- run: dotnet-CycloneDX ./LakeWright.slnx -o ./sbom -F Json
 - uses: actions/attest@v4          # pin to SHA
   with:
     subject-path: './artifacts/*.nupkg'
