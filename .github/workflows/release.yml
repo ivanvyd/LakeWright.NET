@@ -46,10 +46,22 @@ jobs:
       # CycloneDX over the solution: one tool, matches the NuGet dependency graph.
       # actions/attest accepts either CycloneDX or SPDX, so this does not lock out
       # a consumer who asks for SPDX later.
+      #
+      # The flags are -fn/-F, not -f/--json. CycloneDX 6 renamed them, and the first
+      # tag ever pushed failed here on "Unrecognized command or argument '-f'" —
+      # the workflow had been written against an older CLI and never run.
+      # Test projects are excluded because the SBOM should describe what ships.
       - name: Generate SBOM
         run: |
           dotnet tool install --global CycloneDX
-          dotnet CycloneDX LakeWright.slnx -o artifacts -f sbom.cyclonedx.json --json
+          dotnet CycloneDX LakeWright.slnx             -o artifacts             -fn sbom.cyclonedx.json             -F Json             --exclude-test-projects             --set-version "${{ steps.version.outputs.value }}"
+
+      # An SBOM that silently described nothing would still attest and still upload.
+      - name: Confirm the SBOM has components
+        run: |
+          components=$(python3 -c "import json;print(len(json.load(open('artifacts/sbom.cyclonedx.json')).get('components',[])))")
+          echo "SBOM lists $components component(s)"
+          test "$components" -gt 0
 
       # Provenance is only meaningful because Directory.Build.props sets
       # Deterministic and ContinuousIntegrationBuild: the artifact can be rebuilt
