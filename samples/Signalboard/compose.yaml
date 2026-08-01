@@ -1,7 +1,16 @@
+# Two ways to run this:
+#
+#   docker compose up                     everything, no .NET SDK needed
+#   docker compose up -d postgres         just the database, then `dotnet run` for development
+#
+# The app service is in the default profile, so plain `up` gets you a working product. Naming
+# postgres explicitly is what gets you the development loop.
+
+name: signalboard
+
 services:
   postgres:
     image: postgres:17-alpine
-    container_name: signalboard-postgres
     environment:
       POSTGRES_DB: lakewright
       POSTGRES_PASSWORD: postgres
@@ -14,6 +23,26 @@ services:
       retries: 15
     volumes:
       - signalboard-data:/var/lib/postgresql/data
+
+  app:
+    build:
+      # The repository root: the sample references four projects above this directory.
+      context: ../..
+      dockerfile: samples/Signalboard/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      # Inside the network the database answers to its service name, not to localhost.
+      ConnectionStrings__LakeWright: Host=postgres;Database=lakewright;Username=postgres;Password=postgres
+      # Set Databricks__WorkspaceUrl, Databricks__WarehouseId, Databricks__Token and
+      # OperationWorker__Jobs__analysis to have operations actually run. Without them the app
+      # starts, isolation still demonstrates, and operations stay Pending.
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # No container healthcheck: the image is chiseled, so it has no shell and no curl to probe
+    # itself with. The app exposes /health over HTTP, which is what Kubernetes and Azure Container
+    # Apps probe anyway — they call in from outside rather than running a command inside.
 
 volumes:
   signalboard-data:

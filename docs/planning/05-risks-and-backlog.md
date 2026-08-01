@@ -41,7 +41,7 @@ Ordered so that the risky things are settled before anything is built on them.
    first migration.
 7. Postgres via Testcontainers, and the test base class that gives each test a clean database.
 8. Mock Databricks server (WireMock.Net) with recorded, sanitised fixtures for the endpoints in use.
-9. `docker compose up` bringing up Postgres, the mock server and an OIDC provider.
+9. A local OIDC provider in compose, so the sample can demonstrate real sign-in rather than a header. Postgres and the application are already there; the mock Databricks server this item also named was dropped, because the sample runs without Databricks instead of against a fake one.
 
 ### Tenancy core, weeks 3 to 4
 

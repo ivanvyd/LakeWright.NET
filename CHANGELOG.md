@@ -24,6 +24,14 @@ note.
   bound T5.
 - `AddLakeWrightDatabricks`, so tenancy, authorization and the operations API can be adopted
   without a Databricks workspace.
+- Telemetry: four `System.Diagnostics` instruments covering operations started, completions by
+  state, queue wait, and refused tenant resolutions. No OpenTelemetry dependency, and no tenant
+  identifier on any metric — that tag is a cardinality bomb in a system built for many tenants.
+- A container image for the sample and an `app` service in compose, so `docker compose up` runs the
+  whole thing with no .NET SDK. Chiseled runtime, non-root, no shell, with `/health` reporting the
+  database connection.
+- `tests/ui/smoke.mjs`, a browser smoke test for the sample. Not part of CI.
+- Screenshots in `docs/images/`, taken from the running application by that smoke test.
 
 - `LakeWright.AspNetCore`: tenant resolution middleware that turns the organization in a route into
   a resolved context or a 404, role policies over `MembershipRole` with a fallback policy so
@@ -98,6 +106,12 @@ Found by an adversarial review of the first implementation, before any release.
 
 ### Fixed
 
+- The dashboard printed its own page route as the address to copy, beside a hint inviting you to
+  fetch it as another tenant and observe a 404. That address 404s for everyone, so the
+  demonstration proved nothing while appearing to prove the project's whole point.
+- The Start button did nothing when clicked before the Blazor circuit connected, and every visit
+  rendered the page, flashed `Loading.`, then rendered it again. Both were invisible to the xUnit
+  suite, which reads prerendered HTML and never sees the interactive render.
 - The Databricks bearer token was read once at startup and baked into a client that lives for the
   process. Under the managed identity ADR 0006 recommends, every Databricks call would fail 401
   permanently about an hour after boot, with nothing to detect it.
