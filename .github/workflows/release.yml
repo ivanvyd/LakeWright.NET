@@ -75,13 +75,37 @@ jobs:
           name: release-artifacts
           path: artifacts/
 
+      # The whole CHANGELOG was attached to every release, so each one repeated all the history
+      # before it — and a tag pushed before its heading is renamed publishes notes that open with
+      # "## [Unreleased]". This takes the section for the version being tagged, and fails when
+      # there is not one, because notes for the wrong version are worse than a failed release.
+      - name: Extract the release notes for this version
+        run: |
+          python3 - "${{ steps.version.outputs.value }}" <<'PY' > release-notes.md
+          import re, sys
+          version = re.escape(sys.argv[1])
+          text = open("CHANGELOG.md", encoding="utf-8").read()
+          m = re.search(rf"^## \[{version}\][^\n]*\n(.*?)(?=^## \[|\Z)", text, re.S | re.M)
+          sys.stdout.write(m.group(1).strip() if m else "")
+          PY
+          test -s release-notes.md || {
+            echo "CHANGELOG.md has no '## [${{ steps.version.outputs.value }}]' section."
+            exit 1
+          }
+
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # A hyphen in the version means a pre-release under SemVer. gh does not infer that, so
+          # an RC tag would otherwise publish as an ordinary release.
+          prerelease=""
+          case "${{ steps.version.outputs.value }}" in *-*) prerelease="--prerelease" ;; esac
+
           gh release create "${{ github.ref_name }}" \
             --title "${{ github.ref_name }}" \
-            --notes-file CHANGELOG.md \
+            --notes-file release-notes.md \
+            $prerelease \
             artifacts/*.nupkg artifacts/sbom.cyclonedx.json
 
       # Publishing to NuGet is deliberately not wired up. Packages ship when they

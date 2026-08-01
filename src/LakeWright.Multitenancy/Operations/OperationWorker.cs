@@ -220,9 +220,15 @@ public sealed partial class OperationWorker(
         {
             if (timeProvider.GetUtcNow() >= deadline)
             {
+                // Stop the run before recording the failure. Marking it failed only stops this
+                // worker watching: the job kept executing, still spending the compute the timeout
+                // exists to bound, and still holding the tenant's schema — which tenant deletion
+                // would then drop underneath it, having counted the operation as finished.
+                await submitter.CancelRunAsync(runId, cancellationToken);
+
                 await store.CompleteAsync(
                     operation.OrganizationId, operation.Id, OperationState.Failed,
-                    "The run exceeded the configured timeout.", cancellationToken);
+                    "The run exceeded the configured timeout and was cancelled.", cancellationToken);
                 return;
             }
 

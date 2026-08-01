@@ -34,4 +34,20 @@ public interface IJobSubmitter
     Task<RunOutcome> SubmitAsync(TenantScopedJobRun run, CancellationToken cancellationToken);
 
     Task<RunOutcome> GetRunAsync(long runId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Asks Databricks to stop a run.
+    /// </summary>
+    /// <remarks>
+    /// Giving up on a run and stopping it are different things, and this interface only had the
+    /// first. When the worker's run timeout elapsed it marked the operation failed and returned,
+    /// which stopped the polling and left the job executing — still consuming the compute the
+    /// timeout exists to bound, and still holding a schema that tenant deletion would then drop
+    /// underneath it.
+    ///
+    /// Best effort by nature: the run may already be terminal, and cancelling something that has
+    /// finished is not an error worth propagating to a caller who has already decided to abandon
+    /// it.
+    /// </remarks>
+    Task CancelRunAsync(long runId, CancellationToken cancellationToken);
 }

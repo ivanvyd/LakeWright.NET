@@ -115,9 +115,13 @@ public sealed class LakeWrightDbContext(DbContextOptions<LakeWrightDbContext> op
         {
             e.ToTable("audit_events");
             e.HasKey(x => x.Id);
+            // Nullable both ways. AuditEvent.OrganizationId documents null as valid — "events
+            // outside a tenant, such as an organization being created" — and the forgiving
+            // converter here would have thrown on exactly that value the first time anything
+            // wrote one. Nothing does yet, which is why the suite never caught it.
             e.Property(x => x.OrganizationId).HasConversion(
-                v => v!.Value.Value,
-                v => new TenantId(v));
+                v => v.HasValue ? v.Value.Value : (Guid?)null,
+                v => v.HasValue ? new TenantId(v.Value) : null);
             e.Property(x => x.PrincipalId).HasMaxLength(200).IsRequired();
             e.Property(x => x.Action).HasMaxLength(100).IsRequired();
             e.Property(x => x.ResourceType).HasMaxLength(100).IsRequired();
