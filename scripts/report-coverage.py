@@ -9,22 +9,39 @@ have hidden exactly that.
 """
 
 import glob
+import hashlib
 import sys
 import xml.etree.ElementTree as ET
 
 
+def distinct_reports() -> list[str]:
+    """Coverage files, minus the data collector's staging duplicates.
+
+    The collector writes each report twice: once under the results directory and once under its
+    own `<runner>_<timestamp>/In/<runner>/` staging path. The two are byte-identical, so counting
+    them as two files made the run announce partial coverage it did not have. Deduplicating by
+    content also means a genuine second test project still registers as a second report.
+    """
+    seen: dict[str, str] = {}
+    for path in sorted(glob.glob("TestResults/**/coverage.cobertura.xml", recursive=True)):
+        with open(path, "rb") as handle:
+            digest = hashlib.sha256(handle.read()).hexdigest()
+        seen.setdefault(digest, path)
+    return list(seen.values())
+
+
 def main() -> int:
-    files = sorted(glob.glob("TestResults/**/coverage.cobertura.xml", recursive=True))
+    files = distinct_reports()
     if not files:
         print("No coverage file produced. Is coverlet.collector still referenced?")
         return 0
 
     if len(files) > 1:
-        # One test project today. A second would produce a second file, and reporting one of
+        # A second test project would produce a genuinely different report, and reporting one of
         # them as the number is how a partial figure gets read as a whole one.
-        print(f"> {len(files)} coverage files; only `{files[-1]}` is summarised below.\n")
+        print(f"> {len(files)} distinct coverage reports; only `{files[0]}` is summarised below.\n")
 
-    root = ET.parse(files[-1]).getroot()
+    root = ET.parse(files[0]).getroot()
     pct = lambda rate: f"{float(rate) * 100:.1f}%"
 
     print("## Coverage\n")
