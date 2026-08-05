@@ -52,9 +52,10 @@ async function signIn(page, name) {
   const { context, page, consoleErrors } = await session();
   await page.goto(BASE);
   check('home renders', await page.getByRole('heading', { level: 1 }).isVisible());
-  check('home names the brand', (await page.content()).includes('LakeWright.NET') === false
-    ? (await page.content()).includes('LakeWright')
-    : true);
+  // One read, one question. The previous form fetched the page twice and asked it through a
+  // double negative, which also tripped CodeQL: `.includes('LakeWright.NET')` looks like a
+  // hostname check to js/incomplete-url-substring-sanitization, because of the dot.
+  check('home names the brand', (await page.content()).includes('LakeWright'));
   await shoot(page, `01-home.png`);
 
   await page.goto(`${BASE}/signin`);

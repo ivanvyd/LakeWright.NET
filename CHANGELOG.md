@@ -57,8 +57,25 @@ note.
   list of what nobody has checked moved into `ROADMAP.md`, which is where a public project's open
   work belongs.
 
+### Security
+
+- The sample's base images are pinned by digest, not by tag. `10.0-noble` today and `10.0-noble`
+  next month are different images, so the build that was reviewed was not necessarily the image
+  that shipped. Dependabot already watches that directory, so pinning does not mean freezing.
+- `SECURITY.md` no longer claims the reference posture stores no long-lived credentials. It nearly
+  does: `LakeWright.Embedding` needs a service principal OAuth secret, because Databricks documents
+  no other credential for that exchange. One optional module, named rather than glossed.
+- Recorded why neither HTTP client calls `RedactLoggedHeaders`. Since .NET 9 the factory redacts
+  every header value by default, and naming headers *un-redacts* the ones you did not name — so the
+  obvious hardening would have widened the exposure it appears to close.
+- `SECURITY.md` states which OpenSSF Scorecard checks fail structurally for a one-person project,
+  rather than leaving a reader to infer it from a score.
+
 ### Fixed
 
+- A browser smoke-test assertion read the page twice and asked through a double negative, which
+  also tripped CodeQL: `.includes('LakeWright.NET')` looks like a hostname check to
+  `js/incomplete-url-substring-sanitization`, because of the dot.
 - `Category=Live` tests failed with an opaque HTTP 400 (`IncorrectClaimException: Expected iss claim
   to be .../A/, but was .../B/`) when `az login` had defaulted to a different Entra tenant than the
   workspace's. `LiveCredential` honours `AZURE_TENANT_ID` now. The message named neither the
