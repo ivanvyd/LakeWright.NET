@@ -24,7 +24,7 @@ analytics to customers who are not themselves Databricks customers.
 
 ## Run it
 
-Docker and the .NET 10 SDK. No Databricks account, and nothing to configure.
+Docker, and nothing else. No .NET SDK, no Databricks account, nothing to configure.
 
 ```bash
 git clone https://github.com/ivanvyd/LakeWright.NET
