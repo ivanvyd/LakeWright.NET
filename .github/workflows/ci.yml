@@ -13,9 +13,14 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# A hung job is worse than a failed one: it holds a runner for GitHub's six-hour default and
+# reports nothing. The test job wedged on `dotnet test` for over twenty minutes on 2026-08-05
+# against a one-minute baseline, and had to be cancelled by hand. These caps are generous
+# multiples of the observed times, so they fire on a hang and never on a slow runner.
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
@@ -37,6 +42,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
@@ -44,7 +50,14 @@ jobs:
           dotnet-version: '10.0.x'
       # Testcontainers needs a Docker daemon; ubuntu-latest has one.
       # Live tests are excluded here and run only from a maintainer-triggered workflow.
-      - run: dotnet test -c Release --filter "Category!=Live" --logger trx --results-directory TestResults
+      - run: dotnet test -c Release --filter "Category!=Live" --logger trx --results-directory TestResults --collect:"XPlat Code Coverage"
+
+      # Reported, not gated — the script says why. In scripts/ rather than inline here, so it can
+      # be run and changed without a workflow round trip, like the two doc checks below.
+      - name: Report coverage
+        if: always()
+        run: python3 scripts/report-coverage.py >> "$GITHUB_STEP_SUMMARY"
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
@@ -53,14 +66,21 @@ jobs:
 
   docs:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - run: bash scripts/check-doc-links.sh
+      # Links rot first; claims rot quietly. A re-read on 2026-08-05 found six claims describing
+      # a repository that had moved on without them, two in the compliance mapping an assessor
+      # reads first and one in the threat model. Review found the sixth after this check was
+      # written and passing, which is why its rules match the subject rather than the sentence.
+      - run: bash scripts/check-doc-claims.sh
 
   # Its own required check, so a skipped or filtered-out isolation suite fails
   # the build instead of passing quietly inside the general test job.
   tenant-isolation:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
@@ -70,6 +90,7 @@ jobs:
 
   bundle:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: databricks/setup-cli@8821c27b1fe57472264eeb6e50c1f31d69552f28 # v1.10.0

@@ -13,17 +13,32 @@ analytics to customers who are not themselves Databricks customers.
 > Implemented and tested: the tenant model, the tenant-scoped Databricks query layer, the
 > asynchronous operation worker with crash reconciliation and resumed polling, the ASP.NET Core
 > tier (tenant middleware, role policies, the operations API with client idempotency), the audit
-> trail, the Declarative Automation Bundle, and the Signalboard sample — two organizations, three
-> people, a Blazor dashboard and the same API from a terminal.
-> Still open: cost budgets in currency, observability, and a reference deployment. The milestones are in [ROADMAP.md](ROADMAP.md), and
+> trail, the Declarative Automation Bundle, telemetry instruments, and the Signalboard sample —
+> two organizations, three people, a Blazor dashboard and the same API from a terminal.
+> Still open: cost budgets in currency, an observability export, and a reference deployment. The
+> milestones are in [ROADMAP.md](ROADMAP.md), and
 > [docs/compatibility.md](docs/compatibility.md) records exactly what has been verified against a
 > live workspace and what has not.
 
 ![The Signalboard sample dashboard](docs/images/signalboard-dashboard.png)
 
-The sample in [`samples/Signalboard`](samples/Signalboard): two organizations, three people, and
-`docker compose up`. Sign in as someone from the other organization and the same address answers
+## Run it
+
+Docker, and nothing else. No .NET SDK, no Databricks account, nothing to configure.
+
+```bash
+git clone https://github.com/ivanvyd/LakeWright.NET
+cd LakeWright.NET/samples/Signalboard
+docker compose up
+```
+
+Open <http://localhost:8080>. The landing page seeds two organizations and three people and hands
+you the curl commands. Sign in as someone from the other organization and the same address answers
 404 rather than 403, because a 403 would confirm the work exists.
+
+That is the isolation model in about a minute, and it runs without a workspace because tenancy and
+authorization never talk to Databricks. [Getting started](docs/guides/getting-started.md) goes on to
+the tests, the DI wiring, and a live workspace.
 
 ## What problem this solves
 
@@ -89,7 +104,8 @@ docs/                         see docs/README.md
 `LakeWright.Multitenancy` does not reference `LakeWright.Databricks`, so adopting the tenancy tier
 alone does not drag in the Databricks client. A test enforces that rather than a convention.
 
-Still to come: observability, per-tenant cost attribution in currency, and a reference deployment.
+Still to come: an observability export, per-tenant cost attribution in currency, and a reference
+deployment.
 
 ## Documentation
 
@@ -98,7 +114,6 @@ Still to come: observability, per-tenant cost attribution in currency, and a ref
 | Document | What it answers |
 |---|---|
 | [Getting started](docs/guides/getting-started.md) | Running the tests, and wiring it into an application |
-| [Product thesis](docs/planning/01-product-thesis.md) | What this is for, and the strongest argument against building it |
 | [Architecture](docs/planning/03-architecture.md) | The three planes, what lives where, and why |
 | [Tenant model](docs/planning/04-tenant-model.md) | The isolation decision matrix and the recommended default |
 | [Threat model](docs/security/threat-model.md) | What is protected, from what, and which threats are unmitigated |
@@ -106,6 +121,7 @@ Still to come: observability, per-tenant cost attribution in currency, and a ref
 | [SOC 2 mapping](docs/compliance/soc2-mapping.md) | Which controls exist, which are partial, and which are the adopter's problem |
 | [Testing isolation](docs/guides/testing-isolation.md) | How the isolation suite is shown to fail when isolation is broken |
 | [Decisions](docs/decisions) | One record per load-bearing choice |
+| [Roadmap](ROADMAP.md) | What is next, what is open, and what nobody has checked |
 
 ## Support boundary
 
