@@ -28,6 +28,9 @@ note.
   `--prerelease`. They were already built, attested and attached to the GitHub release; what was
   missing was the one surface a .NET developer searches. A release tag without a prerelease suffix
   now fails the workflow. See [ADR 0010](docs/decisions/0010-publish-prerelease-packages.md).
+  Publishing is **keyless**: `NuGet/login` exchanges a GitHub OIDC token for a key valid one hour,
+  against a policy naming this owner, repository and workflow file. No publishing secret is stored,
+  so there is none to leak or rotate.
 - Coverage measurement, reported per project by `scripts/report-coverage.py` into the CI summary
   and deliberately not gated. The first run, 2026-08-05: 46.2% of lines overall, with
   `LakeWright.Databricks` at 6.6% and `LakeWright.AI` at 41.3%, because nearly all of the Databricks
@@ -38,8 +41,8 @@ note.
 - **`LakeWright.Embedding`**: `AddLakeWrightDashboardEmbedding` registers `IDashboardTokenBroker`,
   which runs the AI/BI external-embedding exchange and returns a browser-safe scoped token. The
   tenant is signed in as `external_value` from a `TenantContext` rather than taken as a parameter,
-  so a caller cannot mint a token filtered to somebody else's rows. **Not yet verified against
-  Databricks** — see the compatibility matrix.
+  so a caller cannot mint a token filtered to somebody else's rows. Verified against a live
+  workspace on 2026-08-06: the returned JWT carries the tenant id in its payload.
 - **`LakeWright.Conversations`**: `AddLakeWrightGenie` registers `IGenieConversations` over the Genie
   Conversation API, with one agent per tenant and no fallback, because that API takes no filter and
   the agent is the only tenancy boundary available. Verified against a live agent. Both modules

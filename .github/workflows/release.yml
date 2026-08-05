@@ -152,14 +152,31 @@ jobs:
       #
       # --skip-duplicate so re-running a release that failed after a partial push finishes
       # instead of erroring on the packages that already landed.
+      # Trusted publishing: GitHub mints an OIDC token, nuget.org validates it against a policy
+      # naming this owner, repository and workflow file, and returns an API key valid for one hour.
+      # No key is stored anywhere, so there is none to leak, rotate, or forget to rotate — and the
+      # `id-token: write` permission this needs was already on the job for provenance attestation.
+      #
+      # Requested here rather than earlier because the key expires in an hour and this is the step
+      # that spends it.
+      - name: Exchange an OIDC token for a short-lived NuGet key
+        id: nuget-login
+        if: vars.NUGET_USER != ''
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: ${{ vars.NUGET_USER }}
+
       - name: Publish to nuget.org
         env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
         run: |
           if [ -z "$NUGET_API_KEY" ]; then
-            # A warning rather than a log line: a rotated-and-not-replaced key would otherwise
-            # let every tagged release report success while publishing nothing.
-            echo "::warning::No NUGET_API_KEY configured; packages are on the GitHub release only."
+            # A warning rather than a log line: an unconfigured or lapsed trusted-publishing policy
+            # would otherwise let every tagged release report success while publishing nothing.
+            # nuget.org deactivates a new policy if nothing publishes within seven days, so this
+            # can start working and later stop without anything else changing.
+            echo "::warning::No NuGet trusted-publishing key; packages are on the GitHub release only."
+            echo "::warning::Set the NUGET_USER repository variable and add a policy at nuget.org."
             exit 0
           fi
           dotnet nuget push "artifacts/*.nupkg" \
