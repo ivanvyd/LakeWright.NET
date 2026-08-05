@@ -40,6 +40,9 @@ public static class ConversationsServiceCollectionExtensions
             // A single question can legitimately run for minutes. The polling loop enforces the
             // real ceiling; this only stops one HTTP call hanging past it.
             client.Timeout = TimeSpan.FromMinutes(2);
+
+            // Deliberately no RedactLoggedHeaders — see the note in LakeWright.Embedding. Naming
+            // headers un-redacts the ones you did not name, so the default is the safe setting.
         });
 
         return services;
