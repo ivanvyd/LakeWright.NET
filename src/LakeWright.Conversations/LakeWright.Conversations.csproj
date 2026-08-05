@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Tenant-scoped conversational analytics over the Databricks Genie Conversation API.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Azure.Core" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Http" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Core only. The Conversation API is REST, so a product that asks questions in natural
+         language does not acquire the SQL client or the EF Core stack. -->
+    <ProjectReference Include="..\LakeWright.Core\LakeWright.Core.csproj" />
+  </ItemGroup>
+</Project>
