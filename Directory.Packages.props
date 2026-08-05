@@ -46,10 +46,10 @@
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.13.0" />
     <PackageVersion Include="WireMock.Net" Version="2.13.0" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.10" />
-    <!-- Without a collector, the XPlat Code Coverage data collector silently produces nothing and
-         the suite reports a pass count rather than a proportion. LakeWright.AI shipped with only
-         its line transform covered by a test CI ran, and a review caught that rather than a
-         number. -->
+    <!-- The XPlat Code Coverage data collector produces nothing without this package, silently:
+         the run still passes and still reports a count rather than a proportion. LakeWright.AI
+         shipped with only its line transform covered by a test CI ran, and a review caught that
+         rather than a number. -->
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
   </ItemGroup>
 
