@@ -34,17 +34,30 @@ jobs:
       # A stable tag would push a package that reads as a commitment to an API that is still
       # moving, and nuget.org unlists but never deletes. Refusing the tag is the only cheap
       # moment to catch it.
+      #
+      # Build metadata is stripped before the test. SemVer puts the prerelease label between the
+      # hyphen and the plus, so `1.0.0+exp-sha.5114f85` is a *stable* version that nonetheless
+      # contains a hyphen: a bare `*-*` test passes it and publishes a permanent stable 1.0.0.
       - name: Refuse a stable version
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          case "${{ steps.version.outputs.value }}" in
-            *-*) echo "prerelease: ${{ steps.version.outputs.value }}" ;;
-            *)   echo "Tag ${{ github.ref_name }} has no prerelease suffix. See ADR 0010."; exit 1 ;;
+          case "${VERSION%%+*}" in
+            *-*) echo "prerelease: $VERSION" ;;
+            *)   echo "Tag $REF_NAME carries no prerelease label. See ADR 0010."; exit 1 ;;
           esac
 
       - run: dotnet restore --locked-mode
-      - run: dotnet build --no-restore -c Release -p:Version=${{ steps.version.outputs.value }}
+      - name: Build
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: dotnet build --no-restore -c Release -p:Version="$VERSION"
       - run: dotnet test --no-build -c Release --filter "Category!=Live"
-      - run: dotnet pack --no-build -c Release -o artifacts -p:Version=${{ steps.version.outputs.value }}
+      - name: Pack
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: dotnet pack --no-build -c Release -o artifacts -p:Version="$VERSION"
 
       # A tag that does not produce a package is a release with nothing in it, and both the
       # attestation and `gh release create` below would fail on an empty glob with a less
@@ -64,9 +77,11 @@ jobs:
       # the workflow had been written against an older CLI and never run.
       # Test projects are excluded because the SBOM should describe what ships.
       - name: Generate SBOM
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
         run: |
           dotnet tool install --global CycloneDX
-          dotnet CycloneDX LakeWright.slnx             -o artifacts             -fn sbom.cyclonedx.json             -F Json             --exclude-test-projects             --set-version "${{ steps.version.outputs.value }}"
+          dotnet CycloneDX LakeWright.slnx             -o artifacts             -fn sbom.cyclonedx.json             -F Json             --exclude-test-projects             --set-version "$VERSION"
 
       # An SBOM that silently described nothing would still attest and still upload.
       - name: Confirm the SBOM has components
@@ -92,8 +107,10 @@ jobs:
       # "## [Unreleased]". This takes the section for the version being tagged, and fails when
       # there is not one, because notes for the wrong version are worse than a failed release.
       - name: Extract the release notes for this version
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
         run: |
-          python3 - "${{ steps.version.outputs.value }}" <<'PY' > release-notes.md
+          python3 - "$VERSION" <<'PY' > release-notes.md
           import re, sys
           version = re.escape(sys.argv[1])
           text = open("CHANGELOG.md", encoding="utf-8").read()
@@ -101,21 +118,24 @@ jobs:
           sys.stdout.write(m.group(1).strip() if m else "")
           PY
           test -s release-notes.md || {
-            echo "CHANGELOG.md has no '## [${{ steps.version.outputs.value }}]' section."
+            echo "CHANGELOG.md has no '## [$VERSION]' section."
             exit 1
           }
 
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.value }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          # A hyphen in the version means a pre-release under SemVer. gh does not infer that, so
-          # an RC tag would otherwise publish as an ordinary release.
+          # A prerelease label means a pre-release under SemVer. gh does not infer that, so an RC
+          # tag would otherwise publish as an ordinary release. Build metadata is stripped first,
+          # for the reason the "Refuse a stable version" step gives.
           prerelease=""
-          case "${{ steps.version.outputs.value }}" in *-*) prerelease="--prerelease" ;; esac
+          case "${VERSION%%+*}" in *-*) prerelease="--prerelease" ;; esac
 
-          gh release create "${{ github.ref_name }}" \
-            --title "${{ github.ref_name }}" \
+          gh release create "$REF_NAME" \
+            --title "$REF_NAME" \
             --notes-file release-notes.md \
             $prerelease \
             artifacts/*.nupkg artifacts/sbom.cyclonedx.json
@@ -135,10 +155,19 @@ jobs:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
           if [ -z "$NUGET_API_KEY" ]; then
-            echo "No NUGET_API_KEY configured; packages are on the GitHub release only."
+            # A warning rather than a log line: a rotated-and-not-replaced key would otherwise
+            # let every tagged release report success while publishing nothing.
+            echo "::warning::No NUGET_API_KEY configured; packages are on the GitHub release only."
             exit 0
           fi
           dotnet nuget push "artifacts/*.nupkg" \
             --api-key "$NUGET_API_KEY" \
             --source https://api.nuget.org/v3/index.json \
-            --skip-duplicate
+            --skip-duplicate | tee push.log
+
+          # --skip-duplicate turns a 409 into a warning, which is what makes a resumed release
+          # work — and also what would let a re-tagged version look published when nuget.org is
+          # still serving the old bytes. Surface it rather than leaving it in a collapsed log.
+          if grep -qi 'already exists\|conflict' push.log; then
+            echo "::warning::At least one package already existed on nuget.org and was not republished."
+          fi

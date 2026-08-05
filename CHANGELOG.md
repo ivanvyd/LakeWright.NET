@@ -28,11 +28,13 @@ note.
   `--prerelease`. They were already built, attested and attached to the GitHub release; what was
   missing was the one surface a .NET developer searches. A release tag without a prerelease suffix
   now fails the workflow. See [ADR 0010](docs/decisions/0010-publish-prerelease-packages.md).
-- Coverage measurement, reported per project in the CI summary and deliberately not gated. The
-  first number: 46.2% of lines overall, with `LakeWright.Databricks` at 6.6% because nearly all of
-  its coverage lives in `Category=Live` tests that CI excludes.
+- Coverage measurement, reported per project by `scripts/report-coverage.py` into the CI summary
+  and deliberately not gated. The first run, 2026-08-05: 46.2% of lines overall, with
+  `LakeWright.Databricks` at 6.6% and `LakeWright.AI` at 41.3%, because nearly all of the Databricks
+  coverage lives in `Category=Live` tests that CI excludes.
 - `scripts/check-doc-claims.sh`, a CI check for documentation claims the repository contradicts.
-  It found a fifth stale claim on its first run.
+  It found a fifth stale claim on its first run; review found a sixth it had missed, and its rules
+  now match the subject of a claim rather than one phrasing of it.
 
 ### Changed
 
@@ -44,12 +46,22 @@ note.
 
 ### Fixed
 
-- Five documentation claims the repository contradicted: the security workflow described as gated
-  off while private, when it had been public and running since 2026-07-31; observability described
-  as absent in the README and the compatibility matrix, in a repository whose four instruments
-  `TelemetryTests` asserts; secret scanning and push protection described as not yet enabled;
-  a control deferred to a milestone that had already shipped without it; and the operation worker
-  described as unhosted after `AddLakeWrightOperationWorker` shipped.
+- **Script injection in the release workflow.** Tag-derived values were interpolated into `run:`
+  blocks as text, so a tag named `v1.0.0-$(...)` — a valid git ref — executed as shell in a job
+  holding `contents: write` and, after this release, the nuget.org publish key. They are passed as
+  environment variables now. Eight of the eleven sites predate this change; the key that made them
+  worth exploiting did not, which is why all eleven were fixed rather than the three added here.
+- **The prerelease guard accepted a stable version.** It tested for a hyphen anywhere, and SemVer
+  puts build metadata after the prerelease label, so `1.0.0+exp-sha.5114f85` — stable — passed and
+  would have published permanently. Build metadata is stripped before the test. The same bug was in
+  the pre-existing `--prerelease` flag logic for the GitHub release.
+- Six documentation claims the repository contradicted: the security workflow described as gated
+  off while private, in the compatibility matrix and the threat model, when it had been public and
+  running since 2026-07-31; observability described as absent in the README and the compatibility
+  matrix, in a repository whose four instruments `TelemetryTests` asserts; secret scanning and push
+  protection described as not yet enabled; a control deferred to a milestone that had already
+  shipped without it; and the operation worker described as unhosted after
+  `AddLakeWrightOperationWorker` shipped.
 - A run that exceeded `RunTimeout` was abandoned, not stopped. The worker marked the operation
   failed and returned, leaving the job executing — still spending the compute the timeout exists to
   bound, and still holding the tenant's schema, which tenant deletion would then drop underneath it
