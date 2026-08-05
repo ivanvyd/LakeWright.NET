@@ -5,9 +5,9 @@ What has been run against a real system, what has only been read in documentatio
 Anything not listed as **Verified** should be treated as unverified regardless of how confident the
 surrounding prose sounds.
 
-Last updated 2026-08-05, after a re-read against the repository found two claims here that had gone
-stale: the security workflow described as gated off while private, and observability described as
-absent in a matrix whose own instruments are asserted by tests.
+Last updated 2026-08-05, when the Genie Conversation API was verified against a live agent and the
+dashboard token exchange was added without being verified at all — the first shipped module here
+whose rows say Documented rather than Verified, and the reason is recorded beside them.
 
 ## Legend
 
@@ -55,6 +55,12 @@ absent in a matrix whose own instruments are asserted by tests.
 | Output-token metering on a streaming call | **Available with the shim** | 2026-08-01 | `completion_tokens` is null on every chunk but the last, which carries real numbers and passes through untouched. The wire supports it; per-tenant metering as a feature is not built — see [the roadmap](../ROADMAP.md). |
 | MLflow tracing from .NET over OTLP | Documented | | |
 | Declarative Automation Bundles: validate, deploy, summary, destroy | **Verified** | 2026-08-01 | CLI v1.10.0. Full lifecycle run against the workspace; dev mode prefixing observed. [Guide](guides/deploying-databricks.md) |
+| Genie Conversation API: start a conversation, poll to `COMPLETED` | **Verified** | 2026-08-05 | `LiveGenieTests`, against a real agent in `lakewright-dev`. The answer came back with the SQL Genie generated, which is what proves the attachment shape this library reads is the shape Databricks sends |
+| Genie Conversation API: follow-up in the same conversation | **Verified** | 2026-08-05 | `LiveGenieTests`. Same `conversation_id`, a new `message_id` |
+| Genie message states beyond the documented three | **Verified** | 2026-08-05 | A live `start-conversation` returned `SUBMITTED`, which this library does not map and therefore keeps polling rather than treating as terminal. The open-ended-states rule, observed rather than assumed |
+| Genie Agent as the only tenancy boundary | **Documented** | | The Conversation API takes no filter, no viewer identity and no row predicate. One agent per tenant is the design that follows; nothing in the API can be tested to confirm the absence of a feature |
+| AI/BI external embedding: the three-leg token exchange | **Unverified** | | Implemented against the vendor's documented flow and covered by `EmbedTokenBrokerTests` over a fake workspace. **Not run against Databricks.** It needs a service principal OAuth secret, which the account API issues and a workspace token cannot mint, plus a published dashboard. `LiveEmbeddingTests` is written and unrun |
+| Entra token accepted after `az login` to a non-default tenant | **Not supported** | 2026-08-05 | Databricks refuses it with `IncorrectClaimException: Expected iss claim to be .../A/, but was .../B/` — an HTTP 400 naming neither the workspace nor the fix. `LiveCredential` now honours `AZURE_TENANT_ID` |
 | Creating a **catalog** via bundle or SQL on a Default Storage metastore | **Not supported** | 2026-08-01 | `INVALID_STATE: Metastore storage root URL does not exist`. Needs the UI or an explicit `MANAGED LOCATION`, so the catalog is a documented prerequisite. |
 
 ## Clouds
@@ -93,3 +99,5 @@ absent in a matrix whose own instruments are asserted by tests.
   is the adopter's choice — see [getting started](guides/getting-started.md#watching-it-in-production).
 - Live integration tests: `Category=Live` in the isolation suite, plus the four spikes. They are
   excluded from CI because they need a workspace and cost money.
+- The dashboard token exchange has never run against Databricks. Everything else described as
+  implemented here has. See the Unverified row above for exactly what is missing.

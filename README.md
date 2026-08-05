@@ -67,7 +67,9 @@ an audit trail, and the Databricks side deployed as code.
 - Not a Databricks SDK. [`Microsoft.Azure.Databricks.Client`](https://www.nuget.org/packages/Microsoft.Azure.Databricks.Client)
   already covers Unity Catalog, Statement Execution and Jobs under MIT. This project depends on it.
 - Not a dashboard embedding library. Databricks AI/BI external embedding ships today, with row-level
-  security and no per-viewer fee. Use it.
+  security and no per-viewer fee. Use it. `LakeWright.Embedding` brokers the *token* that flow needs
+  and stops there — the tenant is signed into it rather than chosen by the caller. Rendering remains
+  `@databricks/aibi-client`'s job.
 - Not a generic ASP.NET Core SaaS starter. If you are not on Databricks, nothing here is for you.
 - Not an admin portal, a workspace provisioner, or a notebook tutorial.
 
@@ -93,6 +95,8 @@ src/
   LakeWright.Multitenancy/    tenant model, resolution, operations, audit, EF Core
   LakeWright.AspNetCore/      tenant middleware, role policies, operations API
   LakeWright.AI/              Databricks model serving as an IChatClient, optional
+  LakeWright.Embedding/       scoped tokens for AI/BI dashboards, optional
+  LakeWright.Conversations/   tenant-scoped Genie, optional
 samples/
   Signalboard/                two-tenant sample product, Blazor dashboard plus the API
 tests/
