@@ -24,6 +24,20 @@ namespace LakeWright.TenantIsolation.Tests;
 /// </remarks>
 internal static class LiveCredential
 {
+    /// <summary>
+    /// Set <c>AZURE_TENANT_ID</c> when the workspace lives in an Entra tenant other than the one
+    /// <c>az login</c> defaulted to.
+    /// </summary>
+    /// <remarks>
+    /// Without it the CLI issues a token for its own default tenant and Databricks refuses it with
+    /// <c>Expected iss claim to be .../A/, but was .../B/</c> — an HTTP 400 that reads like a
+    /// malformed request rather than a login in the wrong directory. Anyone signed in to more than
+    /// one tenant hits this, and the message names neither the workspace nor the fix.
+    /// </remarks>
     public static DefaultAzureCredential Create() =>
-        new(new DefaultAzureCredentialOptions { ExcludeManagedIdentityCredential = true });
+        new(new DefaultAzureCredentialOptions
+        {
+            ExcludeManagedIdentityCredential = true,
+            TenantId = Environment.GetEnvironmentVariable("AZURE_TENANT_ID"),
+        });
 }
