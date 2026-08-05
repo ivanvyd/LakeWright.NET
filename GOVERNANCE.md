@@ -44,8 +44,11 @@ person.
 Semantic versioning. Pre-1.0 the minor version may break. Breaking changes are listed in
 [CHANGELOG.md](CHANGELOG.md) with a migration note.
 
-Packages are published only when they have independent value. A package that exists solely because a
-folder existed is a maintenance liability.
+Packages publish to nuget.org with a prerelease suffix, so `dotnet add package` needs `--prerelease`
+and nobody acquires one by accident. Dropping the suffix commits to the API surface, which needs
+adopters to commit to. A package that exists solely because a folder existed is still a maintenance
+liability — [ADR 0010](docs/decisions/0010-publish-prerelease-packages.md) records why publishing
+nothing turned out to cost more than it saved.
 
 ## Inactivity
 

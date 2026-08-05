@@ -5,8 +5,9 @@ What has been run against a real system, what has only been read in documentatio
 Anything not listed as **Verified** should be treated as unverified regardless of how confident the
 surrounding prose sounds.
 
-Last updated 2026-08-01, after the live tests were rewired to exercise the shipping credential
-path rather than a hand-built client.
+Last updated 2026-08-05, after a re-read against the repository found three claims that had gone
+stale: the security workflow described as gated off, and observability described as absent in a
+matrix whose own instruments are asserted by tests.
 
 ## Legend
 
@@ -51,7 +52,7 @@ path rather than a hand-built client.
 | Model serving: **streaming** chat | **Verified, with a shim** | 2026-08-01 | Databricks attaches `usage` to every chunk with `completion_tokens` and `total_tokens` null; the OpenAI deserialiser types them as numbers and throws mid-stream. `StreamingUsageRepairPolicy` strips the incomplete object. A test asserts the call still fails without it, so the shim's necessity is checked rather than assumed |
 | Model serving: tool calling | **Verified** | 2026-07-31 | [spike 03](planning/spike-03-openai-compatibility.md) |
 | Model serving: **streaming** via the stock OpenAI client, unmodified | **Not supported** | 2026-08-01 | Confirmed still true today, which is why the shim exists. `LiveChatTests` asserts the unmodified client fails, so this row goes stale loudly rather than quietly. |
-| Output-token metering on a streaming call | **Available with the shim** | 2026-08-01 | `completion_tokens` is null on every chunk but the last, which carries real numbers and passes through untouched. The wire supports it; per-tenant metering as a feature is not built — see M4 in [remaining work](planning/06-remaining-work.md). |
+| Output-token metering on a streaming call | **Available with the shim** | 2026-08-01 | `completion_tokens` is null on every chunk but the last, which carries real numbers and passes through untouched. The wire supports it; per-tenant metering as a feature is not built — see [the roadmap](../ROADMAP.md). |
 | MLflow tracing from .NET over OTLP | Documented | | |
 | Declarative Automation Bundles: validate, deploy, summary, destroy | **Verified** | 2026-08-01 | CLI v1.10.0. Full lifecycle run against the workspace; dev mode prefixing observed. [Guide](guides/deploying-databricks.md) |
 | Creating a **catalog** via bundle or SQL on a Default Storage metastore | **Not supported** | 2026-08-01 | `INVALID_STATE: Metastore storage root URL does not exist`. Needs the UI or an explicit `MANAGED LOCATION`, so the catalog is a documented prerequisite. |
@@ -85,9 +86,10 @@ path rather than a hand-built client.
 - No per-tenant cost attribution in currency. Concurrency is capped per tenant, which bounds spend
   in flight, but nothing reads Databricks billing data — see T5 in
   [the threat model](security/threat-model.md).
-- No observability. There is no OpenTelemetry instrumentation, so the fairness and ceiling behaviour
-  is evidenced by tests rather than by anything you could watch in production.
+- No observability *export*. `LakeWrightTelemetry` publishes four instruments and
+  `TelemetryTests` asserts each one, but nothing here exports them: no reference dashboard, no
+  alert, and no run in which the fairness and ceiling behaviour was watched rather than tested.
+  The instruments are `System.Diagnostics` types with no OpenTelemetry dependency, so the exporter
+  is the adopter's choice — see [getting started](guides/getting-started.md#watching-it-in-production).
 - Live integration tests: `Category=Live` in the isolation suite, plus the four spikes. They are
   excluded from CI because they need a workspace and cost money.
-- `dependency-review`, CodeQL and Scorecard are gated off while the repository is private, because
-  they need Advanced Security there. They start running when it goes public.
