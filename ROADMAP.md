@@ -20,7 +20,6 @@ where.
 | Synthetic events and cost attribution in Signalboard | This file, week 7 | The cost half shares the grant above |
 | A first backlog of well-scoped issues | This file, week 8 | Nothing. The issue tracker is empty, so a contributor arriving has nowhere obvious to start |
 | A demo recording | This file, week 8 | Nothing. Dropped rather than deferred |
-| Verifying the dashboard token exchange | [Compatibility](docs/compatibility.md) | A service principal OAuth secret, which the Databricks account API issues and a workspace token cannot mint, plus a published dashboard. `LiveEmbeddingTests` is written and unrun |
 
 If this table and [docs/compatibility.md](docs/compatibility.md) ever disagree, the matrix wins — it
 records what was executed, and this one records what is intended.
