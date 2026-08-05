@@ -35,14 +35,41 @@ machine.
 
 ## Reference deployment posture
 
-The reference deployment stores no long-lived Databricks credentials.
+Almost every path here is secretless, and the one exception is named rather than glossed.
 
 - Application to Databricks on Azure uses a managed identity, exchanging an Entra ID token that
   Azure Databricks accepts directly as a bearer token.
 - CI to Databricks uses GitHub Actions OIDC through a Databricks federation policy.
+- Publishing to nuget.org uses trusted publishing: a GitHub OIDC token exchanged for a key valid one
+  hour. No publishing key is stored.
 - Personal access tokens are not used in any documented path.
 
+**The exception: `LakeWright.Embedding` requires a service principal OAuth secret.** Databricks
+documents no other credential for the AI/BI external-embedding token exchange, so an application
+that embeds dashboards holds one long-lived secret. It is confined to that one optional module —
+nothing else in the system needs it, and a product that does not embed dashboards never configures
+it. See [ADR 0011](docs/decisions/0011-brokered-access-as-separate-modules.md).
+
 If you find documentation or sample code that contradicts this, treat it as a bug and report it.
+
+## What the OpenSSF Scorecard says, and why
+
+Scorecard runs weekly and its results are in the Security tab. Two of its checks fail structurally
+and will keep failing while this is a one-person project:
+
+- **Code-Review.** Every pull request has been opened and merged by the maintainer with zero
+  approvals, because there is nobody else to approve them. The reviews have been thorough and
+  adversarial, and they have all been briefed by the person whose work they reviewed.
+- **Branch-Protection.** `main` blocks deletion and force pushes, requires a pull request, requires
+  five status checks including the tenant-isolation suite, and dismisses stale approvals. It cannot
+  require an approving review, for the same reason.
+
+**Fuzzing** also fails. There is no fuzz target. The input most worth fuzzing is the Unity Catalog
+identifier validator, since it is the last thing between a caller and an interpolated identifier;
+it is covered by unit tests today, and that is a weaker guarantee than fuzzing, not an equal one.
+
+These are stated here rather than left for a reader to infer from a low score. A number that is low
+for reasons you can read is more useful than one that has been optimised.
 
 ## Supported versions
 

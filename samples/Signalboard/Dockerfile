@@ -2,7 +2,10 @@
 #   docker build -f samples/Signalboard/Dockerfile .
 # The compose file in this directory sets that context for you.
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0-noble AS build
+# Pinned by digest, not by tag. A tag is a moving pointer, so `10.0-noble` today and `10.0-noble`
+# next month are different images, and the build that was reviewed is not the image that ships.
+# Dependabot watches this directory and raises the digest bumps, so pinning does not mean freezing.
+FROM mcr.microsoft.com/dotnet/sdk:10.0-noble@sha256:72dd743782f2ae7e5476fd64f6a460045e3998dc862218b80e6944cba79a01b0 AS build
 WORKDIR /src
 
 # The whole source before restore, not the project files first. The usual manifests-first trick
@@ -22,7 +25,7 @@ RUN dotnet publish samples/Signalboard/Signalboard.csproj \
 
 # Chiseled: no shell, no package manager, and a non-root user already in place. There is nothing in
 # this image to run except the application, which is the point.
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled AS final
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled@sha256:70d6f993bf715a031f027832a19cfb7f894df66c8b5eb40be0aaee820ad5d119 AS final
 WORKDIR /app
 COPY --from=build /app .
 
