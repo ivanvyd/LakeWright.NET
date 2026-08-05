@@ -5,9 +5,9 @@ What has been run against a real system, what has only been read in documentatio
 Anything not listed as **Verified** should be treated as unverified regardless of how confident the
 surrounding prose sounds.
 
-Last updated 2026-08-05, when the Genie Conversation API was verified against a live agent and the
-dashboard token exchange was added without being verified at all — the first shipped module here
-whose rows say Documented rather than Verified, and the reason is recorded beside them.
+Last updated 2026-08-06, when the dashboard token exchange was verified against a live workspace.
+It shipped unverified the day before, which is why the row below carries two dates: the day the code
+landed and the day anyone could say it worked.
 
 ## Legend
 
@@ -59,7 +59,9 @@ whose rows say Documented rather than Verified, and the reason is recorded besid
 | Genie Conversation API: follow-up in the same conversation | **Verified** | 2026-08-05 | `LiveGenieTests`. Same `conversation_id`, a new `message_id` |
 | Genie message states beyond the documented three | **Verified** | 2026-08-05 | A live `start-conversation` returned `SUBMITTED`, which this library does not map and therefore keeps polling rather than treating as terminal. The open-ended-states rule, observed rather than assumed |
 | Genie Agent as the only tenancy boundary | **Documented** | | The Conversation API takes no filter, no viewer identity and no row predicate. One agent per tenant is the design that follows; nothing in the API can be tested to confirm the absence of a feature |
-| AI/BI external embedding: the three-leg token exchange | **Unverified** | | Implemented against the vendor's documented flow and covered by `EmbedTokenBrokerTests` over a fake workspace. **Not run against Databricks.** It needs a service principal OAuth secret, which the account API issues and a workspace token cannot mint, plus a published dashboard. `LiveEmbeddingTests` is written and unrun |
+| AI/BI external embedding: the three-leg token exchange | **Verified** | 2026-08-06 | `LiveEmbeddingTests`, against a published dashboard in `lakewright-dev` with a service principal holding CAN RUN. Shipped **unverified** on 2026-08-05 and the matrix said so for a day |
+| The scoped token carries the tenant as `external_value` | **Verified** | 2026-08-06 | `LiveEmbeddingTests` decodes the returned JWT payload and finds the tenant id inside it. The claim the module exists for, read off the wire rather than off the request we sent |
+| Service principal OAuth secrets from a **workspace** admin | **Verified** | 2026-08-06 | `service-principal-secrets-proxy` issues them at workspace level; the account console is not required. An earlier reading of this said it was, because the account API answered 303 to a workspace token |
 | Entra token accepted after `az login` to a non-default tenant | **Not supported** | 2026-08-05 | Databricks refuses it with `IncorrectClaimException: Expected iss claim to be .../A/, but was .../B/` — an HTTP 400 naming neither the workspace nor the fix. `LiveCredential` now honours `AZURE_TENANT_ID` |
 | Creating a **catalog** via bundle or SQL on a Default Storage metastore | **Not supported** | 2026-08-01 | `INVALID_STATE: Metastore storage root URL does not exist`. Needs the UI or an explicit `MANAGED LOCATION`, so the catalog is a documented prerequisite. |
 
@@ -99,5 +101,3 @@ whose rows say Documented rather than Verified, and the reason is recorded besid
   is the adopter's choice — see [getting started](guides/getting-started.md#watching-it-in-production).
 - Live integration tests: `Category=Live` in the isolation suite, plus the four spikes. They are
   excluded from CI because they need a workspace and cost money.
-- The dashboard token exchange has never run against Databricks. Everything else described as
-  implemented here has. See the Unverified row above for exactly what is missing.

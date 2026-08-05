@@ -10,16 +10,14 @@ namespace LakeWright.TenantIsolation.Tests;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Never run.</b> Unlike every other <c>Category=Live</c> test here, this one has not been
-/// executed against a workspace, and the compatibility matrix says so. External embedding
-/// authenticates with a service principal OAuth secret, which is issued by the Databricks *account*
-/// API; a workspace token cannot mint one, and the account console needs its own interactive login.
-/// The setup this needs — a service principal, a secret, a published dashboard, and CAN RUN on it —
-/// is a human's five minutes, not an API call this suite can make for itself.
+/// Excluded from the default run and from CI: this needs a workspace, a service principal with an
+/// OAuth secret, and a published dashboard the principal holds CAN RUN on.
 /// </para>
 /// <para>
-/// It is written now rather than later so that running it is the only remaining step, and so the
-/// exchange has a stated acceptance criterion rather than an implied one.
+/// The secret comes from <c>databricks service-principal-secrets-proxy create</c>, which issues one
+/// at <b>workspace</b> level. Written down because the first attempt at this went to the account
+/// API, got a 303, and concluded the account console was required — it is not, for a workspace
+/// admin.
 /// </para>
 /// Run with:
 ///   DATABRICKS_HOST=https://... LAKEWRIGHT_DASHBOARD_ID=... \

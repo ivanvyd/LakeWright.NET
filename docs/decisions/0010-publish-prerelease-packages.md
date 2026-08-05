@@ -57,6 +57,18 @@ measure discovery, and a package nobody has been told about reads zero whether t
 not. The addressable-market question in [ROADMAP.md](../../ROADMAP.md) stays open, and this does not
 answer it.
 
-**A `NUGET_API_KEY` secret now exists.** It is scoped to push only, and the workflow that uses it
-runs on tag push. A leaked key publishes packages under this identity; the mitigation is the scope
-and rotation, not the pipeline.
+**No publishing credential is stored anywhere.** Amended 2026-08-06: this record first said a
+`NUGET_API_KEY` secret would exist, mitigated by scope and rotation. It does not. Publishing uses
+nuget.org trusted publishing — GitHub mints an OIDC token, nuget.org validates it against a policy
+naming this owner, repository and workflow file, and returns a key valid for one hour. There is no
+long-lived secret to leak, and rotation stops being a thing anyone has to remember.
+
+What replaces the key as the thing to protect is the **workflow file name**, which the policy is
+bound to, and the `id-token: write` permission on the release job. Anyone who can change
+`release.yml` on the default branch can publish; that is the same population that could already push
+a tag, so the trust boundary has not widened.
+
+**The policy can lapse quietly.** nuget.org deactivates a newly created policy if nothing publishes
+within seven days. The publish step warns rather than failing when no key comes back, so a lapsed
+policy shows up as a release that succeeded and published nothing — which is why the warning names
+the fix.
