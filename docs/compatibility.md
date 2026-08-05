@@ -5,9 +5,9 @@ What has been run against a real system, what has only been read in documentatio
 Anything not listed as **Verified** should be treated as unverified regardless of how confident the
 surrounding prose sounds.
 
-Last updated 2026-08-05, after a re-read against the repository found three claims that had gone
-stale: the security workflow described as gated off, and observability described as absent in a
-matrix whose own instruments are asserted by tests.
+Last updated 2026-08-05, after a re-read against the repository found two claims here that had gone
+stale: the security workflow described as gated off while private, and observability described as
+absent in a matrix whose own instruments are asserted by tests.
 
 ## Legend
 

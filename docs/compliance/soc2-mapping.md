@@ -66,14 +66,16 @@ Current status, so it can be checked at a glance rather than read for:
 | Status | Rows |
 |---|---|
 | Implemented and evidenced by a test | Tenant isolation, authorization within a tenant, audit logging, data retention and deletion |
-| Implemented, evidence is configuration or history | Change management, secret management, encryption at rest |
+| Implemented, evidence is configuration or history | Change management, secret management, encryption at rest, vulnerability management |
 | Partial | Authorization across tenants at the account layer (no access review or provisioning yet — see those rows), encryption in transit, monitoring and alerting |
 | Design only | Access review, backup and restore, logical access provisioning |
 | Adopter's responsibility | Authentication (the seam exists; the provider is theirs) |
 | Not started | Incident response beyond `SECURITY.md` |
 
-Every row in the table above appears in this summary. Two were missing from an earlier version, which
-is exactly the failure an at-a-glance table is supposed to prevent.
+Every row in the table above appears in this summary. Two were missing from an earlier version, and
+vulnerability management fell out of a third on 2026-08-05 while a stale parenthetical was being
+removed from it — which is exactly the failure an at-a-glance table is supposed to prevent, landing
+twice on the same table.
 
 ## What this does not cover
 

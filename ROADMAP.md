@@ -18,6 +18,8 @@ where.
 | Reference deployment to Azure Container Apps | [Compatibility](docs/compatibility.md) | Billable resources someone has to decide to create. Until then nothing has been deployed and the matrix says so |
 | An observability export | [Getting started](docs/guides/getting-started.md#watching-it-in-production) | Nothing. The instruments exist and are tested; exporting them is the adopter's, and a reference setup goes with the deployment above |
 | Synthetic events and cost attribution in Signalboard | This file, week 7 | The cost half shares the grant above |
+| A first backlog of well-scoped issues | This file, week 8 | Nothing. The issue tracker is empty, so a contributor arriving has nowhere obvious to start |
+| A demo recording | This file, week 8 | Nothing. Dropped rather than deferred |
 
 If this table and [docs/compatibility.md](docs/compatibility.md) ever disagree, the matrix wins — it
 records what was executed, and this one records what is intended.
@@ -27,11 +29,14 @@ records what was executed, and this one records what is intended.
 The table above is work someone chose not to do yet. This is the other kind: things nobody has
 measured, so the honest answer to "is it right?" is that we do not know.
 
-- **CI covers `LakeWright.Databricks` barely at all.** Coverage is measured now, and the first
-  number was 46.2% of lines overall with the Databricks integration at **6.6%** — almost everything
-  in it is exercised by `Category=Live` tests, which CI excludes because they need a workspace and
-  cost money. Tenancy, the operations API and the ASP.NET Core tier sit above 89%. So a green CI run
-  says a great deal about isolation and very little about the Databricks client wrappers.
+- **CI covers two of the shipped packages thinly.** Coverage is measured now. As of the run on
+  2026-08-05: 46.2% of lines overall, `LakeWright.Databricks` at **6.6%** and `LakeWright.AI` at
+  **41.3%**, against `LakeWright.Multitenancy` 92.0%, `LakeWright.Core` 91.7% and
+  `LakeWright.AspNetCore` 89.2%. Almost everything in the Databricks integration is exercised by
+  `Category=Live` tests, which CI excludes because they need a workspace and cost money. So a green
+  CI run says a great deal about isolation and much less about the two packages that talk to
+  Databricks — both of which now publish to nuget.org. The current number is in every CI run's
+  summary; this one is a dated snapshot and will drift.
 - **No independent human has read this code.** Every pull request has been opened and merged by the
   maintainer with zero approvals. The reviews have been thorough and adversarial, and they have all
   been briefed by the person whose work they reviewed, who then chose what to act on.
@@ -46,10 +51,11 @@ measured, so the honest answer to "is it right?" is that we do not know.
 - **The streaming shim depends on undocumented behaviour.** Databricks may change the payload
   without notice, in either direction. `LiveChatTests` fails loudly if the bug disappears; nothing
   warns if it changes shape instead.
-- **The addressable market is unmeasured.** Risk one in the register was always that the intersection
-  of .NET-first, Databricks-standardised, and selling customer-facing analytics is thin. The cheap
+- **The addressable market is unmeasured.** The largest risk was always that the intersection of
+  .NET-first, Databricks-standardised, and selling customer-facing analytics is thin. The cheap
   test — publishing the `session_user()` finding as an article and seeing whether anyone cares —
   has not been run, and everything below assumes an audience that has not been shown to exist.
+  The risk register that recorded this is planning material and is not tracked here.
 
 ## v0.1 — the eight-week milestone
 
@@ -154,7 +160,9 @@ Ordered by how often the question is likely to be asked, not by how interesting 
 
 1. Catalog-per-tenant as an implemented isolation tier, with per-tenant service principals and row
    filters as a genuine second control.
-2. Tenant-scoped Genie for external customers. Research found this unserved in every language.
+2. Tenant-scoped Genie for external customers. Iframe Genie requires viewers to hold Databricks
+   accounts, and AI/BI external embedding excludes Ask Genie, so the Conversation API is the only
+   route and it ships no tenant scoping — in any language.
 3. Vector Search with tenant-safe filtering.
 4. Lakebase as a documented alternative to PostgreSQL, once it is generally available on Azure.
 5. A stable package surface. The packages publish as prereleases today; dropping the suffix means

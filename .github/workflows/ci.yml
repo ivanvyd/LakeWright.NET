@@ -46,34 +46,11 @@ jobs:
       # Live tests are excluded here and run only from a maintainer-triggered workflow.
       - run: dotnet test -c Release --filter "Category!=Live" --logger trx --results-directory TestResults --collect:"XPlat Code Coverage"
 
-      # Reported, not gated. A threshold invites tests written to move a number, and the useful
-      # signal here is per-project: the first run put LakeWright.Databricks at 6.6%, because
-      # almost all of its coverage lives in Category=Live tests this job excludes. A single
-      # solution-wide percentage would have hidden that behind the modules sitting above 90%.
+      # Reported, not gated — the script says why. In scripts/ rather than inline here, so it can
+      # be run and changed without a workflow round trip, like the two doc checks below.
       - name: Report coverage
         if: always()
-        run: |
-          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
-          import glob, xml.etree.ElementTree as ET
-          files = sorted(glob.glob("TestResults/**/coverage.cobertura.xml", recursive=True))
-          if not files:
-              print("No coverage file produced. Is coverlet.collector still referenced?")
-              raise SystemExit(0)
-          if len(files) > 1:
-              # One test project today. A second would produce a second file, and reporting one
-              # of them as the number is how a partial figure gets read as a whole one.
-              print(f"> {len(files)} coverage files; only `{files[-1]}` is summarised below.\n")
-          root = ET.parse(files[-1]).getroot()
-          pct = lambda n: f"{float(n) * 100:.1f}%"
-          print("## Coverage\n")
-          print(f"{pct(root.get('line-rate'))} of lines "
-                f"({root.get('lines-covered')}/{root.get('lines-valid')}), "
-                f"{pct(root.get('branch-rate'))} of branches. Live tests excluded.\n")
-          print("| Project | Lines |")
-          print("|---|---|")
-          for p in sorted(root.find("packages"), key=lambda p: float(p.get("line-rate"))):
-              print(f"| {p.get('name')} | {pct(p.get('line-rate'))} |")
-          PY
+        run: python3 scripts/report-coverage.py >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
@@ -86,9 +63,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - run: bash scripts/check-doc-links.sh
-      # Links rot first; claims rot quietly. A re-read on 2026-08-05 found five claims
-      # describing a repository that had moved on without them, two of them in the compliance
-      # mapping an assessor reads first.
+      # Links rot first; claims rot quietly. A re-read on 2026-08-05 found six claims describing
+      # a repository that had moved on without them, two in the compliance mapping an assessor
+      # reads first and one in the threat model. Review found the sixth after this check was
+      # written and passing, which is why its rules match the subject rather than the sentence.
       - run: bash scripts/check-doc-claims.sh
 
   # Its own required check, so a skipped or filtered-out isolation suite fails
