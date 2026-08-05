@@ -13,9 +13,14 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# A hung job is worse than a failed one: it holds a runner for GitHub's six-hour default and
+# reports nothing. The test job wedged on `dotnet test` for over twenty minutes on 2026-08-05
+# against a one-minute baseline, and had to be cancelled by hand. These caps are generous
+# multiples of the observed times, so they fire on a hang and never on a slow runner.
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
@@ -37,6 +42,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
@@ -60,6 +66,7 @@ jobs:
 
   docs:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - run: bash scripts/check-doc-links.sh
@@ -73,6 +80,7 @@ jobs:
   # the build instead of passing quietly inside the general test job.
   tenant-isolation:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
@@ -82,6 +90,7 @@ jobs:
 
   bundle:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: databricks/setup-cli@8821c27b1fe57472264eeb6e50c1f31d69552f28 # v1.10.0

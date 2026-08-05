@@ -10,6 +10,8 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # A release that hangs holds a runner for six hours without publishing.
+    timeout-minutes: 30
     permissions:
       contents: write      # create the GitHub release
       id-token: write      # OIDC for provenance attestation
