@@ -52,7 +52,13 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-## Local working notes, never committed. The open work belongs in
-## docs/planning/06-remaining-work.md, which opens with a table of it; this pattern is for the
-## things that are one maintainer's running state and would help nobody in public.
+## Local working notes, never committed. The open work belongs in ROADMAP.md, which opens with a
+## table of it; this pattern is for the things that are one maintainer's running state and would
+## help nobody in public.
 *.local.md
+
+## Planning material that is not documentation: the raw research behind the plan, the product
+## thesis, the ecosystem survey, the risk register. It is kept because it is worth keeping and
+## untracked because a reader of this repository is not its audience. What was measured stays
+## public in docs/planning/spike-*.md, because the compatibility matrix cites it as evidence.
+/local/

@@ -29,6 +29,18 @@ jobs:
         id: version
         run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
+      # ADR 0010: packages publish with a prerelease suffix, so `dotnet add package` needs
+      # --prerelease and the version string carries the instability warning at the point of use.
+      # A stable tag would push a package that reads as a commitment to an API that is still
+      # moving, and nuget.org unlists but never deletes. Refusing the tag is the only cheap
+      # moment to catch it.
+      - name: Refuse a stable version
+        run: |
+          case "${{ steps.version.outputs.value }}" in
+            *-*) echo "prerelease: ${{ steps.version.outputs.value }}" ;;
+            *)   echo "Tag ${{ github.ref_name }} has no prerelease suffix. See ADR 0010."; exit 1 ;;
+          esac
+
       - run: dotnet restore --locked-mode
       - run: dotnet build --no-restore -c Release -p:Version=${{ steps.version.outputs.value }}
       - run: dotnet test --no-build -c Release --filter "Category!=Live"
@@ -108,5 +120,25 @@ jobs:
             $prerelease \
             artifacts/*.nupkg artifacts/sbom.cyclonedx.json
 
-      # Publishing to NuGet is deliberately not wired up. Packages ship when they
-      # have independent value and a stable surface. See GOVERNANCE.md.
+      # Last, because it is the only step that cannot be undone: nuget.org unlists but never
+      # deletes. Everything before this is recoverable by deleting a tag and a release.
+      #
+      # Pushing the .nupkg also pushes the .snupkg beside it — the symbol package follows the
+      # primary one automatically when both are in the same folder, which `dotnet pack -o
+      # artifacts` guarantees. That only works against the V3 index, so the source URL is
+      # explicit rather than inherited from any NuGet.config.
+      #
+      # --skip-duplicate so re-running a release that failed after a partial push finishes
+      # instead of erroring on the packages that already landed.
+      - name: Publish to nuget.org
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if [ -z "$NUGET_API_KEY" ]; then
+            echo "No NUGET_API_KEY configured; packages are on the GitHub release only."
+            exit 0
+          fi
+          dotnet nuget push "artifacts/*.nupkg" \
+            --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate

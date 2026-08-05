@@ -2,10 +2,54 @@
 
 Dates are targets, not commitments. This is maintained in personal time.
 
-**For what is next and what is blocking, see
-[docs/planning/06-remaining-work.md](docs/planning/06-remaining-work.md)** — four blockers with
-unblock steps, and five milestones with acceptance criteria. This file records the original plan and
-what has landed against it.
+Two halves. **Open work** is what is next and what is blocking it. Everything after it records the
+original plan and what landed against it, kept because a plan is only honest beside its outcome.
+
+## Open work
+
+Nothing here lives only in someone's head. Where an item has detail elsewhere, this table says
+where.
+
+| Open item | Recorded in | Blocked on |
+|---|---|---|
+| Cost attribution in currency | [Threat model, T5](docs/security/threat-model.md) | A metastore-admin grant on `system.billing`, and the fact that the tenant reaches compute as a job parameter rather than a tag |
+| Per-tenant token metering | [Compatibility](docs/compatibility.md) | The same grant — it belongs with cost attribution |
+| Offering the streaming shim upstream | [ADR 0009](docs/decisions/0009-a-separate-optional-ai-module.md) | Nothing but doing it. `LiveChatTests` holds the reproduction |
+| Reference deployment to Azure Container Apps | [Compatibility](docs/compatibility.md) | Billable resources someone has to decide to create. Until then nothing has been deployed and the matrix says so |
+| An observability export | [Getting started](docs/guides/getting-started.md#watching-it-in-production) | Nothing. The instruments exist and are tested; exporting them is the adopter's, and a reference setup goes with the deployment above |
+| Synthetic events and cost attribution in Signalboard | This file, week 7 | The cost half shares the grant above |
+
+If this table and [docs/compatibility.md](docs/compatibility.md) ever disagree, the matrix wins — it
+records what was executed, and this one records what is intended.
+
+### What nobody has checked
+
+The table above is work someone chose not to do yet. This is the other kind: things nobody has
+measured, so the honest answer to "is it right?" is that we do not know.
+
+- **CI covers `LakeWright.Databricks` barely at all.** Coverage is measured now, and the first
+  number was 46.2% of lines overall with the Databricks integration at **6.6%** — almost everything
+  in it is exercised by `Category=Live` tests, which CI excludes because they need a workspace and
+  cost money. Tenancy, the operations API and the ASP.NET Core tier sit above 89%. So a green CI run
+  says a great deal about isolation and very little about the Databricks client wrappers.
+- **No independent human has read this code.** Every pull request has been opened and merged by the
+  maintainer with zero approvals. The reviews have been thorough and adversarial, and they have all
+  been briefed by the person whose work they reviewed, who then chose what to act on.
+- **Nothing has ever been deployed.** Every claim is verified locally or against a development
+  workspace. The managed-identity path in a hosted process rests on
+  [spike 04](docs/planning/spike-04-managed-identity.md) alone, and the ingress half of encryption
+  in transit has nothing to configure because there is no ingress.
+- **Nothing is load-tested.** Fair claim ordering and the per-tenant ceiling are proven by tests over
+  small data and by one review's measurements. Neither has run under real concurrency, and the
+  numbers in [the threat model](docs/security/threat-model.md) come from reasoning about the queue
+  rather than from watching it.
+- **The streaming shim depends on undocumented behaviour.** Databricks may change the payload
+  without notice, in either direction. `LiveChatTests` fails loudly if the bug disappears; nothing
+  warns if it changes shape instead.
+- **The addressable market is unmeasured.** Risk one in the register was always that the intersection
+  of .NET-first, Databricks-standardised, and selling customer-facing analytics is thin. The cheap
+  test — publishing the `session_user()` finding as an article and seeing whether anyone cares —
+  has not been run, and everything below assumes an audience that has not been shown to exist.
 
 ## v0.1 — the eight-week milestone
 
@@ -54,8 +98,9 @@ is written here, before the features it protects.
   indistinguishable from one that does not exist.
 
 **Done.** The claim loop, the `BackgroundService`, the Jobs submitter and the reconciliation actor
-all landed, verified against a live workspace by `Category=Live` tests. Still open: nothing hosts the
-worker as a running process, which arrives with the application tier in M2.
+all landed, verified against a live workspace by `Category=Live` tests. The worker is hosted:
+`AddLakeWrightOperationWorker` registers it as a hosted service, and Signalboard calls it when a
+workspace URL is configured — without one, operations stay Pending because nothing submits them.
 
 **When the reconciliation actor is built it must claim atomically**, the same way `ClaimNextAsync`
 does, rather than reading with `FindOrphanedForReconciliationAsync` and writing later. A slow-but-
@@ -84,16 +129,20 @@ attribution, and the reference deployment to Azure Container Apps.
 
 ### Week 8: make it adoptable
 
-Documentation, compatibility matrix, the first backlog of well-scoped issues, and the demo recording.
-Optional AI module if the week 1 spike passed.
+**Partly done.** Documentation and the compatibility matrix landed, the optional AI module landed
+because the week 1 spike passed, and the packages publish. Two things from this week did not happen
+and are not scheduled: the first backlog of well-scoped issues, and the demo recording. The issue
+tracker is empty, so a contributor arriving has nowhere obvious to start.
 
 ## Explicit non-goals for v0.1
 
 - Vector Search and RAG. Standing hourly cost, no scale-to-zero, and a real tenant-isolation design
   problem. It gets its own milestone and its own ADR.
 - Dashboard embedding. Databricks ships it. Reimplementing it is negative-value work.
-- Any NuGet package. Packages ship when they have independent value and a stable surface, not
-  because folders exist.
+- ~~Any NuGet package.~~ **Reversed 2026-08-05, see [ADR 0010](docs/decisions/0010-publish-prerelease-packages.md).**
+  The packages were already built, attested and attached to the v0.1.0 release; what was withheld
+  was the one surface a .NET developer actually searches. They publish with a prerelease suffix, so
+  the version string carries the warning the non-goal used to.
 - A `dotnet new` template. It ossifies the structure before we know the structure is right.
 - Catalog-per-tenant and workspace-per-tenant as implemented paths. Documented, not built.
 - Billing, invoicing, or payment integration.
@@ -108,4 +157,5 @@ Ordered by how often the question is likely to be asked, not by how interesting 
 2. Tenant-scoped Genie for external customers. Research found this unserved in every language.
 3. Vector Search with tenant-safe filtering.
 4. Lakebase as a documented alternative to PostgreSQL, once it is generally available on Azure.
-5. A `LakeWright.Databricks` package, if the client wrappers prove stable and independently useful.
+5. A stable package surface. The packages publish as prereleases today; dropping the suffix means
+   committing to the API, which needs adopters first.
