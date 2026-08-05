@@ -6,7 +6,8 @@ workspace.
 
 ## Run the sample
 
-You need Docker and the .NET 10 SDK. You do **not** need a Databricks account.
+Docker is the only requirement. You do **not** need a Databricks account, and you do not need the
+.NET SDK — the app builds inside the image.
 
 ```bash
 git clone https://github.com/ivanvyd/LakeWright.NET
@@ -14,8 +15,8 @@ cd LakeWright.NET/samples/Signalboard
 docker compose up
 ```
 
-Docker is the only requirement. To work on the code, run `docker compose up -d postgres` and
-`dotnet run` instead, which needs the .NET 10 SDK.
+To work on the code, run `docker compose up -d postgres` and `dotnet run` instead. That path does
+need the .NET 10 SDK.
 
 Open <http://localhost:8080>. The landing page seeds two organizations and three people and gives
 you the curl commands that show a cross-tenant read returning 404 rather than 403, and a Viewer
