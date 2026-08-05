@@ -35,6 +35,16 @@ note.
 - `scripts/check-doc-claims.sh`, a CI check for documentation claims the repository contradicts.
   It found a fifth stale claim on its first run; review found a sixth it had missed, and its rules
   now match the subject of a claim rather than one phrasing of it.
+- **`LakeWright.Embedding`**: `AddLakeWrightDashboardEmbedding` registers `IDashboardTokenBroker`,
+  which runs the AI/BI external-embedding exchange and returns a browser-safe scoped token. The
+  tenant is signed in as `external_value` from a `TenantContext` rather than taken as a parameter,
+  so a caller cannot mint a token filtered to somebody else's rows. **Not yet verified against
+  Databricks** — see the compatibility matrix.
+- **`LakeWright.Conversations`**: `AddLakeWrightGenie` registers `IGenieConversations` over the Genie
+  Conversation API, with one agent per tenant and no fallback, because that API takes no filter and
+  the agent is the only tenancy boundary available. Verified against a live agent. Both modules
+  reference only `LakeWright.Core`, enforced by a test.
+  [ADR 0011](docs/decisions/0011-brokered-access-as-separate-modules.md).
 
 ### Changed
 
@@ -46,6 +56,10 @@ note.
 
 ### Fixed
 
+- `Category=Live` tests failed with an opaque HTTP 400 (`IncorrectClaimException: Expected iss claim
+  to be .../A/, but was .../B/`) when `az login` had defaulted to a different Entra tenant than the
+  workspace's. `LiveCredential` honours `AZURE_TENANT_ID` now. The message named neither the
+  workspace nor the fix.
 - **Script injection in the release workflow.** Tag-derived values were interpolated into `run:`
   blocks as text, so a tag named `v1.0.0-$(...)` — a valid git ref — executed as shell in a job
   holding `contents: write` and, after this release, the nuget.org publish key. They are passed as

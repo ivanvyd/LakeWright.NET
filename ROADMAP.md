@@ -20,6 +20,7 @@ where.
 | Synthetic events and cost attribution in Signalboard | This file, week 7 | The cost half shares the grant above |
 | A first backlog of well-scoped issues | This file, week 8 | Nothing. The issue tracker is empty, so a contributor arriving has nowhere obvious to start |
 | A demo recording | This file, week 8 | Nothing. Dropped rather than deferred |
+| Verifying the dashboard token exchange | [Compatibility](docs/compatibility.md) | A service principal OAuth secret, which the Databricks account API issues and a workspace token cannot mint, plus a published dashboard. `LiveEmbeddingTests` is written and unrun |
 
 If this table and [docs/compatibility.md](docs/compatibility.md) ever disagree, the matrix wins — it
 records what was executed, and this one records what is intended.
@@ -144,7 +145,10 @@ tracker is empty, so a contributor arriving has nowhere obvious to start.
 
 - Vector Search and RAG. Standing hourly cost, no scale-to-zero, and a real tenant-isolation design
   problem. It gets its own milestone and its own ADR.
-- Dashboard embedding. Databricks ships it. Reimplementing it is negative-value work.
+- Dashboard embedding. Databricks ships it. Reimplementing it is negative-value work. **Brokering
+  the token is not embedding**: `LakeWright.Embedding` mints the scoped token a viewer needs and
+  stops there. Rendering stays `@databricks/aibi-client`'s job, and this project ships no
+  replacement for it.
 - ~~Any NuGet package.~~ **Reversed 2026-08-05, see [ADR 0010](docs/decisions/0010-publish-prerelease-packages.md).**
   The packages were already built, attested and attached to the v0.1.0 release; what was withheld
   was the one surface a .NET developer actually searches. They publish with a prerelease suffix, so
@@ -160,9 +164,9 @@ Ordered by how often the question is likely to be asked, not by how interesting 
 
 1. Catalog-per-tenant as an implemented isolation tier, with per-tenant service principals and row
    filters as a genuine second control.
-2. Tenant-scoped Genie for external customers. Iframe Genie requires viewers to hold Databricks
-   accounts, and AI/BI external embedding excludes Ask Genie, so the Conversation API is the only
-   route and it ships no tenant scoping — in any language.
+2. ~~Tenant-scoped Genie for external customers.~~ **Built 2026-08-05** as
+   `LakeWright.Conversations`, and verified against a live agent. One agent per tenant, because the
+   Conversation API takes no filter. [ADR 0011](docs/decisions/0011-brokered-access-as-separate-modules.md).
 3. Vector Search with tenant-safe filtering.
 4. Lakebase as a documented alternative to PostgreSQL, once it is generally available on Azure.
 5. A stable package surface. The packages publish as prereleases today; dropping the suffix means
