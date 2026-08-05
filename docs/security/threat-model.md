@@ -138,8 +138,15 @@ its steady state will queue during a burst.
 Pinned dependency versions with committed lock files, SHA-pinned GitHub Actions, least-privilege
 workflow permissions, and a vulnerable-package gate. Fork pull requests never receive secrets.
 
-**Accepted residual:** CodeQL, Scorecard and dependency review need Advanced Security on a private
-repository and are gated off until the repository is public.
+CodeQL, Scorecard and dependency review are free on a public repository and have run since this one
+became public on 2026-07-31. They stay behind a visibility condition so that a fork kept private
+does not collect three permanently red checks.
+
+**Accepted residual:** the release workflow publishes to nuget.org with a long-lived API key. A tag
+push is the trigger, so anyone who can push a `v*` tag can publish under this project's identity.
+Tag-derived values are passed to shell steps as environment variables rather than interpolated into
+the script text, which closes the injection path to that key; the key's own blast radius is bounded
+by its push-only scope and by rotation, not by the pipeline.
 
 ## What is out of scope
 

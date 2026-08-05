@@ -48,6 +48,9 @@
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/ivanvyd/LakeWright.NET</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- nuget.org search reads these. Publishing without them (ADR 0010) would put the packages
+         somewhere nobody can find, which was the reason for publishing in the first place. -->
+    <PackageTags>databricks;multi-tenancy;saas;unity-catalog;lakehouse;aspnetcore</PackageTags>
 
     <!-- Before 1.0, and the default is 1.0.0, which would have signalled the opposite. The release
          workflow overrides this from the tag so a package can never claim a version the tag does
