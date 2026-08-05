@@ -55,11 +55,15 @@ jobs:
         run: |
           python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
           import glob, xml.etree.ElementTree as ET
-          files = glob.glob("TestResults/**/coverage.cobertura.xml", recursive=True)
+          files = sorted(glob.glob("TestResults/**/coverage.cobertura.xml", recursive=True))
           if not files:
               print("No coverage file produced. Is coverlet.collector still referenced?")
               raise SystemExit(0)
-          root = ET.parse(sorted(files)[-1]).getroot()
+          if len(files) > 1:
+              # One test project today. A second would produce a second file, and reporting one
+              # of them as the number is how a partial figure gets read as a whole one.
+              print(f"> {len(files)} coverage files; only `{files[-1]}` is summarised below.\n")
+          root = ET.parse(files[-1]).getroot()
           pct = lambda n: f"{float(n) * 100:.1f}%"
           print("## Coverage\n")
           print(f"{pct(root.get('line-rate'))} of lines "
@@ -82,8 +86,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - run: bash scripts/check-doc-links.sh
-      # Links rot first; claims rot quietly. A re-read on 2026-08-05 found four documents
-      # describing a repository that had moved on without them, one of them the compliance
+      # Links rot first; claims rot quietly. A re-read on 2026-08-05 found five claims
+      # describing a repository that had moved on without them, two of them in the compliance
       # mapping an assessor reads first.
       - run: bash scripts/check-doc-claims.sh
 
