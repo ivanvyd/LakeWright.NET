@@ -54,8 +54,9 @@ If you find documentation or sample code that contradicts this, treat it as a bu
 
 ## What the OpenSSF Scorecard says, and why
 
-Scorecard runs weekly and its results are in the Security tab. Two of its checks fail structurally
-and will keep failing while this is a one-person project:
+Scorecard runs weekly, publishes its results, and the score is on the README badge — 7/10 as of
+2026-08-06. Two of its checks fail structurally and will keep failing while this is a one-person
+project:
 
 - **Code-Review.** Every pull request has been opened and merged by the maintainer with zero
   approvals, because there is nobody else to approve them. The reviews have been thorough and
