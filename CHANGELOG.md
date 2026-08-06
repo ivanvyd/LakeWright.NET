@@ -10,6 +10,23 @@ note.
 
 Nothing yet.
 
+## [0.1.2-preview.1] — 2026-08-06
+
+The first release cut from a signed tag.
+
+### Security
+
+- **Release tags must be signed.** The release workflow refuses a lightweight tag (nothing to sign)
+  and an unsigned annotated one, before it builds. Verification is asked of GitHub rather than done
+  on the runner, because a key the runner supplies is a key an attacker controlling the runner
+  supplies. `docs/guides/releasing.md` covers the one-time SSH or GPG setup.
+- The coverage report distinguishes shipped libraries from the sample. Signalboard is demonstration
+  code at 19.5%, and averaging it in hid that the shipped libraries sit at **85.4%** of lines under
+  the full suite. It also no longer captions every run "Live tests excluded", which was hardcoded
+  and became false the first time anyone ran the whole suite.
+- The OpenSSF Best Practices **passing badge** (100% of 67 criteria) and the **OpenSSF Scorecard**
+  score, both linked from the README. Scorecard was already publishing results; nothing surfaced them.
+
 ## [0.1.1-preview.1] — 2026-08-06
 
 The first release published to nuget.org. Packages carry a prerelease suffix, so `dotnet add
@@ -66,18 +83,6 @@ for why that is the shape and what it commits to.
   work belongs.
 
 ### Security
-
-- **Release tags must be signed.** The release workflow refuses a lightweight tag (nothing to sign)
-  and an unsigned annotated one, before it builds. Verification is asked of GitHub rather than done
-  on the runner, because a key the runner supplies is a key an attacker controlling the runner
-  supplies. `docs/guides/releasing.md` covers the one-time SSH or GPG setup.
-
-- The coverage report distinguishes shipped libraries from the sample. Signalboard is demonstration
-  code at 19.5%, and averaging it in hid that the shipped libraries sit at **85.4%** of lines under
-  the full suite. It also no longer captions every run "Live tests excluded", which was hardcoded
-  and became false the first time anyone ran the whole suite.
-- The OpenSSF Best Practices **passing badge** (100% of 67 criteria) and the **OpenSSF Scorecard**
-  score, both linked from the README. Scorecard was already publishing results; nothing surfaced them.
 
 - Property-based tests over the Unity Catalog identifier guard, the one value that reaches
   Databricks unparameterised. They are mutation-tested rather than assumed: a `$` anchor instead of
