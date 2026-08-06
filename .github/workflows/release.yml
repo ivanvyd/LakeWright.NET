@@ -25,6 +25,40 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # A release tag says "this exact commit is what we published". Unsigned, that claim rests on
+      # nobody having pushed a tag they should not have — and tag-push rights are usually wider than
+      # release rights. Signed, it is checkable by anyone afterwards.
+      #
+      # Verification is asked of GitHub rather than done here on purpose: `git verify-tag` would
+      # need the public key on the runner, and a key the runner supplies is a key an attacker who
+      # controls the runner supplies. GitHub checks the signature against the keys registered to the
+      # account, which is the thing this is meant to prove.
+      #
+      # Lightweight tags are refused before that: they are a pointer with no object to sign, so
+      # `git tag v1.0.0` cannot be signed at all. It must be `git tag -s`.
+      - name: Refuse an unsigned tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          ref=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$REF_NAME")
+          type=$(printf '%s' "$ref" | python3 -c "import json,sys; print(json.load(sys.stdin)['object']['type'])")
+          sha=$(printf '%s' "$ref" | python3 -c "import json,sys; print(json.load(sys.stdin)['object']['sha'])")
+
+          if [ "$type" != "tag" ]; then
+            echo "::error::$REF_NAME is a lightweight tag, which carries no signature. Use: git tag -s $REF_NAME -m '...'"
+            exit 1
+          fi
+
+          v=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$sha" \
+                --jq '.verification.verified, .verification.reason' | paste -sd' ' -)
+          verified=${v%% *}; reason=${v##* }
+          if [ "$verified" != "true" ]; then
+            echo "::error::$REF_NAME is not a verified signed tag (reason: $reason). See docs/guides/releasing.md"
+            exit 1
+          fi
+          echo "$REF_NAME is signed and verified by GitHub."
+
       # The tag is the single source of the version. Deriving it here rather than reading
       # VersionPrefix means a package can never claim a version the tag does not.
       - name: Derive version from the tag
