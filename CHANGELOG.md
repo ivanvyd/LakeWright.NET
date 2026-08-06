@@ -67,6 +67,12 @@ for why that is the shape and what it commits to.
 
 ### Security
 
+- The coverage report distinguishes shipped libraries from the sample. Signalboard is demonstration
+  code at 19.5%, and averaging it in hid that the shipped libraries sit at **85.4%** of lines under
+  the full suite. It also no longer captions every run "Live tests excluded", which was hardcoded
+  and became false the first time anyone ran the whole suite.
+- The OpenSSF Best Practices **passing badge**, at 100% of 67 criteria, linked from the README.
+
 - Property-based tests over the Unity Catalog identifier guard, the one value that reaches
   Databricks unparameterised. They are mutation-tested rather than assumed: a `$` anchor instead of
   `\z`, permitted uppercase, and a removed length ceiling each turn them red. The first version of

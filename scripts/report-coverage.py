@@ -13,6 +13,10 @@ import hashlib
 import sys
 import xml.etree.ElementTree as ET
 
+# Assemblies that exist to demonstrate rather than to ship. Excluded from the headline figure,
+# still listed in the table so nothing is hidden.
+SAMPLES = {"Signalboard"}
+
 
 def distinct_reports() -> list[str]:
     """Coverage files, minus the data collector's staging duplicates.
@@ -44,16 +48,35 @@ def main() -> int:
     root = ET.parse(files[0]).getroot()
     pct = lambda rate: f"{float(rate) * 100:.1f}%"
 
+    # The headline number the packages are judged by. Signalboard is a sample: it exists to be read
+    # and run, it ships to nobody, and at 19.5% it dragged the solution-wide figure down far enough
+    # to hide that the shipped code sits above 85%.
+    covered = valid = 0
+    for package in root.find("packages"):
+        if package.get("name") in SAMPLES:
+            continue
+        for line in package.iter("line"):
+            valid += 1
+            covered += 1 if int(line.get("hits")) > 0 else 0
+
     print("## Coverage\n")
+    if valid:
+        print(f"**{covered / valid * 100:.1f}% of lines in the shipped libraries** ({covered}/{valid}).\n")
     print(
-        f"{pct(root.get('line-rate'))} of lines "
+        f"Across everything including the sample: {pct(root.get('line-rate'))} of lines "
         f"({root.get('lines-covered')}/{root.get('lines-valid')}), "
-        f"{pct(root.get('branch-rate'))} of branches. Live tests excluded.\n"
+        f"{pct(root.get('branch-rate'))} of branches.\n"
     )
+    # Whether the live tests ran is not knowable from the report, and the caption used to assert
+    # they had not — which was false the first time anyone ran the full suite. State the filter
+    # instead of guessing at it.
+    print("Which tests ran depends on the filter this was collected under.\n")
     print("| Project | Lines |")
     print("|---|---|")
     for package in sorted(root.find("packages"), key=lambda p: float(p.get("line-rate"))):
-        print(f"| {package.get('name')} | {pct(package.get('line-rate'))} |")
+        name = package.get("name")
+        label = f"{name} *(sample)*" if name in SAMPLES else name
+        print(f"| {label} | {pct(package.get('line-rate'))} |")
     return 0
 
 
