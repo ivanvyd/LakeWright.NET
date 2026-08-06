@@ -42,6 +42,10 @@ Almost every path here is secretless, and the one exception is named rather than
 - CI to Databricks uses GitHub Actions OIDC through a Databricks federation policy.
 - Publishing to nuget.org uses trusted publishing: a GitHub OIDC token exchanged for a key valid one
   hour. No publishing key is stored.
+- Release tags are signed by the maintainer and verified by GitHub before the release workflow will
+  build. The private key never reaches the runner: the workflow asks GitHub whether the signature is
+  valid rather than checking it with a key it was handed. See
+  [docs/guides/releasing.md](docs/guides/releasing.md).
 - Personal access tokens are not used in any documented path.
 
 **The exception: `LakeWright.Embedding` requires a service principal OAuth secret.** Databricks

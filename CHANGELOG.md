@@ -67,6 +67,11 @@ for why that is the shape and what it commits to.
 
 ### Security
 
+- **Release tags must be signed.** The release workflow refuses a lightweight tag (nothing to sign)
+  and an unsigned annotated one, before it builds. Verification is asked of GitHub rather than done
+  on the runner, because a key the runner supplies is a key an attacker controlling the runner
+  supplies. `docs/guides/releasing.md` covers the one-time SSH or GPG setup.
+
 - The coverage report distinguishes shipped libraries from the sample. Signalboard is demonstration
   code at 19.5%, and averaging it in hid that the shipped libraries sit at **85.4%** of lines under
   the full suite. It also no longer captions every run "Live tests excluded", which was hardcoded
