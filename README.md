@@ -3,6 +3,7 @@
 [![CI](https://github.com/ivanvyd/LakeWright.NET/actions/workflows/ci.yml/badge.svg)](https://github.com/ivanvyd/LakeWright.NET/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](global.json)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13968/badge)](https://www.bestpractices.dev/projects/13968)
 
 The build kit for multi-tenant .NET SaaS on Databricks.
 

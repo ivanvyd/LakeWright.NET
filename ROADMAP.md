@@ -29,14 +29,13 @@ records what was executed, and this one records what is intended.
 The table above is work someone chose not to do yet. This is the other kind: things nobody has
 measured, so the honest answer to "is it right?" is that we do not know.
 
-- **CI covers two of the shipped packages thinly.** Coverage is measured now. As of the run on
-  2026-08-05: 46.2% of lines overall, `LakeWright.Databricks` at **6.6%** and `LakeWright.AI` at
-  **41.3%**, against `LakeWright.Multitenancy` 92.0%, `LakeWright.Core` 91.7% and
-  `LakeWright.AspNetCore` 89.2%. Almost everything in the Databricks integration is exercised by
-  `Category=Live` tests, which CI excludes because they need a workspace and cost money. So a green
-  CI run says a great deal about isolation and much less about the two packages that talk to
-  Databricks — both of which now publish to nuget.org. The current number is in every CI run's
-  summary; this one is a dated snapshot and will drift.
+- **Half the test suite cannot run in CI.** The full suite is 155 tests and covers **85.4% of the
+  lines in the shipped libraries** (measured 2026-08-06). CI runs 143 of them and reaches 71.7% of
+  the same lines, because the Databricks integration is exercised by `Category=Live` tests that need
+  a workspace and cost money. So a green CI run says a great deal about tenancy and isolation, and
+  much less about the Databricks client wrappers — `LakeWright.Databricks` is 50.8% covered by the
+  full suite and 6.6% by the part CI runs. The gap is not untested code; it is code CI is not
+  allowed to test.
 - **No independent human has read this code.** Every pull request has been opened and merged by the
   maintainer with zero approvals. The reviews have been thorough and adversarial, and they have all
   been briefed by the person whose work they reviewed, who then chose what to act on.

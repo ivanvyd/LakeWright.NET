@@ -74,6 +74,12 @@ examples somebody thought of.
 These are stated here rather than left for a reader to infer from a low score. A number that is low
 for reasons you can read is more useful than one that has been optimised.
 
+The project also holds the [OpenSSF Best Practices passing badge](https://www.bestpractices.dev/projects/13968).
+That badge is a **self-assessment**, not an audit: every answer there is one this project wrote about
+itself, with the evidence URL beside it, and anyone is free to check them and challenge what they
+find. Silver additionally requires signed releases and gold requires two-person review, neither of
+which is true here today.
+
 ## Supported versions
 
 Pre-1.0. Only the latest release receives fixes. Once 1.0 ships, this table will list the supported
