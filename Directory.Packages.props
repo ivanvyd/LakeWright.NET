@@ -52,6 +52,10 @@
          shipped with only its line transform covered by a test CI ran, and a review caught that
          rather than a number. -->
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <!-- Property-based tests over the one value that reaches Databricks unparameterised: a Unity
+         Catalog identifier. Example-based tests check the cases someone thought of; this checks
+         the ones nobody did, which for an injection guard is the point. -->
+    <PackageVersion Include="FsCheck" Version="3.3.4" />
   </ItemGroup>
 
 </Project>
