@@ -59,6 +59,13 @@ note.
 
 ### Security
 
+- Property-based tests over the Unity Catalog identifier guard, the one value that reaches
+  Databricks unparameterised. They are mutation-tested rather than assumed: a `$` anchor instead of
+  `\z`, permitted uppercase, and a removed length ceiling each turn them red. The first version of
+  them did **not** catch the `$` anchor — random strings essentially never land on "valid identifier
+  plus a trailing newline" — so the hostile-suffix cases are a deterministic theory beside the
+  properties, and the bug the guard's comment describes finally has a regression test.
+
 - The sample's base images are pinned by digest, not by tag. `10.0-noble` today and `10.0-noble`
   next month are different images, so the build that was reviewed was not necessarily the image
   that shipped. Dependabot already watches that directory, so pinning does not mean freezing.
