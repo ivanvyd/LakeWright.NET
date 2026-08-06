@@ -12,6 +12,7 @@
 | Contribute | [CONTRIBUTING.md](../CONTRIBUTING.md) and [Testing isolation](guides/testing-isolation.md) |
 | Know what is next, and what nobody has checked | [ROADMAP.md](../ROADMAP.md) |
 | Deploy the Databricks side | [Deploying Databricks](guides/deploying-databricks.md) |
+| Cut a release | [Releasing](guides/releasing.md) |
 | Assess it for security or compliance | [Threat model](security/threat-model.md), [SOC 2 mapping](compliance/soc2-mapping.md), [Data handling](compliance/data-handling.md) |
 
 ## Decisions
