@@ -64,9 +64,12 @@ and will keep failing while this is a one-person project:
   five status checks including the tenant-isolation suite, and dismisses stale approvals. It cannot
   require an approving review, for the same reason.
 
-**Fuzzing** also fails. There is no fuzz target. The input most worth fuzzing is the Unity Catalog
-identifier validator, since it is the last thing between a caller and an interpolated identifier;
-it is covered by unit tests today, and that is a weaker guarantee than fuzzing, not an equal one.
+**Fuzzing** is now property-based rather than absent. `IdentifierPropertyTests` states what must
+hold for *all* input to the Unity Catalog identifier validator, which is the last thing between a
+caller and an interpolated identifier, and FsCheck looks for counterexamples. The properties are
+mutation-tested: reverting the guard to a `$` anchor, allowing uppercase, or removing the length
+ceiling each turns them red. This is weaker than coverage-guided fuzzing and stronger than the
+examples somebody thought of.
 
 These are stated here rather than left for a reader to infer from a low score. A number that is low
 for reasons you can read is more useful than one that has been optimised.
