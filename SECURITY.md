@@ -54,8 +54,9 @@ If you find documentation or sample code that contradicts this, treat it as a bu
 
 ## What the OpenSSF Scorecard says, and why
 
-Scorecard runs weekly and its results are in the Security tab. Two of its checks fail structurally
-and will keep failing while this is a one-person project:
+Scorecard runs weekly, publishes its results, and the score is on the README badge — 7/10 as of
+2026-08-06. Two of its checks fail structurally and will keep failing while this is a one-person
+project:
 
 - **Code-Review.** Every pull request has been opened and merged by the maintainer with zero
   approvals, because there is nobody else to approve them. The reviews have been thorough and
@@ -73,6 +74,12 @@ examples somebody thought of.
 
 These are stated here rather than left for a reader to infer from a low score. A number that is low
 for reasons you can read is more useful than one that has been optimised.
+
+The project also holds the [OpenSSF Best Practices passing badge](https://www.bestpractices.dev/projects/13968).
+That badge is a **self-assessment**, not an audit: every answer there is one this project wrote about
+itself, with the evidence URL beside it, and anyone is free to check them and challenge what they
+find. Silver additionally requires signed releases and gold requires two-person review, neither of
+which is true here today.
 
 ## Supported versions
 
