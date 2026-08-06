@@ -8,6 +8,14 @@ note.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.1-preview.1] — 2026-08-06
+
+The first release published to nuget.org. Packages carry a prerelease suffix, so `dotnet add
+package` needs `--prerelease`; see [ADR 0010](docs/decisions/0010-publish-prerelease-packages.md)
+for why that is the shape and what it commits to.
+
 ### Added
 
 - `TenantLifecycle`: provisioning and deletion. Before this, nothing in `src/` could create an
