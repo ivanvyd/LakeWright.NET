@@ -11,6 +11,9 @@ The build kit for multi-tenant .NET SaaS on Databricks.
 An opinionated reference architecture and a small set of reusable components for teams that sell
 analytics to customers who are not themselves Databricks customers.
 
+Project site: **<https://lakewright.net>** — the argument in one page, with the same three
+identities you can run locally.
+
 > **Status: early, but you can run it.**
 > Implemented and tested: the tenant model, the tenant-scoped Databricks query layer, the
 > asynchronous operation worker with crash reconciliation and resumed polling, the ASP.NET Core
