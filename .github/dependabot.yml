@@ -26,6 +26,21 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # Every github/codeql-action/* step has to move together. CodeQL refuses to run
+      # when init, autobuild, analyze and upload-sarif are not all on the same version
+      # -- "Loaded a configuration file for version X, but running version Y" -- so an
+      # ungrouped bump opens one PR per sub-action, each of which fails on its own and
+      # can only pass alongside the others. Grouped by pattern rather than update-type,
+      # because that constraint holds for a major just as much as a patch.
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
 
   # The sample's Dockerfile and compose file, which is where they live rather than at the root.
   # Pointed at / this watched nothing at all.
