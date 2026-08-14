@@ -25,7 +25,7 @@ RUN dotnet publish samples/Signalboard/Signalboard.csproj \
 
 # Chiseled: no shell, no package manager, and a non-root user already in place. There is nothing in
 # this image to run except the application, which is the point.
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled@sha256:70d6f993bf715a031f027832a19cfb7f894df66c8b5eb40be0aaee820ad5d119 AS final
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled@sha256:0839314d08bb65da369135389a5d8291f75ace587fbb0488f469eb92c62eef68 AS final
 WORKDIR /app
 COPY --from=build /app .
 
