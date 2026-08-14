@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
-          dotnet-version: '10.0.x'
+          global-json-file: global.json
       - run: dotnet restore --locked-mode
       - run: dotnet build --no-restore -c Release
       # Format is enforced by the build via EnforceCodeStyleInBuild. This catches
@@ -47,7 +47,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
-          dotnet-version: '10.0.x'
+          global-json-file: global.json
       # Testcontainers needs a Docker daemon; ubuntu-latest has one.
       # Live tests are excluded here and run only from a maintainer-triggered workflow.
       - run: dotnet test -c Release --filter "Category!=Live" --logger trx --results-directory TestResults --collect:"XPlat Code Coverage"
@@ -85,7 +85,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
-          dotnet-version: '10.0.x'
+          global-json-file: global.json
       - run: dotnet test -c Release --filter "Category=TenantIsolation"
 
   bundle:
