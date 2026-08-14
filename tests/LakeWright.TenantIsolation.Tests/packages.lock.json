@@ -1804,7 +1804,7 @@
           "LakeWright.Core": "[0.1.0, )",
           "Microsoft.Extensions.AI.OpenAI": "[10.8.3, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.10, )",
-          "OpenAI": "[2.12.0, )"
+          "OpenAI": "[2.13.0, )"
         }
       },
       "lakewright.aspnetcore": {
@@ -2005,9 +2005,9 @@
       },
       "OpenAI": {
         "type": "CentralTransitive",
-        "requested": "[2.12.0, )",
-        "resolved": "2.12.0",
-        "contentHash": "rKyVV0sJPo7pn0Ya5dgRs5ggGbjvnKcYSvYV2jITKgFIfeo2XHjgyi6UqNT/OnF0YBqjsNpPdgM6QjzYczWplg==",
+        "requested": "[2.13.0, )",
+        "resolved": "2.13.0",
+        "contentHash": "fKgWod3UNE+wPkJuLCiWC7FKh3YSEIHa6QK9gKxCVZ4UYsV9+Gwzg4cEDnvVaIiwc00RTwEuhiOn1Rbk4nLjtw==",
         "dependencies": {
           "System.ClientModel": "1.14.0"
         }
