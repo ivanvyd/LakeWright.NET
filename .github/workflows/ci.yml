@@ -93,7 +93,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: databricks/setup-cli@8821c27b1fe57472264eeb6e50c1f31d69552f28 # v1.10.0
+      - uses: databricks/setup-cli@60b64e3937ee15f5a8b914664d1e78a586a9a4da # v1.11.0
       # `bundle validate` resolves against a live workspace, so it needs credentials
       # that a fork PR must never receive. Forks get schema validation only; a
       # maintainer runs the authenticated validation before merge.
