@@ -5,7 +5,7 @@
 # Pinned by digest, not by tag. A tag is a moving pointer, so `10.0-noble` today and `10.0-noble`
 # next month are different images, and the build that was reviewed is not the image that ships.
 # Dependabot watches this directory and raises the digest bumps, so pinning does not mean freezing.
-FROM mcr.microsoft.com/dotnet/sdk:10.0-noble@sha256:72dd743782f2ae7e5476fd64f6a460045e3998dc862218b80e6944cba79a01b0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0-noble@sha256:e1fc6e423f543119c406d24e2e687d67c569f18f04a37a8b0005d80ad0dcee80 AS build
 WORKDIR /src
 
 # The whole source before restore, not the project files first. The usual manifests-first trick
