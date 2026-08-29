@@ -4,7 +4,6 @@ using LakeWright.Multitenancy;
 using LakeWright.Multitenancy.Cost;
 using LakeWright.Multitenancy.Model;
 using Microsoft.Extensions.Options;
-using NSubstitute;
 using static LakeWright.TenantIsolation.Tests.TestApi;
 
 namespace LakeWright.TenantIsolation.Tests;
@@ -31,7 +30,7 @@ public class CostAttributionTests(PostgresFixture postgres)
     {
         var ct = TestContext.Current.CancellationToken;
         await using var db = await postgres.NewDatabaseAsync();
-        var (acmeClaimed, acmeCompleted) = await SeedTwoTenantsWithOperationsAsync(db, ct);
+        var (acmeClaimed, acmeCompleted) = await SeedAcmeAndGlobexOperationsAsync(db, ct);
 
         var attribution = new OperationCostAttribution(
             db,
@@ -60,7 +59,8 @@ public class CostAttributionTests(PostgresFixture postgres)
     {
         var ct = TestContext.Current.CancellationToken;
         await using var db = await postgres.NewDatabaseAsync();
-        await SeedTwoTenantsWithOperationsAsync(db, ct);
+        // Seed only Acme. Globex has no operations, so its summary is empty.
+        await SeedAcmeOnlyOperationsAsync(db, ct);
 
         var attribution = new OperationCostAttribution(
             db,
@@ -110,15 +110,19 @@ public class CostAttributionTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public void ResolveAsync_rejects_an_inverted_window()
+    public async Task ResolveAsync_rejects_an_inverted_window()
     {
         var ct = TestContext.Current.CancellationToken;
+        // A real but empty DbContext: the parameter guard runs before any SQL, so a fixture
+        // context is the cheapest way to bypass the sealed-type NSubstitute limitation. Do not
+        // seed anything; the check must throw on the from/until check, not on a query.
+        await using var db = await postgres.NewDatabaseAsync();
         var attribution = new OperationCostAttribution(
-            Substitute.For<LakeWrightDbContext>(),
+            db,
             Options.Create(new CostAttributionOptions()));
 
         // An inverted window is a caller bug, not something to silently swap around.
-        Should.Throw<ArgumentException>(async () =>
+        await Should.ThrowAsync<ArgumentException>(async () =>
             await attribution.ResolveAsync(
                 Acme(),
                 DateTimeOffset.UtcNow,
@@ -127,7 +131,7 @@ public class CostAttributionTests(PostgresFixture postgres)
     }
 
     private static async Task<(DateTimeOffset claimed, DateTimeOffset completed)>
-        SeedTwoTenantsWithOperationsAsync(LakeWrightDbContext db, CancellationToken ct)
+        SeedAcmeAndGlobexOperationsAsync(LakeWrightDbContext db, CancellationToken ct)
     {
         var now = DateTimeOffset.Parse("2026-08-15T12:00:00Z", null);
 
@@ -195,6 +199,49 @@ public class CostAttributionTests(PostgresFixture postgres)
 
         await db.SaveChangesAsync(ct);
         return (now, now.AddMinutes(5));
+    }
+
+    private static async Task SeedAcmeOnlyOperationsAsync(LakeWrightDbContext db, CancellationToken ct)
+    {
+        var now = DateTimeOffset.Parse("2026-08-15T12:00:00Z", null);
+
+        db.Organizations.AddRange(
+            new Organization
+            {
+                Id = AcmeId,
+                Name = "Acme",
+                Slug = "acme",
+                CreatedAt = now,
+                Schema = UnityCatalogIdentifier.SchemaForTenant(AcmeId),
+                State = OrganizationState.Active
+            },
+            new Organization
+            {
+                Id = GlobexId,
+                Name = "Globex",
+                Slug = "globex",
+                CreatedAt = now,
+                Schema = UnityCatalogIdentifier.SchemaForTenant(GlobexId),
+                State = OrganizationState.Active
+            });
+
+        await db.SaveChangesAsync(ct);
+
+        // Acme only. Globex has nothing, so the Globex summary must be empty.
+        db.Operations.Add(new Operation
+        {
+            Id = Guid.CreateVersion7(),
+            OrganizationId = AcmeId,
+            PrincipalId = Alice,
+            Kind = "analysis",
+            State = OperationState.Succeeded,
+            IdempotencyKey = Guid.CreateVersion7().ToString("N"),
+            CreatedAt = now,
+            ClaimedAt = now,
+            CompletedAt = now.AddMinutes(5)
+        });
+
+        await db.SaveChangesAsync(ct);
     }
 
     private static async Task SeedSingleTenantWithOperationAsync(
