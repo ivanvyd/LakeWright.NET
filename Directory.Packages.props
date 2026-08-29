@@ -8,7 +8,7 @@
   <ItemGroup Label="Databricks">
     <!-- Verified against a live workspace in docs/planning/spike-01-statement-execution.md:
          parameterised statements, EXTERNAL_LINKS and ARROW_STREAM all work. -->
-    <PackageVersion Include="Azure.Core" Version="1.60.0" />
+    <PackageVersion Include="Azure.Core" Version="1.62.0" />
     <PackageVersion Include="Azure.Identity" Version="1.21.0" />
     <PackageVersion Include="Microsoft.Azure.Databricks.Client" Version="2.9.3" />
   </ItemGroup>
