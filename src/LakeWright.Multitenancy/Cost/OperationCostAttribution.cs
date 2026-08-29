@@ -39,14 +39,16 @@ public sealed class OperationCostAttribution(
         ArgumentNullException.ThrowIfNull(tenant);
         if (from >= until) { throw new ArgumentException("from must be earlier than until.", nameof(from)); }
 
-        // Aggregation runs in Postgres rather than the application. EXTRACT(EPOCH FROM interval)
-        // returns double precision seconds; we sum and cast to double precision. Tenant id is a
-        // parameter, not text: the from / until bounds are bound the same way.
+        // Aggregation runs in Postgres rather than the application. Each operation's elapsed
+        // time is clipped to the window with LEAST/GREATEST so an operation that spans the
+        // window edge is attributed only to the part inside [from, until); without the clip
+        // the same operation would be counted in two adjacent windows. Tenant id is a parameter,
+        // not text: the from / until bounds are bound the same way.
         var rows = await db.Database
             .SqlQueryRaw<CostRow>(
                 """
                 SELECT "Kind" AS Kind, COUNT(*)::int AS Operations,
-                       COALESCE(SUM(EXTRACT(EPOCH FROM ("CompletedAt" - "ClaimedAt"))), 0)::double precision AS ElapsedSeconds
+                       COALESCE(SUM(GREATEST(0, EXTRACT(EPOCH FROM (LEAST("CompletedAt", {2}) - GREATEST("ClaimedAt", {1}))))), 0)::double precision AS ElapsedSeconds
                 FROM operations
                 WHERE "OrganizationId" = {0}
                   AND "ClaimedAt" IS NOT NULL
@@ -59,7 +61,9 @@ public sealed class OperationCostAttribution(
             .ToListAsync(cancellationToken);
 
         var sku = options.Value.WarehouseSku;
-        var dbusPerSecond = (decimal)(options.Value.DbusPerHour / 3600.0);
+        // Decimal division throughout, so a DbusPerHour like 0.6 yields exactly 0.0001̄6̄
+        // (recurring) rather than a double-rounded approximation.
+        var dbusPerSecond = (decimal)options.Value.DbusPerHour / 3600m;
 
         var byKind = rows
             .Select(r => new CostByKind(
