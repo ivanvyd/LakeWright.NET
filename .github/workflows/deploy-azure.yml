@@ -23,7 +23,7 @@ jobs:
       # azure/setup-bicep is not a public action, so we install the CLI tool directly. The
       # latest version of the Bicep CLI is what az bicep build resolves to.
       - name: Set up Bicep
-        run: az bicep install --latest
+        run: az bicep install
 
       - name: Build Bicep
         run: az bicep build --file infra/azure-container-apps/main.bicep --outfile bicep.json
@@ -45,7 +45,7 @@ jobs:
       # The deploy step needs the Bicep CLI for arm-deploy@v1 to resolve the template. Same
       # one-liner as the validate job; az bicep install is idempotent.
       - name: Set up Bicep
-        run: az bicep install --latest
+        run: az bicep install
 
       - name: Azure login via OIDC
         uses: azure/login@v2
