@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The harness runs the sample's host in-process via WebApplicationFactory. The cost endpoint
+         and the operations endpoint are the only routes in scope. -->
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <!-- The harness brings up its own testcontainers Postgres so connection-pool utilisation is
+         real. The existing TestApi harness uses the same package. -->
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <!-- The harness reads pg_stat_activity to track connection-pool utilisation. Npgsql is
+         already in Directory.Packages.props via Npgsql.EntityFrameworkCore.PostgreSQL; we add
+         the direct Npgsql package here because the project needs the raw ADO.NET API. -->
+    <PackageReference Include="Npgsql" />
+    <!-- Seeding the harness's own database uses the same EF Core model the sample and the test
+         suite use. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\samples\Signalboard\Signalboard.csproj" />
+  </ItemGroup>
+</Project>
