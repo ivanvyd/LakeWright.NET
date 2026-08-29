@@ -23,7 +23,7 @@ jobs:
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
-          dotnet-version: '10.0.x'
+          global-json-file: global.json
 
       # A release tag says "this exact commit is what we published". Unsigned, that claim rests on
       # nobody having pushed a tag they should not have — and tag-push rights are usually wider than
@@ -129,7 +129,7 @@ jobs:
       # Provenance is only meaningful because Directory.Build.props sets
       # Deterministic and ContinuousIntegrationBuild: the artifact can be rebuilt
       # and compared.
-      - uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-path: 'artifacts/*.nupkg'
 
