@@ -57,6 +57,17 @@ public static class CostEndpoints
             });
         }
 
+        // Reject windows that end in the distant future, so a caller cannot ask for a 30-day
+        // window anchored at year 9999 and have the implementation scan a multi-millennium range.
+        var maxUntil = DateTimeOffset.UtcNow.AddDays(1);
+        if (effectiveUntil > maxUntil)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["until"] = ["until cannot be more than one day in the future."]
+            });
+        }
+
         if ((effectiveUntil - effectiveFrom).TotalDays > 31)
         {
             return Results.ValidationProblem(new Dictionary<string, string[]>
