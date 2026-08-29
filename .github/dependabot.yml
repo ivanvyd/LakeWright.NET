@@ -1,6 +1,11 @@
 version: 2
 
 updates:
+  # NOTE: Dependabot updates Directory.Packages.props but cannot rewrite packages.lock.json --
+  # the CentralTransitive entries have to be resolved by NuGet, not pattern-matched. Every bump
+  # here therefore arrives with stale lock files and fails `dotnet restore --locked-mode` (NU1004)
+  # until they are regenerated. Run the "Refresh lock files" workflow against the bump's branch;
+  # .github/workflows/refresh-lock-files.yml explains why that is a button and not automatic.
   - package-ecosystem: nuget
     directory: /
     schedule:
@@ -26,6 +31,21 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # Every github/codeql-action/* step has to move together. CodeQL refuses to run
+      # when init, autobuild, analyze and upload-sarif are not all on the same version
+      # -- "Loaded a configuration file for version X, but running version Y" -- so an
+      # ungrouped bump opens one PR per sub-action, each of which fails on its own and
+      # can only pass alongside the others. Grouped by pattern rather than update-type,
+      # because that constraint holds for a major just as much as a patch.
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
 
   # The sample's Dockerfile and compose file, which is where they live rather than at the root.
   # Pointed at / this watched nothing at all.

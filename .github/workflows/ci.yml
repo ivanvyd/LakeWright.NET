@@ -25,8 +25,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
-          dotnet-version: '10.0.x'
-      - run: dotnet restore --locked-mode
+          global-json-file: global.json
+      # Named, so the failure can say what to do about it. NU1004 on a Dependabot branch means
+      # the lock files were not regenerated, which is a chore rather than a defect -- and the
+      # error NuGet prints for it does not mention the fix.
+      - name: Restore
+        run: |
+          set -euo pipefail
+          if ! dotnet restore --locked-mode; then
+            echo "::error title=Lock files are out of step::dotnet restore --locked-mode failed. If this is a dependency bump, Dependabot cannot rewrite packages.lock.json under central package management. Run the 'Refresh lock files' workflow against ${{ github.head_ref || github.ref_name }}, then re-run these checks."
+            exit 1
+          fi
       - run: dotnet build --no-restore -c Release
       # Format is enforced by the build via EnforceCodeStyleInBuild. This catches
       # whitespace-only drift that the analyzers do not.
@@ -47,7 +56,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
-          dotnet-version: '10.0.x'
+          global-json-file: global.json
       # Testcontainers needs a Docker daemon; ubuntu-latest has one.
       # Live tests are excluded here and run only from a maintainer-triggered workflow.
       - run: dotnet test -c Release --filter "Category!=Live" --logger trx --results-directory TestResults --collect:"XPlat Code Coverage"
@@ -85,7 +94,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
-          dotnet-version: '10.0.x'
+          global-json-file: global.json
       - run: dotnet test -c Release --filter "Category=TenantIsolation"
 
   bundle:
@@ -93,7 +102,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: databricks/setup-cli@8821c27b1fe57472264eeb6e50c1f31d69552f28 # v1.10.0
+      - uses: databricks/setup-cli@60b64e3937ee15f5a8b914664d1e78a586a9a4da # v1.11.0
       # `bundle validate` resolves against a live workspace, so it needs credentials
       # that a fork PR must never receive. Forks get schema validation only; a
       # maintainer runs the authenticated validation before merge.
