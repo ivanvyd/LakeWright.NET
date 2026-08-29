@@ -1,6 +1,9 @@
 using Azure.Core;
 using LakeWright.AspNetCore;
 using LakeWright.Multitenancy;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using Signalboard;
 using Signalboard.Components;
 
@@ -22,6 +25,30 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration["Databricks:WorkspaceUrl"])
     builder.Services.AddSingleton<TokenCredential, ConfiguredTokenCredential>();
     builder.Services.AddLakeWrightDatabricks(builder.Configuration);
     builder.Services.AddLakeWrightOperationWorker(builder.Configuration);
+}
+
+// Cost attribution: opt-in via configuration, like the Databricks clients. The sample ships the
+// elapsed-time proxy because it costs nothing to run and makes the cost endpoint answerable
+// without a live workspace. A product wired to its own billing table replaces this registration
+// with its own ICostAttribution.
+builder.Services.AddLakeWrightCostAttribution(builder.Configuration);
+
+// OpenTelemetry: opt-in via configuration. The library publishes plain System.Diagnostics
+// instruments and takes no OTel dependency; this is the sample's choice of exporter, not the
+// library's. Set Lakewright:OpenTelemetry:Enabled=true and an OTLP endpoint to forward the four
+// instruments to a collector.
+if (builder.Configuration.GetValue("Lakewright:OpenTelemetry:Enabled", false))
+{
+    var otlpEndpoint = builder.Configuration["Lakewright:OpenTelemetry:OtlpEndpoint"]
+        ?? "http://localhost:4317";
+    builder.Services.AddOpenTelemetry()
+        .ConfigureResource(r => r.AddService("Signalboard"))
+        .WithMetrics(m => m
+            .AddMeter("LakeWright.Multitenancy")
+            .AddOtlpExporter(o => o.Endpoint = new Uri(otlpEndpoint)))
+        .WithTracing(t => t
+            .AddSource("LakeWright.Multitenancy")
+            .AddOtlpExporter(o => o.Endpoint = new Uri(otlpEndpoint)));
 }
 
 // Readiness means "can serve a request", which for this application means the database answers.
@@ -50,6 +77,7 @@ app.MapOpenApi().AllowAnonymous();
 app.MapHealthChecks("/health").AllowAnonymous();
 
 app.MapLakeWrightOperations();
+app.MapLakeWrightCost();
 app.MapDemoAuthentication();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
