@@ -33,6 +33,11 @@
          GHSA-v5pm-xwqc-g5wc is high severity and patched in 2.7.5. The vulnerable-package
          gate in CI caught it, which is the whole reason that gate exists. -->
     <PackageVersion Include="Microsoft.OpenApi" Version="2.7.5" />
+    <!-- Pinned above the transitive 2025.1.0 that the Databricks SDK resolves:
+         GHSA-q939-rpr3-3284 is high severity (CVE-2026-48798) and patched in
+         2026.0.0. The vulnerable-package gate in CI caught it, which is the
+         whole reason that gate exists. -->
+    <PackageVersion Include="SSH.NET" Version="2026.0.0" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.10" />
@@ -56,6 +61,15 @@
          Catalog identifier. Example-based tests check the cases someone thought of; this checks
          the ones nobody did, which for an injection guard is the point. -->
     <PackageVersion Include="FsCheck" Version="3.3.4" />
+  </ItemGroup>
+
+  <ItemGroup Label="Observability (sample only)">
+    <!-- The library publishes plain System.Diagnostics instruments and takes no OpenTelemetry
+         dependency. These versions are pinned for the sample's opt-in OTel wiring; an adopter
+         picks their own exporter and version, which is the whole point of leaving the library
+         out of this decision. -->
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.18.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.18.0" />
   </ItemGroup>
 
 </Project>
