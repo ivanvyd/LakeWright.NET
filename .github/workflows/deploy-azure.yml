@@ -32,7 +32,9 @@ jobs:
   deploy:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # PostgreSQL Flexible Server creation can take 10-15 minutes; 30 was a thin margin.
+    # 60 is generous but not a problem if the deploy is fast.
+    timeout-minutes: 60
     # The deploy step is gated by a required-reviewer approval on the chosen environment.
     environment: production
     permissions:

@@ -65,6 +65,28 @@ deploys on a manual approval to a chosen environment. The workflow is a no-op fo
 requests that don't touch `infra/`; the deploy step requires an environment that has a
 required-reviewer approval configured.
 
+**The deploy step authenticates with OIDC, not a stored secret.** Before the first deploy,
+configure the following in Entra ID:
+
+1. Register an app registration in the subscription's home tenant. Note its `client-id` and
+   the home `tenant-id`.
+2. On that app registration, add a **federated credential** of type "GitHub Actions deploying
+   Azure resources" with the following subject: `repo:<owner>/<repo>:environment:<name>` for
+   each environment the workflow targets (the example uses `production`).
+3. Grant the app registration the `Contributor` role on the resource group the workflow
+   deploys into.
+4. In the repository or environment, define the secrets `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`,
+   `AZURE_SUBSCRIPTION_ID`, `AZURE_RESOURCE_GROUP`, `DATABRICKS_WORKSPACE_URL`,
+   `DATABRICKS_CATALOG`, `POSTGRES_ADMIN_LOGIN`, and `POSTGRES_ADMIN_PASSWORD`. The
+   `POSTGRES_ADMIN_PASSWORD` value is loaded from a Key Vault reference in real deploys and
+   supplied as a parameter file in local deploys — never inline in the workflow.
+
+The OIDC handshake happens in `azure/login@v2`; the `arm-deploy@v1` step then deploys with
+the token it gets back. If the federated credential's subject does not match the workflow's
+running subject (e.g. only `main` is registered but the workflow is running on a PR), the login
+step succeeds and the deploy step fails with an "AADSTS70021" error. The federated-credential
+subject must include the branch or environment the workflow runs under.
+
 ## After the deploy
 
 1. Grant the managed identity `CAN RUN` on the published dashboard in Databricks if the
@@ -83,3 +105,20 @@ schema versions referenced, and the resource SKUs are documented in the Azure pr
 documentation, but no one has run a deploy with it. Marked **Documented** in
 [the compatibility matrix](../compatibility.md) for the same reason the rest of the
 deployment column is empty.
+
+## Known limitations
+
+- **The Log Analytics shared key is exposed in `az deployment group show` output.** Bicep's
+  `listKeys().primarySharedKey` returns a non-`@secure()` value, and the deployment record
+  contains it. The key grants **ingest** access to the workspace (write logs), not read
+  access. A reader on the resource group sees the key. The conventional mitigations are:
+  switch to a `diagnosticSetting` (which writes via Azure's control plane) and read the
+  key into a Bicep variable, or move to a customer-managed key and store it in Key Vault.
+  Tracked as a follow-up; the deploy guide explicitly says "not production-ready."
+
+- **`arm-deploy@v1` is in maintenance mode.** Microsoft's recommended successor is
+  `azure/bicep-deploy`, which is first-party and supports OIDC without the action's
+  quirks. Tracked as a follow-up.
+
+- **No VNet, no private endpoint, no custom domain.** The deploy guide is explicit about
+  these being production prerequisites, not template omissions.
