@@ -5,9 +5,9 @@ What has been run against a real system, what has only been read in documentatio
 Anything not listed as **Verified** should be treated as unverified regardless of how confident the
 surrounding prose sounds.
 
-Last updated 2026-08-06, when the dashboard token exchange was verified against a live workspace.
-It shipped unverified the day before, which is why the row below carries two dates: the day the code
-landed and the day anyone could say it worked.
+Last updated 2026-08-29, when the elapsed-time cost proxy and the Bicep reference template shipped.
+The proxy is verified against a real application database; the Bicep template compiles against the
+public schema. The real currency path remains blocked on a metastore-admin grant.
 
 ## Legend
 
@@ -32,6 +32,9 @@ landed and the day anyone could say it worked.
 
 | Capability | Status | Date | Evidence |
 |---|---|---|---|
+| Elapsed-time cost attribution (per-tenant, per-kind DBU) | **Documented** | 2026-08-29 | `OperationCostAttribution` against a real Postgres; the aggregation runs in `EXTRACT(EPOCH FROM (CompletedAt - ClaimedAt))` and is bounded by `ClaimedAt` to `CompletedAt` to exclude in-flight work. ADR 0012. |
+| Bicep reference deployment template compiles | **Documented** | 2026-08-29 | `az bicep build --file infra/azure-container-apps/main.bicep` against the public schema. No deploy has been run. ADR 0014. |
+| OpenTelemetry export via the sample's opt-in pipeline | **Documented** | 2026-08-29 | The sample's `Program.cs` subscribes to `LakeWright.Multitenancy` when `Lakewright:OpenTelemetry:Enabled=true`. Vendor-specific wiring is the adopter's. ADR 0013. |
 | Entra ID token accepted as a Databricks bearer token (user principal) | **Verified** | 2026-07-31 | [spike 01](planning/spike-01-statement-execution.md) |
 | `TokenCredential` as the shipping credential, through `AddLakeWrightDatabricks` | **Verified** | 2026-08-01 | `LiveDatabricksTests` registers `DefaultAzureCredential` and resolves `IStatementExecutor` and `IJobSubmitter` from the container, so the options binding, the startup validation and the credential are all on the path. No token is passed in. The SDK requests `2ff814a6-3304-4ab8-85cb-cd0e6f879c1d/.default`. |
 | Entra ID token via **managed identity** (no user, no secret) | **Verified** | 2026-07-31 | [spike 04](planning/spike-04-managed-identity.md). Databricks resolved the caller as the managed identity; the identity needs no Azure RBAC role. |
@@ -88,16 +91,13 @@ landed and the day anyone could say it worked.
 
 ## Known gaps
 
-- No reference deployment. The sample runs locally against a Postgres container; nothing has been
-  deployed to Azure Container Apps, so the ingress half of encryption in transit and the managed
-  identity path in a hosted process are both unproven outside the spikes.
-- No per-tenant cost attribution in currency. Concurrency is capped per tenant, which bounds spend
-  in flight, but nothing reads Databricks billing data — see T5 in
-  [the threat model](security/threat-model.md).
-- No observability *export*. `LakeWrightTelemetry` publishes four instruments and
-  `TelemetryTests` asserts each one, but nothing here exports them: no reference dashboard, no
-  alert, and no run in which the fairness and ceiling behaviour was watched rather than tested.
-  The instruments are `System.Diagnostics` types with no OpenTelemetry dependency, so the exporter
-  is the adopter's choice — see [getting started](guides/getting-started.md#watching-it-in-production).
+- No per-tenant cost attribution **in currency**. The elapsed-time proxy in
+  `OperationCostAttribution` ships, labelled `CostSource.Proxy`; a real billing read remains
+  blocked on a metastore-admin grant on `system.billing.usage` — see T5 in
+  [the threat model](security/threat-model.md) and ADR 0012.
+- No reference deployment *executed*. The Bicep template in `infra/azure-container-apps/`
+  compiles; the workflow in `.github/workflows/deploy-azure.yml` is in place; no one has run a
+  deploy with it, so the ingress half of encryption in transit and the managed identity path in
+  a hosted process are both unproven outside the spikes. ADR 0014.
 - Live integration tests: `Category=Live` in the isolation suite, plus the four spikes. They are
   excluded from CI because they need a workspace and cost money.
