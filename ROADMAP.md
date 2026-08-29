@@ -12,12 +12,12 @@ where.
 
 | Open item | Recorded in | Blocked on |
 |---|---|---|
-| Cost attribution in currency | [Threat model, T5](docs/security/threat-model.md) | A metastore-admin grant on `system.billing`, and the fact that the tenant reaches compute as a job parameter rather than a tag |
+| Cost attribution in currency | [Threat model, T5](docs/security/threat-model.md) | A metastore-admin grant on `system.billing`. The elapsed-time proxy now ships as the default implementation; the billing read is an `ICostAttribution` replacement. ADR 0012. |
 | Per-tenant token metering | [Compatibility](docs/compatibility.md) | The same grant — it belongs with cost attribution |
 | Offering the streaming shim upstream | [ADR 0009](docs/decisions/0009-a-separate-optional-ai-module.md) | Nothing but doing it. `LiveChatTests` holds the reproduction |
-| Reference deployment to Azure Container Apps | [Compatibility](docs/compatibility.md) | Billable resources someone has to decide to create. Until then nothing has been deployed and the matrix says so |
-| An observability export | [Getting started](docs/guides/getting-started.md#watching-it-in-production) | Nothing. The instruments exist and are tested; exporting them is the adopter's, and a reference setup goes with the deployment above |
-| Synthetic events and cost attribution in Signalboard | This file, week 7 | The cost half shares the grant above |
+| Reference deployment to Azure Container Apps | [Compatibility](docs/compatibility.md), [docs/guides/deploying-azure.md](docs/guides/deploying-azure.md) | Billable resources someone has to decide to create. The Bicep template now compiles and the workflow is in place; the first deploy is the promotion step. ADR 0014. |
+| An observability export | [Compatibility](docs/compatibility.md), ADR 0013 | The sample's opt-in OTel pipeline is the reference; vendor-specific wiring is the adopter's. |
+| Synthetic events and cost attribution in Signalboard | This file, week 7 | Nothing. The cost endpoint answers against real operations today. |
 | A first backlog of well-scoped issues | This file, week 8 | Nothing. The issue tracker is empty, so a contributor arriving has nowhere obvious to start |
 | A demo recording | This file, week 8 | Nothing. Dropped rather than deferred |
 

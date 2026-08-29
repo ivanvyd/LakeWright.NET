@@ -8,7 +8,46 @@ note.
 
 ## [Unreleased]
 
-Nothing yet.
+### Security
+
+- `SSH.NET` pinned to `2026.0.0` (was 2025.1.0) to clear GHSA-q939-rpr3-3284 / CVE-2026-48798,
+  a high-severity advisory. The vulnerable-package gate in CI caught it on the next run after
+  the advisory was published; the pin note next to `Microsoft.OpenApi` in `Directory.Packages.props`
+  documents the shape.
+
+### Added
+
+- `ICostAttribution` in `LakeWright.Core`, with the elapsed-time proxy
+  `OperationCostAttribution` in `LakeWright.Multitenancy` as the first implementation. The proxy
+  weights `operations.ClaimedAt` to `CompletedAt` by the configured warehouse SKU's DBU/hour rate
+  and labels the result `CostSource.Proxy`. A product that gets a metastore-admin grant on
+  `system.billing.usage` replaces the registration with its own implementation; the
+  `CostSource` discriminator tells the caller which one ran. ADR 0012.
+- `AddLakeWrightCostAttribution` and `MapLakeWrightCost` in `LakeWright.AspNetCore`. Opt-in
+  configuration section `LakeWright:CostAttribution` carries the warehouse SKU and DBU/hour
+  rate. The cost endpoint is behind the `Viewer` policy and bounded to a 31-day window.
+- Reference deployment for Signalboard: `infra/azure-container-apps/main.bicep` and
+  `.github/workflows/deploy-azure.yml`. The template provisions a Container App, a Log Analytics
+  workspace, a PostgreSQL Flexible Server, and a user-assigned managed identity. The CI
+  workflow validates the template on every PR; the deploy step is gated on a manual environment
+  approval. ADR 0014.
+- Sample's opt-in OpenTelemetry wiring in `samples/Signalboard/Program.cs`. Subscribes to
+  `LakeWright.Multitenancy` when `Lakewright:OpenTelemetry:Enabled=true` and forwards to the
+  configured OTLP endpoint. The library continues to take no OpenTelemetry dependency; the
+  reference is the sample. ADR 0013.
+
+### Changed
+
+- The tenant-isolation suite gains two cases: `CostAttributionTests` exercises the elapsed-time
+  proxy against a real Postgres (math, boundary, empty window, inverted window), and
+  `TelemetryTenantGuardTests` walks the library's source to assert no metric call site tags
+  with `tenant`, `tenantid`, `organizationid`, or a recognisable variant. The cardinality-bomb
+  rule that was a docstring is now a build gate.
+- `docs/compatibility.md` records the cost proxy and the OTel wiring as `Documented`. A live
+  workspace was not used; a real billing read remains blocked on the metastore-admin grant.
+- `docs/security/threat-model.md` T5 updates from "partly mitigated" to "mitigated with a
+  proxy", and the concurrency ceiling in `OperationWorker:MaxInFlightPerTenant` remains the
+  control that acts in time.
 
 ## [0.1.2-preview.1] — 2026-08-06
 
