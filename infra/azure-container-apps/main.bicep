@@ -137,6 +137,16 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
     managedEnvironmentId: containerEnv.id
     configuration: {
       activeRevisionsMode: 'Single'
+      // Putting the database password into a Container Apps secret and reading it via
+      // secretRef keeps it out of the env var that anyone with `Microsoft.App/containerApps/read`
+      // on the resource can see. The Bicep parameter is already @secure(), so deployment
+      // outputs are clean; this closes the runtime-env-var leak.
+      secrets: [
+        {
+          name: 'db-connection-string'
+          value: 'Host=${postgres.properties.fullyQualifiedDomainName};Database=${postgresDbName};Username=${postgresAdminLogin};Password=${postgresAdminPassword}'
+        }
+      ]
       ingress: {
         external: true
         targetPort: 8080
@@ -151,7 +161,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           env: [
             {
               name: 'ConnectionStrings__LakeWright'
-              value: 'Host=${postgres.properties.fullyQualifiedDomainName};Database=${postgresDbName};Username=${postgresAdminLogin};Password=${postgresAdminPassword}'
+              secretRef: 'db-connection-string'
             }
             {
               name: 'Multitenancy__Catalog'

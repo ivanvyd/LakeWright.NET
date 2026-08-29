@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.RegularExpressions;
 
 namespace LakeWright.TenantIsolation.Tests;
 
@@ -12,58 +13,106 @@ namespace LakeWright.TenantIsolation.Tests;
 /// totals are the application's job to derive from <c>operations</c> and <c>audit_events</c>.
 ///
 /// This test pins the property against accidental regression. A future change that adds a tag
-/// named <c>tenant</c> or <c>tenant_id</c> to one of the four call sites fails the build, with
-/// the offending line in the message. Reflection over the assembly's <c>IL</c> would be more
-/// thorough than reading the source; reading the source is what the rule says and what the
-/// maintainer will do next time a tag is being added, so the test is also a reminder of the rule
-/// at the point someone is most likely to break it.
+/// with a tenant identifier (whether as the key or the value, on the line that opens the call or
+/// on a continuation line) fails the build, with the offending file and the matched call span
+/// in the message.
+///
+/// <b>What the rule covers.</b> Every call to <c>LakeWrightTelemetry.&lt;X&gt;.Add(</c> or
+/// <c>.Record(</c> in <c>src/</c> is walked as a paren-tracked span, and the span is checked for a
+/// tenant token — as a tag key, as a tag value, as an identifier on a continuation line, or as a
+/// string literal. Comments are stripped before the scan so a line that describes the rule does
+/// not trigger it.
+///
+/// <b>What the rule does not cover.</b> A helper that lives in a different file and takes a
+/// <c>Counter&lt;...&gt;</c> or <c>Histogram&lt;...&gt;</c> as a parameter and calls
+/// <c>.Add(</c> or <c>.Record(</c> on it is the second bypass an earlier version let through.
+/// A regex-based source scan cannot tell the difference between <c>counter.Add(...)</c> on a
+/// metric instrument and <c>auditLog.Record(...)</c> on a <c>Microsoft.Extensions.Logging</c>
+/// entry point, because the receiver is opaque. The right answer is an IL-level check that
+/// resolves the call site to a <c>System.Diagnostics.Metrics</c> method; that is a follow-up
+/// and not a blocker. A maintainer adding a tag today reads the docstring on
+/// <see cref="LakeWright.Multitenancy.LakeWrightTelemetry"/> and the rule above.
 /// </remarks>
 [Trait("Category", "TenantIsolation")]
 public class TelemetryTenantGuardTests
 {
+    // A tenant id on the right-hand side of a tag (the value position) or in the key position.
+    // Catches: organization.OrganizationId, op.TenantId, operation.OrganizationId, an inline
+    // string literal "tenant" or "tenant_id", and the snake_case variants.
+    private static readonly Regex TenantToken = new(
+        @"\b(tenant|tenantid|tenant_id|organizationid|organization_id)\b",
+        RegexOptions.IgnoreCase);
+
+    // A direct call to a metric instrument. The receiver must be a LakeWrightTelemetry field.
+    private static readonly Regex DirectMetricCall = new(
+        @"LakeWrightTelemetry\.\w+\s*\.\s*(?:Add|Record)\s*\(");
+
     [Fact]
     public void No_library_call_site_adds_a_tenant_tag_to_a_metric()
     {
         var libraryRoot = LocateLibraryRoot();
-        var tenantTagPattern = new System.Text.RegularExpressions.Regex(
-            @"\b(tenant|tenantid|tenant_id|organizationid|organization_id)\b",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
         var offenders = new List<string>();
+
         foreach (var path in Directory.EnumerateFiles(libraryRoot, "*.cs", SearchOption.AllDirectories))
         {
-            // Skip generated code and tests; tests legitimately construct synthetic tenant ids.
             if (path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)) { continue; }
             if (path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal)) { continue; }
             if (path.Contains($"{Path.DirectorySeparatorChar}tests{Path.DirectorySeparatorChar}", StringComparison.Ordinal)) { continue; }
             if (path.Contains($"{Path.DirectorySeparatorChar}docs{Path.DirectorySeparatorChar}", StringComparison.Ordinal)) { continue; }
 
-            // Lines that call into one of the four metric instruments and pass a tag that looks
-            // like a tenant id. The pattern is conservative: it matches a recognised tenant-ish
-            // word used as a tag key, not as a comment.
-            var content = File.ReadAllText(path);
-            if (!content.Contains("LakeWrightTelemetry.")) { continue; }
+            var stripped = StripComments(File.ReadAllText(path));
 
-            foreach (var line in EnumerateCodeLines(content))
+            // Direct call sites: every LakeWrightTelemetry.<X>.Add( or .Record( opener is the
+            // start of a call span. Walk the parens and check the whole span.
+            foreach (Match match in DirectMetricCall.Matches(stripped))
             {
-                if (!line.Contains("LakeWrightTelemetry.")) { continue; }
-                if (!line.Contains(".Add(") && !line.Contains(".Record(")) { continue; }
-                if (tenantTagPattern.IsMatch(line))
+                var span = ExtractCallSpan(stripped, match.Index);
+                if (TenantToken.IsMatch(span))
                 {
-                    offenders.Add($"{Path.GetFileName(path)}: {line.Trim()}");
+                    offenders.Add($"{Path.GetFileName(path)} (line {LineOf(stripped, match.Index)}): {Truncate(span, 200)}");
                 }
             }
         }
 
         offenders.ShouldBeEmpty(
-            "No instrument call site in the library may tag a metric with a tenant identifier. " +
-            "The cardinality bomb is the whole reason no tag is the rule.");
+            "No metric call in the library may reference a tenant identifier, whether as a tag " +
+            "key, as a tag value, on the call line, or in a multi-line continuation. The " +
+            "cardinality bomb is the whole reason no tag is the rule.");
     }
+
+    private static string ExtractCallSpan(string source, int openParenIndex)
+    {
+        // The opening paren is the last character of the match. Walk forward to the matching close.
+        var depth = 0;
+        for (var i = openParenIndex; i < source.Length; i++)
+        {
+            var c = source[i];
+            if (c == '(') { depth++; }
+            else if (c == ')')
+            {
+                depth--;
+                if (depth == 0) { return source.Substring(openParenIndex, i - openParenIndex + 1); }
+            }
+        }
+        // Unbalanced parens — return to the end of the source. The match will still find tokens.
+        return source.Substring(openParenIndex);
+    }
+
+    private static int LineOf(string source, int index)
+    {
+        var line = 1;
+        for (var i = 0; i < index; i++) { if (source[i] == '\n') { line++; } }
+        return line;
+    }
+
+    private static string Truncate(string value, int max) =>
+        value.Length <= max ? value : string.Concat(value.AsSpan(0, max), "…");
 
     private static string LocateLibraryRoot()
     {
-        // Walk up from the test assembly's location until we find the src/ folder. The test assembly
-        // is built to .../bin/Release/net10.0/, and the library source lives in .../src/.
+        // Walk up from the test assembly's location until we find the src/ folder. The test
+        // assembly is built to .../bin/Release/net10.0/, and the library source lives in
+        // .../src/.
         var dir = new DirectoryInfo(Assembly.GetExecutingAssembly().Location);
         while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "src")))
         {
@@ -77,16 +126,11 @@ public class TelemetryTenantGuardTests
         return Path.Combine(dir.FullName, "src");
     }
 
-    private static string[] EnumerateCodeLines(string content)
+    private static string StripComments(string content)
     {
-        // Strip block comments so a comment that mentions "tenant" does not trigger the guard.
-        var withoutBlockComments = System.Text.RegularExpressions.Regex.Replace(
-            content, @"/\*.*?\*/", string.Empty,
-            System.Text.RegularExpressions.RegexOptions.Singleline);
-        // Strip line comments so single-line notes do not trigger the guard.
-        var withoutLineComments = System.Text.RegularExpressions.Regex.Replace(
-            withoutBlockComments, @"//.*$", string.Empty,
-            System.Text.RegularExpressions.RegexOptions.Multiline);
-        return withoutLineComments.Split('\n');
+        var withoutBlockComments = Regex.Replace(
+            content, @"/\*.*?\*/", string.Empty, RegexOptions.Singleline);
+        return Regex.Replace(
+            withoutBlockComments, @"//.*$", string.Empty, RegexOptions.Multiline);
     }
 }
