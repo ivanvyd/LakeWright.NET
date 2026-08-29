@@ -19,12 +19,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      # Bicep build only — no Azure login, no deploy. The template compiles against the public
-      # Bicep schema; a future deploy uses az CLI with OIDC.
+      # Install the Bicep CLI via the Azure CLI, which arm-deploy@v1 already requires.
+      # azure/setup-bicep is not a public action, so we install the CLI tool directly. The
+      # latest version of the Bicep CLI is what az bicep build resolves to.
       - name: Set up Bicep
-        uses: azure/setup-bicep@v0
-        with:
-          version: latest
+        run: az bicep install --latest
 
       - name: Build Bicep
         run: az bicep build --file infra/azure-container-apps/main.bicep --outfile bicep.json
@@ -43,10 +42,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      # The deploy step needs the Bicep CLI for arm-deploy@v1 to resolve the template. Same
+      # one-liner as the validate job; az bicep install is idempotent.
       - name: Set up Bicep
-        uses: azure/setup-bicep@v0
-        with:
-          version: latest
+        run: az bicep install --latest
 
       - name: Azure login via OIDC
         uses: azure/login@v2
