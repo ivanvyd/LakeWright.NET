@@ -48,14 +48,14 @@ jobs:
         run: az bicep install
 
       - name: Azure login via OIDC
-        uses: azure/login@v2
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Deploy reference infrastructure
-        uses: azure/arm-deploy@v1
+        uses: azure/arm-deploy@65ae74fb7aec7c680c88ef456811f353adae4d06 # v1
         with:
           resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
           template: infra/azure-container-apps/main.bicep
