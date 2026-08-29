@@ -29,13 +29,16 @@ records what was executed, and this one records what is intended.
 The table above is work someone chose not to do yet. This is the other kind: things nobody has
 measured, so the honest answer to "is it right?" is that we do not know.
 
-- **Half the test suite cannot run in CI.** The full suite is 155 tests and covers **85.4% of the
-  lines in the shipped libraries** (measured 2026-08-06). CI runs 143 of them and reaches 71.7% of
-  the same lines, because the Databricks integration is exercised by `Category=Live` tests that need
-  a workspace and cost money. So a green CI run says a great deal about tenancy and isolation, and
-  much less about the Databricks client wrappers — `LakeWright.Databricks` is 50.8% covered by the
-  full suite and 6.6% by the part CI runs. The gap is not untested code; it is code CI is not
-  allowed to test.
+- **Most of the test suite cannot run in CI.** The full suite is 148 cases across 150 test
+  methods (measured 2026-08-29, including the four new `CostAttributionTests` and one
+  `TelemetryTenantGuardTests` from this milestone). CI runs 148 of them and reaches **85.4% of
+  the lines in the shipped libraries** as of 2026-08-06; the new tests and the cost-attribution
+  implementation are excluded from that figure because the coverage report has not been re-run.
+  The Databricks integration is still exercised by `Category=Live` tests that need a workspace
+  and cost money. So a green CI run says a great deal about tenancy and isolation, and much less
+  about the Databricks client wrappers — `LakeWright.Databricks` is 50.8% covered by the full
+  suite and 6.6% by the part CI runs. The gap is not untested code; it is code CI is not allowed
+  to test.
 - **No independent human has read this code.** Every pull request has been opened and merged by the
   maintainer with zero approvals. The reviews have been thorough and adversarial, and they have all
   been briefed by the person whose work they reviewed, who then chose what to act on.
