@@ -39,10 +39,9 @@ public sealed class OperationCostAttribution(
         ArgumentNullException.ThrowIfNull(tenant);
         if (from >= until) { throw new ArgumentException("from must be earlier than until.", nameof(from)); }
 
-        // Aggregation runs in Postgres rather than the application. EXTRACT(EPOCH FROM ...) gives
-        // an integer second count, which is what the proxy weights against DBU/hour; a fractional
-        // count costs precision this number does not earn. Tenant id is a parameter, not text:
-        // the from / until bounds and the kind string are bound the same way.
+        // Aggregation runs in Postgres rather than the application. EXTRACT(EPOCH FROM interval)
+        // returns double precision seconds; we sum and cast to double precision. Tenant id is a
+        // parameter, not text: the from / until bounds are bound the same way.
         var rows = await db.Database
             .SqlQueryRaw<CostRow>(
                 """

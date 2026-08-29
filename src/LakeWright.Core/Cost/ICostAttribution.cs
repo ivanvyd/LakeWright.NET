@@ -68,13 +68,13 @@ public sealed record CostByKind(
 /// surface in this library. A caller without a resolved context cannot reach this method, and a
 /// caller with one can only see the tenant it resolved to.
 ///
-/// The two implementations differ in the fidelity of the number. <see cref="CostSource.Proxy"/>
-/// weights <c>operations.ClaimedAt</c> to <c>CompletedAt</c> by the warehouse SKU's DBU/hour
-/// rate, which is what the threat model calls available without a grant. <see cref="CostSource.Billing"/>
-/// reads <c>system.billing.usage</c> directly, which is what a chargeback system wants but
-/// requires a metastore-admin grant this library does not hold. An adopter wires whichever they
-/// have; both implementations live behind this same interface so the rest of the codebase does
-/// not know which one ran.
+/// The shipped implementation in <c>LakeWright.Multitenancy.Cost</c>
+/// (<c>OperationCostAttribution</c>) weights <c>operations.ClaimedAt</c> to <c>CompletedAt</c>
+/// by the warehouse SKU's DBU/hour rate, which is what the threat model calls available without
+/// a grant. <see cref="CostSource.Billing"/> reads <c>system.billing.usage</c> directly, which
+/// is what a chargeback system wants but requires a metastore-admin grant this library does
+/// not hold. An adopter wires whichever they have; the seam is the same interface so the rest
+/// of the codebase does not know which one ran.
 /// </remarks>
 public interface ICostAttribution
 {
