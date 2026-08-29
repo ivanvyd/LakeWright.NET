@@ -16,7 +16,11 @@ public static class CostAttributionServiceCollectionExtensions
     /// </remarks>
     public static IServiceCollection AddLakeWrightCostAttribution(this IServiceCollection services)
     {
-        services.AddSingleton<ICostAttribution, OperationCostAttribution>();
+        // Scoped, not singleton: the implementation depends on LakeWrightDbContext, which is
+        // registered as scoped. A scoped-from-singleton registration fails at service-provider
+        // build time with "Cannot consume scoped service from singleton", which the dashboard
+        // isolation test caught in the first run.
+        services.AddScoped<ICostAttribution, OperationCostAttribution>();
         return services;
     }
 }
