@@ -22,7 +22,7 @@ jobs:
       # Bicep build only — no Azure login, no deploy. The template compiles against the public
       # Bicep schema; a future deploy uses az CLI with OIDC.
       - name: Set up Bicep
-        uses: azure/setup-bicep@v3
+        uses: azure/setup-bicep@v0
         with:
           version: latest
 
@@ -44,7 +44,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up Bicep
-        uses: azure/setup-bicep@v3
+        uses: azure/setup-bicep@v0
         with:
           version: latest
 
