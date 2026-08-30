@@ -24,4 +24,6 @@ dotnet run --project "$PROJECT" -c Release --no-build -- \
     --p99-operations=500 \
     --p99-cost=200 \
     --error-rate=0.001 \
-    --pool=0.8
+    --pool=0.8 \
+    --pg-max-connections=200 \
+    --pg-pool=12
