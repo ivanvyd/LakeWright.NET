@@ -1,0 +1,54 @@
+name: Load harness
+
+# Runs the load harness against the merged main on a schedule and on demand.
+# The harness is the project that says "is this thing fast enough at the
+# SLO targets we picked." Workflow failures here are SLO violations.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Run at 03:00 UTC every Saturday. Off-hours so it doesn't compete with
+    # developer-time CI. The harness's Postgres is per-run via testcontainers,
+    # so no shared infrastructure is touched.
+    - cron: '0 3 * * 6'
+
+permissions:
+  contents: read
+
+concurrency:
+  # One harness run at a time. A second run would compete for CPU on the
+  # runner and produce noisy numbers against an already-loaded testcontainers.
+  group: load-harness
+  cancel-in-progress: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    # The harness's default 5-minute smoke at 500 RPS is well within 30 minutes.
+    # A real run at production target takes longer; the budget here is the
+    # smoke, not the long run.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+
+      - name: Build the harness
+        run: dotnet build scripts/load/Lakewright.LoadHarness/Lakewright.LoadHarness.csproj -c Release
+
+      # A short smoke at 50 RPS for 30 s. The user-configurable SLO defaults
+      # are 500 RPS and 5 min; this is a smoke, not the production-target run.
+      # A real run is `./scripts/load/run.sh`. Tighten the SLOs as production
+      # data arrives; loosen as you add features.
+      - name: Run the harness (smoke)
+        run: |
+          dotnet run --project scripts/load/Lakewright.LoadHarness/Lakewright.LoadHarness.csproj -c Release --no-build -- \
+            --rps=50 --duration=30 \
+            --p99-operations=500 --p99-cost=200 \
+            --error-rate=0.1 --pool=0.8
+
+      # The harness exits 0 when all SLO gates pass and 1 otherwise. The
+      # workflow's own exit status is that exit status; the SLO gate is the
+      # build verdict.
