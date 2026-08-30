@@ -64,17 +64,21 @@ Add the public key at <https://github.com/settings/keys> under **GPG keys**.
 
    ```bash
    git switch main && git pull
-   git tag -s v0.1.2-preview.1 -m "v0.1.2-preview.1"
-   git push origin v0.1.2-preview.1
+   git tag -s v1.0.0 -m "v1.0.0"
+   git push origin v1.0.0
    ```
 
-   The version needs a prerelease label ([ADR 0010](../decisions/0010-publish-prerelease-packages.md)).
-   A stable tag is refused, and so is a version whose only hyphen is inside build metadata.
+   The version follows SemVer. A tag with a hyphen is published as a GitHub prerelease and to
+   nuget.org with `--prerelease`; a tag without a hyphen is published as a stable release.
+   Build metadata is stripped before the prerelease check, so `1.0.0+exp-sha.5114f85` is read
+   as stable. [ADR 0010](../decisions/0010-publish-prerelease-packages.md) was the rationale
+   for refusing stable tags; [ADR 0019](../decisions/0019-stable-1-0-0.md) is the rationale
+   for no longer refusing them.
 
-3. **Watch the run.** In order it verifies the signature, refuses a stable version, builds, tests,
-   packs, generates a CycloneDX SBOM, attests build provenance, extracts the release notes, creates
-   the GitHub release, and publishes to nuget.org last — because that is the only step that cannot
-   be undone.
+3. **Watch the run.** In order it verifies the signature, derives the version from the tag,
+   builds, tests, packs, generates a CycloneDX SBOM, attests build provenance, extracts the
+   release notes, creates the GitHub release, and publishes to nuget.org last — because that
+   is the only step that cannot be undone.
 
 ## If a release goes wrong
 
