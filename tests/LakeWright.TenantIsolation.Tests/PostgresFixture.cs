@@ -41,6 +41,11 @@ public sealed class PostgresFixture : IAsyncLifetime
 
         var db = new LakeWrightDbContext(options);
         await db.Database.EnsureCreatedAsync();
+        // Audit table is partitioned by month. EF's EnsureCreatedAsync builds a non-partitioned
+        // table; the partition manager swaps it. A test that doesn't care about partitioning
+        // runs against the partitioned table transparently — Postgres native partitioning
+        // makes parent and children look like one table to SQL.
+        await LakeWright.Multitenancy.DatabasePartitioning.EnsurePartitionedAuditAsync(db);
         return db;
     }
 
