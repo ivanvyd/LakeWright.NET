@@ -17,6 +17,8 @@ namespace Lakewright.LoadHarness;
 /// </remarks>
 public sealed class Harness
 {
+    private static int _diagErrorLogged;
+
     private readonly HttpClient _client;
     private readonly PostgresSampler _sampler;
     private readonly HarnessOptions _options;
@@ -118,9 +120,15 @@ public sealed class Harness
                         costOutcomes.Add(ok);
                     }
                 }
-                catch
+                catch (Exception ex) when (ex is HttpRequestException || ex is TaskCanceledException || ex is InvalidOperationException)
                 {
-                    // Defensive: never let a worker die mid-run.
+                    // Defensive: never let a worker die mid-run. Log the first such exception
+                    // so a fully-failed run is diagnosable; the SLO gate's 100% errors is the
+                    // real signal the rest of the test reports on.
+                    if (Interlocked.Increment(ref _diagErrorLogged) == 1)
+                    {
+                        Console.WriteLine($"[diag-worker] {ex.GetType().Name}: {ex.Message}");
+                    }
                 }
             }
         })).ToArray();
