@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace LakeWright.Embedding;
 
@@ -29,6 +30,14 @@ public static class EmbeddingServiceCollectionExtensions
             .ValidateOnStart();
 
         services.AddSingleton(TimeProvider.System);
+
+        // The token caches default to in-memory (ADR 0018). Both implementations are singletons:
+        // a per-request cache would lose its entries between calls. A consumer that wants a
+        // different backing store (Redis, distributed) registers their own
+        // IWorkspaceTokenCache / IEmbedTokenCache before calling this method, and the
+        // TryAddSingleton calls below keep their registration.
+        services.TryAddSingleton<IWorkspaceTokenCache>(sp => new MemoryWorkspaceTokenCache(sp.GetRequiredService<TimeProvider>()));
+        services.TryAddSingleton<IEmbedTokenCache>(sp => new MemoryEmbedTokenCache(sp.GetRequiredService<TimeProvider>()));
 
         services.AddHttpClient<IDashboardTokenBroker, DashboardTokenBroker>((provider, client) =>
         {
