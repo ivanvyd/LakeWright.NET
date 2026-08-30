@@ -1,45 +1,30 @@
-using System.Security.Claims;
-using System.Text.Encodings.Web;
 using LakeWright.AspNetCore;
 using LakeWright.Core.Tenancy;
 using LakeWright.Multitenancy;
-using LakeWright.Multitenancy.Cost;
 using LakeWright.Multitenancy.Model;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Npgsql;
 using Testcontainers.PostgreSql;
+
+// The sample's entry point is `Program` in the Signalboard assembly; the harness's own
+// top-level statements generate an implicit `Program` here. Disambiguate by aliasing the
+// sample's name to a local alias that names what it is.
+using SampleProgram = global::Program;
 
 namespace Lakewright.LoadHarness;
 
 /// <summary>
-/// The harness's environment: a testcontainers Postgres and a minimal in-process host built
-/// directly via <see cref="HostBuilder"/> + <see cref="TestServer"/>, mirroring the pattern in
-/// the test suite (<c>tests/LakeWright.TenantIsolation.Tests/TestApi.cs</c>).
+/// The harness's environment: a testcontainers Postgres and the sample's host in-process
+/// via <see cref="WebApplicationFactory{TEntryPoint}"/>.
 /// </summary>
-/// <remarks>
-/// The harness does not use <see cref="WebApplicationFactory{TEntryPoint}"/> with the sample's
-/// <c>Program</c> as the entry point. That setup runs the sample's full startup
-/// (appsettings.json config, demo auth scheme, demo seed) and competes with the harness's
-/// own in-memory config and seed; the first end-to-end run showed 100% errors because the
-/// host's <c>LakewrightDbContext</c> connection could not see the harness's freshly-committed
-/// rows. The manual-host pattern removes that lifecycle ambiguity and matches what the
-/// existing test suite already does.
-/// </remarks>
 public sealed class HarnessEnvironment : IAsyncDisposable
 {
     private readonly PostgreSqlContainer _postgres;
-    private readonly IHost _host;
+    private readonly WebApplicationFactory<SampleProgram> _factory;
 
     /// <summary>
     /// The IDs of the seeded tenants, in order. The harness drives traffic at tenants[0].
@@ -47,19 +32,14 @@ public sealed class HarnessEnvironment : IAsyncDisposable
     /// </summary>
     public IReadOnlyList<Guid> SeededTenantIds { get; }
 
-    /// <summary>The principal used for the harness's authenticated requests.</summary>
-    public string Principal { get; }
-
     private HarnessEnvironment(
         PostgreSqlContainer postgres,
-        IHost host,
-        IReadOnlyList<Guid> seededTenantIds,
-        string principal)
+        WebApplicationFactory<SampleProgram> factory,
+        IReadOnlyList<Guid> seededTenantIds)
     {
         _postgres = postgres;
-        _host = host;
+        _factory = factory;
         SeededTenantIds = seededTenantIds;
-        Principal = principal;
     }
 
     /// <summary>The connection string for the running Postgres container.</summary>
@@ -67,11 +47,10 @@ public sealed class HarnessEnvironment : IAsyncDisposable
         new(_postgres.GetConnectionString());
 
     /// <summary>The HTTP client that talks to the in-process host.</summary>
-    public HttpClient Client => _host.GetTestClient();
+    public HttpClient Client => _factory.CreateClient();
 
     /// <summary>
-    /// Bring up Postgres, build the host manually, seed the harness's tenants, and return a
-    /// ready-to-use environment.
+    /// Bring up Postgres, boot the host, and seed a configurable number of tenants.
     /// </summary>
     public static async Task<HarnessEnvironment> CreateAsync(HarnessOptions options)
     {
@@ -81,7 +60,7 @@ public sealed class HarnessEnvironment : IAsyncDisposable
             // default that is too small to be meaningful.
             .WithEnvironment("POSTGRES_MAX_CONNECTIONS", options.PostgresMaxConnections.ToString())
             // Pin the testcontainer's default database to `postgres` so the harness's seed
-            // and the host's LakewrightDbContext point at the same schema. The testcontainer
+            // and the host's LakeWrightDbContext point at the same schema. The testcontainer
             // image's default POSTGRES_DB is `test` (matching the image's tag), which would
             // split the seed and the host's queries across two schemas.
             .WithEnvironment("POSTGRES_DB", "postgres")
@@ -103,107 +82,35 @@ public sealed class HarnessEnvironment : IAsyncDisposable
             await cmd.ExecuteNonQueryAsync();
         }
 
-        // Seed the harness's tenant + membership in the testcontainers Postgres so the host
-        // (which connects to the same Postgres) sees the rows. One principal is enough for the
-        // harness's purposes; the demo seed is not used because we built the host ourselves
-        // without running Program.cs.
-        var fixture = new HarnessPostgresFixture(connectionString, options.SeedTenants);
+        var fixture = new HarnessPostgresFixture(connectionString, options.SeedTenants, options.PostgresPoolSize);
         var seed = await fixture.InitializeAsync();
-        var principal = seed.Principals[0];
 
-        // Build the host manually, mirroring tests/.../TestApi.cs.StartAsync. The connection
-        // string is passed directly to UseNpgsql rather than via config, so there is no need for
-        // ConfigureAppConfiguration. This bypasses the sample's Program entirely, removing
-        // the lifecycle ambiguity the previous WebApplicationFactory<Program> path had.
-        var host = await new HostBuilder()
-            .ConfigureWebHost(web => web
-                .UseTestServer()
-                .ConfigureServices(services =>
+        var factory = new WebApplicationFactory<SampleProgram>()
+            .WithWebHostBuilder(builder =>
+            {
+                builder.UseEnvironment("Production");
+                // The sample's host reads its content root at startup to find static web assets.
+                // Without this override, the factory uses the harness's CWD and the static-web-assets
+                // loader fails to find wwwroot/. The sample's directory is the only place the
+                // content root exists; pin it there.
+                builder.UseSolutionRelativeContentRoot(Path.Combine("samples", "Signalboard"));
+                builder.ConfigureAppConfiguration((_, config) =>
                 {
-                    services.AddDbContext<LakeWrightDbContext>(o => o.UseNpgsql(connectionString));
-                    services.AddScoped<ITenantContextResolver, EfTenantContextResolver>();
-                    services.AddScoped<IMembershipReader, EfMembershipReader>();
-                    services.AddSingleton(TimeProvider.System);
-                    services.AddScoped<AuditLog>();
-                    services.AddScoped<OperationStore>();
-                    services.AddHttpContextAccessor();
-                    services.AddScoped<ITenantContextAccessor, HttpTenantContextAccessor>();
-                    services.AddScoped<IAuthorizationHandler, TenantRoleHandler>();
-                    services.AddLakeWrightCostAttribution();
-                    services.Configure<MultitenancyOptions>(o => o.Catalog = "analytics");
-
-                    // The harness's auth scheme is the same header-based pattern the test
-                    // suite's StubAuth uses. It accepts the same X-Harness-Principal header
-                    // value as the principal, and nothing else. This decouples the harness
-                    // from the sample's demo auth (which lives in samples/Signalboard and would
-                    // require running Program.Main, which we explicitly avoid here).
-                    services.AddAuthentication(HarnessAuth.SchemeName)
-                        .AddScheme<AuthenticationSchemeOptions, HarnessAuth>(
-                            HarnessAuth.SchemeName, _ => { });
-
-                    services.AddAuthorizationBuilder()
-                        .AddPolicy(TenantPolicies.Viewer, p => p.AddRequirements(new TenantRoleRequirement(MembershipRole.Viewer)))
-                        .AddPolicy(TenantPolicies.Member, p => p.AddRequirements(new TenantRoleRequirement(MembershipRole.Member)))
-                        .AddPolicy(TenantPolicies.Admin, p => p.AddRequirements(new TenantRoleRequirement(MembershipRole.Admin)))
-                        .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
-
-                    services.AddRouting();
-                })
-                .Configure(app =>
-                {
-                    app.UseRouting();
-                    app.UseAuthentication();
-                    app.UseLakeWrightTenancy();
-                    app.UseAuthorization();
-                    app.UseEndpoints(e =>
+                    config.AddInMemoryCollection(new Dictionary<string, string?>
                     {
-                        e.MapLakeWrightOperations();
-                        e.MapLakeWrightCost();
+                        ["ConnectionStrings:Lakewright"] = connectionString,
+                        ["Multitenancy:Catalog"] = "analytics",
                     });
-                }))
-            .StartAsync();
+                });
+            });
 
-        return new HarnessEnvironment(postgres, host, seed.TenantIds, principal);
+        return new HarnessEnvironment(postgres, factory, seed.TenantIds);
     }
 
     public async ValueTask DisposeAsync()
     {
-        await _host.StopAsync();
+        await _factory.DisposeAsync();
         await _postgres.DisposeAsync();
-    }
-}
-
-/// <summary>
-/// The harness's auth handler. Accepts any subject via <c>X-Harness-Principal</c>. Mirrors
-/// <c>StubAuth</c> in the test suite.
-/// </summary>
-internal sealed class HarnessAuth(
-    IOptionsMonitor<AuthenticationSchemeOptions> options,
-    ILoggerFactory logger,
-    UrlEncoder encoder) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
-{
-    // Scheme name and header are public so the request runner can reference them without
-    // needing an InternalsVisibleTo. The handler itself is internal because nothing outside
-    // this assembly should depend on its type identity.
-    public const string SchemeName = "Harness";
-    public const string PrincipalHeader = "X-Harness-Principal";
-
-    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
-    {
-        if (!Request.Headers.TryGetValue(PrincipalHeader, out var principal)
-            || string.IsNullOrWhiteSpace(principal.ToString()))
-        {
-            return Task.FromResult(AuthenticateResult.NoResult());
-        }
-
-        var identity = new ClaimsIdentity(
-            [new Claim(ClaimTypes.NameIdentifier, principal.ToString())],
-            authenticationType: SchemeName,
-            nameType: ClaimTypes.Name,
-            roleType: ClaimTypes.Role);
-
-        return Task.FromResult(AuthenticateResult.Success(
-            new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName)));
     }
 }
 
@@ -225,33 +132,28 @@ internal sealed class HarnessPostgresFixture
 {
     private readonly string _connectionString;
     private readonly int _seedTenants;
-    private int _dbCounter;
+    private readonly int _poolSize;
 
-    public HarnessPostgresFixture(string connectionString, int seedTenants)
+    public HarnessPostgresFixture(string connectionString, int seedTenants, int poolSize)
     {
         _connectionString = connectionString;
         _seedTenants = seedTenants;
+        _poolSize = poolSize;
     }
 
     public async Task<SeedResult> InitializeAsync()
     {
-        // One database per harness run, isolated from the others. Matches the test project
-        // convention of fresh databases per fixture.
-        var dbName = $"harness_{Interlocked.Increment(ref _dbCounter)}";
-        var adminBuilder = new NpgsqlConnectionStringBuilder(_connectionString) { Database = "postgres" };
-        await using (var conn = new NpgsqlConnection(adminBuilder.ConnectionString))
-        {
-            await conn.OpenAsync();
-            await using var cmd = conn.CreateCommand();
-            cmd.CommandText = $"CREATE DATABASE {dbName};";
-            await cmd.ExecuteNonQueryAsync();
-        }
-
-        var builder = new NpgsqlConnectionStringBuilder(_connectionString) { Database = dbName };
+        // Seed into the testcontainer's default database (whatever `POSTGRES_DB` is set to,
+        // defaulting to `postgres` after the harness's `WithEnvironment` override). The host's
+        // LakeWrightDbContext also uses the harness's connection string, so the seed and the
+        // resolver queries hit the same schema. The previous design created a separate database
+        // per run, which split the two and caused 100% error rates.
+        var builder = new NpgsqlConnectionStringBuilder(_connectionString);
         // ADR 0015: cap the per-process EF Core pool at 12 so 15 processes × 12 = 180 fits under
         // 200 Postgres max_connections. The harness's pool-utilisation SLO gate measures real
-        // headroom, not a configured default.
-        builder.MaxPoolSize = options.PostgresPoolSize;
+        // headroom, not a configured default. Set this on the connection string builder before
+        // passing the string into EF Core, so Npgsql's pool sees the cap.
+        builder.MaxPoolSize = _poolSize;
         var options = new DbContextOptionsBuilder<LakeWrightDbContext>()
             .UseNpgsql(builder.ConnectionString)
             .Options;
