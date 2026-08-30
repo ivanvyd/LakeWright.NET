@@ -187,7 +187,11 @@ internal sealed class HarnessPostgresFixture
                 Id = Guid.CreateVersion7(),
                 OrganizationId = orgId,
                 PrincipalId = principal,
-                Role = MembershipRole.Viewer,
+                // /operations requires TenantPolicies.Member; /cost only needs Viewer. The
+                // harness drives both endpoints, so the seeded role has to clear the higher
+                // floor. (A product would distinguish read-only users from operators; the
+                // harness simulates the operator, since that is the load it exists to model.)
+                Role = MembershipRole.Member,
                 CreatedAt = now,
             });
         }
