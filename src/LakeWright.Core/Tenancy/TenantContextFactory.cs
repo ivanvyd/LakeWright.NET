@@ -20,6 +20,15 @@ internal static class TenantContextFactory
         TenantContext.Create(tenantId, catalog, schema);
 
     /// <summary>
+    /// Creates a context that carries an <c>external_value</c> scope version, so a tenant whose
+    /// access scope has narrowed or widened gets a different cache key in Databricks and stops
+    /// seeing the old (now-stale) rows. See ADR 0017.
+    /// </summary>
+    public static TenantContext ForTenant(
+        TenantId tenantId, string catalog, string schema, string? scopeVersion) =>
+        TenantContext.Create(tenantId, catalog, schema, scopeVersion);
+
+    /// <summary>
     /// Creates a context using the conventional schema name for the tenant.
     /// </summary>
     public static TenantContext ForTenant(TenantId tenantId, string catalog) =>
