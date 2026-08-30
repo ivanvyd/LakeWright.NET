@@ -168,11 +168,11 @@ internal sealed class RequestRunner : IAsyncDisposable
         // telemetry says /operations dominates traffic in practice. The split is approximate.
         var isOperations = (Interlocked.Increment(ref _toggle) % 5) != 0;
 
-        // The sample's demo auth scheme reads the principal from X-Demo-User. Set the same
-        // header on every request so the harness is hitting authenticated endpoints; an
-        // unauthenticated request would 401 and inflate the error rate.
+        // The harness's HarnessAuth scheme reads the principal from X-Harness-Principal. Set
+        // that header on every request so the auth handler returns Success and the membership
+        // lookup proceeds; an unauthenticated request would 401 and inflate the error rate.
         using var req = new HttpRequestMessage();
-        req.Headers.Add("X-Demo-User", _principal);
+        req.Headers.Add(HarnessAuth.PrincipalHeader, _principal);
 
         if (isOperations)
         {
