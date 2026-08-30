@@ -5,6 +5,9 @@ name: Load harness
 # SLO targets we picked." Workflow failures here are SLO violations.
 
 on:
+  # Triggers: pull_request runs the smoke against the PR's branch. workflow_dispatch is for
+  # manual runs (post-deploy, on-call). The weekly cron is the long production-target run.
+  pull_request:
   workflow_dispatch:
   schedule:
     # Run at 03:00 UTC every Saturday. Off-hours so it doesn't compete with
