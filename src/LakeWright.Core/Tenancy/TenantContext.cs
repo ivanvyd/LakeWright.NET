@@ -16,11 +16,12 @@ namespace LakeWright.Core.Tenancy;
 /// </remarks>
 public sealed class TenantContext
 {
-    private TenantContext(TenantId tenantId, string catalog, string schema)
+    private TenantContext(TenantId tenantId, string catalog, string schema, string? scopeVersion)
     {
         TenantId = tenantId;
         Catalog = catalog;
         Schema = schema;
+        ScopeVersion = scopeVersion;
     }
 
     public TenantId TenantId { get; }
@@ -32,11 +33,19 @@ public sealed class TenantContext
     public string Schema { get; }
 
     /// <summary>
+    /// Optional version of the tenant's access scope, used to compose the broker's
+    /// <c>external_value</c> when a tenant's scope may change (e.g. a narrowed
+    /// tenant set). A null value means no version is in use; the broker sends only
+    /// the bare tenant id. See ADR 0016.
+    /// </summary>
+    public string? ScopeVersion { get; }
+
+    /// <summary>
     /// Only <see cref="LakeWright.Core"/> and the multitenancy implementation may create a
     /// context. Kept internal rather than public so the type system carries the authorisation
     /// claim described above.
     /// </summary>
-    internal static TenantContext Create(TenantId tenantId, string catalog, string schema)
+    internal static TenantContext Create(TenantId tenantId, string catalog, string schema, string? scopeVersion = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(catalog);
         ArgumentException.ThrowIfNullOrWhiteSpace(schema);
@@ -46,7 +55,18 @@ public sealed class TenantContext
         UnityCatalogIdentifier.Validate(catalog, nameof(catalog));
         UnityCatalogIdentifier.Validate(schema, nameof(schema));
 
-        return new TenantContext(tenantId, catalog, schema);
+        // The version is a caller-supplied value that must not contain reserved characters.
+        // The broker uses `~` as the delimiter; reserved `|` and `:` and the delimiter itself
+        // would split a claim incorrectly. A GUID-derived version (e.g. the md5 of the scope)
+        // avoids the reserved characters naturally; an explicit constraint is a safe second line.
+        if (scopeVersion is not null && (scopeVersion.Contains('|') || scopeVersion.Contains(':') || scopeVersion.Contains('~')))
+        {
+            throw new ArgumentException(
+                $"scopeVersion must not contain '|', ':', or '~' (found '{scopeVersion}'). Those are reserved characters in the Databricks external_value claim and would corrupt the claim.",
+                nameof(scopeVersion));
+        }
+
+        return new TenantContext(tenantId, catalog, schema, scopeVersion);
     }
 
     public override string ToString() => $"{Catalog}.{Schema} ({TenantId})";
