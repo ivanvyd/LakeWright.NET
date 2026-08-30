@@ -41,15 +41,21 @@ public sealed class DashboardTokenBroker : IDashboardTokenBroker
     private readonly HttpClient _http;
     private readonly DashboardEmbeddingOptions _options;
     private readonly TimeProvider _time;
+    private readonly IWorkspaceTokenCache? _workspaceCache;
+    private readonly IEmbedTokenCache? _embedCache;
 
     public DashboardTokenBroker(
         HttpClient http,
         IOptions<DashboardEmbeddingOptions> options,
-        TimeProvider time)
+        TimeProvider time,
+        IWorkspaceTokenCache? workspaceCache = null,
+        IEmbedTokenCache? embedCache = null)
     {
         _http = http;
         _options = options.Value;
         _time = time;
+        _workspaceCache = workspaceCache;
+        _embedCache = embedCache;
     }
 
     public async Task<EmbedToken> IssueAsync(
@@ -79,19 +85,34 @@ public sealed class DashboardTokenBroker : IDashboardTokenBroker
                 nameof(viewerId));
         }
 
+        // The downscoped (leg-3) token is what the caller actually consumes. Caching it
+        // collapses the second-and-subsequent open of the same (tenant, dashboard, viewer) to
+        // zero HTTP roundtrips. The full three-leg exchange runs as the factory, so a cache
+        // miss pays the full price and a cache hit pays nothing.
+        if (_embedCache is not null)
+        {
+            return await _embedCache.GetOrAddAsync(
+                new EmbedCacheKey(tenant.TenantId, tenant.ScopeVersion, dashboardId, viewerId),
+                ct => new ValueTask<EmbedToken>(IssueUncachedAsync(tenant, dashboardId, viewerId, externalValue, ct)),
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        return await IssueUncachedAsync(tenant, dashboardId, viewerId, externalValue, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<EmbedToken> IssueUncachedAsync(
+        TenantContext tenant,
+        string dashboardId,
+        string viewerId,
+        string externalValue,
+        CancellationToken cancellationToken)
+    {
         var basic = new AuthenticationHeaderValue(
             "Basic",
             Convert.ToBase64String(
                 Encoding.UTF8.GetBytes($"{_options.ClientId}:{_options.ClientSecret}")));
 
-        var workspaceToken = await RequestTokenAsync(
-            basic,
-            new Dictionary<string, string>
-            {
-                ["grant_type"] = "client_credentials",
-                ["scope"] = "all-apis",
-            },
-            cancellationToken).ConfigureAwait(false);
+        var workspaceToken = await AcquireWorkspaceTokenAsync(basic, cancellationToken).ConfigureAwait(false);
 
         var tokenInfo = await ReadTokenInfoAsync(
             workspaceToken.AccessToken,
@@ -101,6 +122,38 @@ public sealed class DashboardTokenBroker : IDashboardTokenBroker
             cancellationToken).ConfigureAwait(false);
 
         return await RequestTokenAsync(basic, tokenInfo, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<EmbedToken> AcquireWorkspaceTokenAsync(
+        AuthenticationHeaderValue basic,
+        CancellationToken cancellationToken)
+    {
+        // The workspace token is shared across tenants, dashboards, and viewers. Caching it
+        // collapses N board opens to one leg-1 roundtrip. The cache key is the service
+        // principal id (rotating credentials is the only legitimate invalidation).
+        if (_workspaceCache is not null)
+        {
+            return await _workspaceCache.GetOrAddAsync(
+                _options.ClientId,
+                ct => new ValueTask<EmbedToken>(RequestTokenAsync(
+                    basic,
+                    new Dictionary<string, string>
+                    {
+                        ["grant_type"] = "client_credentials",
+                        ["scope"] = "all-apis",
+                    },
+                    ct)),
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        return await RequestTokenAsync(
+            basic,
+            new Dictionary<string, string>
+            {
+                ["grant_type"] = "client_credentials",
+                ["scope"] = "all-apis",
+            },
+            cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<EmbedToken> RequestTokenAsync(
