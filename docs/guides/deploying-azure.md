@@ -106,6 +106,11 @@ documentation, but no one has run a deploy with it. Marked **Documented** in
 [the compatibility matrix](../compatibility.md) for the same reason the rest of the
 deployment column is empty.
 
+The template sets `max_connections=200` on the Flexible Server and `Maximum Pool Size=12`
+on the application's connection string, matching [ADR 0015](../decisions/0015-postgres-sizing-for-production.md).
+The deployment guide and the load harness report against the same numbers, so a deploy that
+drifts from those values is one a reviewer should challenge.
+
 ## Known limitations
 
 - **The Log Analytics shared key is exposed in `az deployment group show` output.** Bicep's
