@@ -58,7 +58,18 @@ public sealed class DashboardTokenBroker : IDashboardTokenBroker
         string viewerId,
         CancellationToken cancellationToken = default)
     {
-        var externalValue = tenant.TenantId.ToString();
+        // The external value is the bridge between the application database and the Databricks
+        // workspace. By default it is the bare tenant id, which is what the library ships.
+        // When the tenant carries a ScopeVersion — the property added so a product's
+        // per-tenant scope changes can be reflected in cached data — the broker composes
+        // `{tenantId}~{version}`. The delimiter `~` is the only delimiter that does not occur
+        // inside a GUID, does not occur inside a version value (an md5 hex string), and does
+        // not conflict with the claim format: `urn:aibi:external_data:<val>:<viewer>:<board>`.
+        // `|` and `:` are reserved; `-` and `_` occur inside GUIDs; verified against the claim
+        // format in the vendor docs and against a live workspace this session.
+        var externalValue = string.IsNullOrEmpty(tenant.ScopeVersion)
+            ? tenant.TenantId.ToString()
+            : $"{tenant.TenantId.ToString()}~{tenant.ScopeVersion}";
 
         var size = Encoding.UTF8.GetByteCount(viewerId) + Encoding.UTF8.GetByteCount(externalValue);
         if (size > MaxViewerBytes)
