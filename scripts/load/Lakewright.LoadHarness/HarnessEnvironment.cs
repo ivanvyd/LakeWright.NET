@@ -177,6 +177,9 @@ internal sealed class HarnessAuth(
     ILoggerFactory logger,
     UrlEncoder encoder) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
+    // Scheme name and header are public so the request runner can reference them without
+    // needing an InternalsVisibleTo. The handler itself is internal because nothing outside
+    // this assembly should depend on its type identity.
     public const string SchemeName = "Harness";
     public const string PrincipalHeader = "X-Harness-Principal";
 
