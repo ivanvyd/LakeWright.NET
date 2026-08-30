@@ -36,7 +36,7 @@ public sealed class TenantContext
     /// Optional version of the tenant's access scope, used to compose the broker's
     /// <c>external_value</c> when a tenant's scope may change (e.g. a narrowed
     /// tenant set). A null value means no version is in use; the broker sends only
-    /// the bare tenant id. See ADR 0016.
+    /// the bare tenant id. See docs/decisions/0017-scope-version.md.
     /// </summary>
     public string? ScopeVersion { get; }
 
