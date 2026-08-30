@@ -76,10 +76,10 @@ public sealed class HarnessEnvironment : IAsyncDisposable
     public static async Task<HarnessEnvironment> CreateAsync(HarnessOptions options)
     {
         var postgres = new PostgreSqlBuilder(options.PostgresImage)
-            // The harness measures pool utilisation against max_connections. Set a known
-            // value so the SLO gate is meaningful: at 100 connections and 80% utilisation,
-            // the harness is telling us we have 80 of 100 in use at peak.
-            .WithEnvironment("POSTGRES_MAX_CONNECTIONS", options.MaxPoolSize.ToString())
+            // ADR 0015: max_connections = 200 on production Postgres; the harness mirrors that
+            // here so the pool-utilisation SLO gate measures real headroom, not a configured
+            // default that is too small to be meaningful.
+            .WithEnvironment("POSTGRES_MAX_CONNECTIONS", options.PostgresMaxConnections.ToString())
             // Pin the testcontainer's default database to `postgres` so the harness's seed
             // and the host's LakewrightDbContext point at the same schema. The testcontainer
             // image's default POSTGRES_DB is `test` (matching the image's tag), which would
@@ -248,6 +248,10 @@ internal sealed class HarnessPostgresFixture
         }
 
         var builder = new NpgsqlConnectionStringBuilder(_connectionString) { Database = dbName };
+        // ADR 0015: cap the per-process EF Core pool at 12 so 15 processes × 12 = 180 fits under
+        // 200 Postgres max_connections. The harness's pool-utilisation SLO gate measures real
+        // headroom, not a configured default.
+        builder.MaxPoolSize = options.PostgresPoolSize;
         var options = new DbContextOptionsBuilder<LakeWrightDbContext>()
             .UseNpgsql(builder.ConnectionString)
             .Options;

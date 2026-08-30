@@ -18,7 +18,7 @@ public static class LoadHarness
 
         var options = HarnessOptions.Parse(args);
 
-        Console.WriteLine($"[harness] RPS={options.RequestsPerSecond} duration={options.DurationSeconds}s connections={options.MaxConnections} max_pool={options.MaxPoolSize}");
+        Console.WriteLine($"[harness] RPS={options.RequestsPerSecond} duration={options.DurationSeconds}s connections={options.MaxConnections} pg_max={options.PostgresMaxConnections} pool={options.PostgresPoolSize}");
 
         await using var env = await HarnessEnvironment.CreateAsync(options);
         Console.WriteLine($"[harness] Postgres up at {env.PostgresConnectionString.Host}:{env.PostgresConnectionString.Port}, sample listening on in-process TestServer");
@@ -36,7 +36,7 @@ public static class LoadHarness
         Console.WriteLine("== Load harness results ==");
         Console.WriteLine($"  /operations POST: p50={verdict.OperationsPostP50Ms:F1}ms p95={verdict.OperationsPostP95Ms:F1}ms p99={verdict.OperationsPostP99Ms:F1}ms errors={verdict.ErrorRateOperationsPost:P3} count={verdict.OperationsPostCount}");
         Console.WriteLine($"  /cost       GET : p50={verdict.CostGetP50Ms:F1}ms p95={verdict.CostGetP95Ms:F1}ms p99={verdict.CostGetP99Ms:F1}ms errors={verdict.ErrorRateCostGet:P3} count={verdict.CostGetCount}");
-        Console.WriteLine($"  Postgres connections (peak)  : {verdict.PeakPostgresConnections} / {options.MaxPoolSize}  ({verdict.PeakPostgresConnectionUtilisation:P1})");
+        Console.WriteLine($"  Postgres connections (peak)  : {verdict.PeakPostgresConnections} / {options.PostgresMaxConnections}  ({verdict.PeakPostgresConnectionUtilisation:P1})");
         Console.WriteLine();
         Console.WriteLine($"  SLO gates:");
         Console.WriteLine($"    /operations POST p99 < {options.OperationsPostP99SloMs}ms       : {(verdict.OperationsPostP99Passed ? "PASS" : "FAIL")}  ({verdict.OperationsPostP99Ms:F1}ms)");

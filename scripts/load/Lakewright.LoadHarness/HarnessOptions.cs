@@ -13,7 +13,10 @@ public sealed record HarnessOptions
     public int RequestsPerSecond { get; init; } = 500;
     public int DurationSeconds { get; init; } = 300;
     public int MaxConnections { get; init; } = 1024;
-    public int MaxPoolSize { get; init; } = 100;
+    /// <summary>Postgres <c>max_connections</c>. ADR 0015 anchors production at 200.</summary>
+    public int PostgresMaxConnections { get; init; } = 200;
+    /// <summary>EF Core / Npgsql per-process pool. ADR 0015 anchors production at 12.</summary>
+    public int PostgresPoolSize { get; init; } = 12;
     public int OperationsPostP99SloMs { get; init; } = 500;
     public int CostGetP99SloMs { get; init; } = 200;
     public double ErrorRateSlo { get; init; } = 0.001;
@@ -43,7 +46,8 @@ public sealed record HarnessOptions
             RequestsPerSecond = Get(dict, "rps", Env("LW_HARNESS_RPS"), 500, int.Parse),
             DurationSeconds = Get(dict, "duration", Env("LW_HARNESS_DURATION"), 300, int.Parse),
             MaxConnections = Get(dict, "connections", Env("LW_HARNESS_CONNECTIONS"), 1024, int.Parse),
-            MaxPoolSize = Get(dict, "max-pool", Env("LW_HARNESS_MAX_POOL"), 100, int.Parse),
+            PostgresMaxConnections = Get(dict, "pg-max-connections", Env("LW_HARNESS_PG_MAX_CONNECTIONS"), 200, int.Parse),
+            PostgresPoolSize = Get(dict, "pg-pool", Env("LW_HARNESS_PG_POOL"), 12, int.Parse),
             OperationsPostP99SloMs = Get(dict, "p99-operations", Env("LW_HARNESS_P99_OPS"), 500, int.Parse),
             CostGetP99SloMs = Get(dict, "p99-cost", Env("LW_HARNESS_P99_COST"), 200, int.Parse),
             ErrorRateSlo = Get(dict, "error-rate", Env("LW_HARNESS_ERROR_RATE"), 0.001, double.Parse),

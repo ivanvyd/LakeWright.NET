@@ -55,7 +55,8 @@ All flags:
 | `--rps` | 500 | Target requests per second |
 | `--duration` | 300 | Run length, seconds |
 | `--connections` | 1024 | HTTP client max connections per endpoint |
-| `--max-pool` | 100 | EF Core / Npgsql max pool size (passed to Postgres as `max_connections`) |
+| `--pg-max-connections` | 200 | Postgres `max_connections` on the testcontainer (ADR 0015) |
+| `--pg-pool` | 12 | EF Core / Npgsql per-process pool (ADR 0015) |
 | `--p99-operations` | 500 | SLO gate, /operations POST p99 in ms |
 | `--p99-cost` | 200 | SLO gate, /cost GET p99 in ms |
 | `--error-rate` | 0.001 | SLO gate, combined error rate (0..1) |
