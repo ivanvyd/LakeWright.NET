@@ -15,10 +15,15 @@ public static partial class UnityCatalogIdentifier
 {
     // `\z` rather than `$`: in .NET, `$` also matches immediately before a single trailing
     // newline, so "tenant_a\n" passes a `$`-anchored pattern. Verified.
+    //
+    // Partial property `Regex Pattern { get; }` (C# 13, .NET 9+) would also work, but the rest
+    // of the library targets net8.0 alongside net10.0, so a method-level [GeneratedRegex] is
+    // the lowest-common-denominator form: same generated source-shape, same compile-time regex,
+    // compatible with every TFM in the multi-target.
     [GeneratedRegex(@"^[a-z][a-z0-9_]{0,62}\z", RegexOptions.CultureInvariant)]
-    private static partial Regex Pattern { get; }
+    private static partial Regex Pattern();
 
-    public static bool IsValid(string? value) => value is not null && Pattern.IsMatch(value);
+    public static bool IsValid(string? value) => value is not null && Pattern().IsMatch(value);
 
     public static void Validate(string value, string paramName)
     {
