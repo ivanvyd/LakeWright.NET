@@ -41,6 +41,11 @@
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.11" />
+    <!-- Pinned for the net8.0 polyfill of TimeProvider/TimeProvider.System, which the runtime
+         does not ship. .NET 8 is an LTS the embedding package explicitly multi-targets so a
+         non-ASP.NET consumer on a lower LTS can adopt it; the BCL has the type on net8.0 but
+         only via this shim. The net10.0 build does not consume this package. -->
+    <PackageVersion Include="Microsoft.Bcl.TimeProvider" Version="8.0.1" />
   </ItemGroup>
 
   <ItemGroup Label="Testing">
