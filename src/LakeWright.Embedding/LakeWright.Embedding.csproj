@@ -24,4 +24,13 @@
          client library, so a product that embeds a dashboard does not acquire a SQL stack. -->
     <ProjectReference Include="..\LakeWright.Core\LakeWright.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- The memory-backed token cache implementations are internal so the public surface
+         stays at the IWorkspaceTokenCache / IEmbedTokenCache seam — a consumer that wants a
+         different backing store (Redis, distributed) implements those, not these. The test
+         project constructs the memory implementation directly to exercise the cache without
+         going through DI. -->
+    <InternalsVisibleTo Include="LakeWright.TenantIsolation.Tests" />
+  </ItemGroup>
 </Project>
+
