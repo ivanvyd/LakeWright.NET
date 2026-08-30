@@ -75,6 +75,33 @@ sample's auth scheme interacts with the test server. This is a real bug in the
 integration, not in the harness. Track it under "Cost endpoint integration test"
 in the load-harness follow-up work.
 
+### What the diagnostic showed (commit-time investigation)
+
+With the harness seed-loop logging in place, the run shows:
+
+```
+[diag-seed] SaveChanges wrote 4 rows
+[diag-seed] 2 orgs: Tenant 1(01a05006-...), Tenant 2(01a05006-...)
+[diag-seed] 2 memberships: harness-user-1@01a05006-..., harness-user-2@01a05006-...
+```
+
+The harness's seed is correct: rows are committed and visible on the same
+`LakewrightDbContext`. Yet the next-stage log line is the standard "the resolver
+found nothing, 404" — meaning the host's separate `LakewrightDbContext` query
+sees a database that does not have those rows.
+
+The most likely cause is a connection-pooling race on the in-process TestServer:
+the host's `LakewrightDbContext` may be reading from a snapshot of the database
+that pre-dates the harness's commit. The fix is either to seed from within the
+host's startup (a delegated `IServiceCollection` callback) rather than from
+`HarnessEnvironment.CreateAsync`, or to introduce a barrier that waits for the
+host to see the seeded data. The cleanest path forward is the former.
+
+The second-best path: bypass `WebApplicationFactory<SampleProgram>` entirely and
+mirror the test project's approach — register the host's services manually with
+the harness's `LakewrightDbContext` configuration. That is the established pattern
+in the existing test suite and removes the lifecycle ambiguity.
+
 ## Why these defaults
 
 500 RPS and a 31-day SLO are the targets the user picked at planning, scaled down
