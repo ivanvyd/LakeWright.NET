@@ -1,6 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <Description>Tenancy contracts for LakeWright.NET.</Description>
+    <!-- No third-party deps; the contracts ship on every TFM. Multi-targeted for net8.0 because
+         LakeWright.Embedding references this and multi-targets for net8.0 (the only realistic
+         consumer-facing package that is the entry point for a non-ASP.NET adoption). -->
+    <!-- Directory.Build.props sets a single TargetFramework=net10.0 for the rest of the
+         solution. Multi-targeting requires clearing the singular property so the build picks
+         the plural one; without this the net8.0 inner build still sees the parent's value. -->
+    <TargetFramework />
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
   </PropertyGroup>
 
   <ItemGroup>
