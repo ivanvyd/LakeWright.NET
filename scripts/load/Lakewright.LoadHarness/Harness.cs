@@ -17,6 +17,8 @@ namespace Lakewright.LoadHarness;
 /// </remarks>
 public sealed class Harness
 {
+    private static int _diagErrorLogged;
+
     private readonly HttpClient _client;
     private readonly PostgresSampler _sampler;
     private readonly HarnessOptions _options;
@@ -118,9 +120,15 @@ public sealed class Harness
                         costOutcomes.Add(ok);
                     }
                 }
-                catch
+                catch (Exception ex) when (ex is HttpRequestException || ex is TaskCanceledException || ex is InvalidOperationException)
                 {
-                    // Defensive: never let a worker die mid-run.
+                    // Defensive: never let a worker die mid-run. Log the first such exception
+                    // so a fully-failed run is diagnosable; the SLO gate's 100% errors is the
+                    // real signal the rest of the test reports on.
+                    if (Interlocked.Increment(ref _diagErrorLogged) == 1)
+                    {
+                        Console.WriteLine($"[diag-worker] {ex.GetType().Name}: {ex.Message}");
+                    }
                 }
             }
         })).ToArray();
@@ -168,9 +176,11 @@ internal sealed class RequestRunner : IAsyncDisposable
         // telemetry says /operations dominates traffic in practice. The split is approximate.
         var isOperations = (Interlocked.Increment(ref _toggle) % 5) != 0;
 
-        // The sample's demo auth scheme reads the principal from X-Demo-User. Set the same
-        // header on every request so the harness is hitting authenticated endpoints; an
-        // unauthenticated request would 401 and inflate the error rate.
+        // The sample's demo auth scheme reads the principal from X-Demo-User. Set that header
+        // on every request so the handler returns Success and the membership lookup proceeds; an
+        // unauthenticated request would 401 and inflate the error rate. The harness is run
+        // against the sample's host in-process, so it uses the sample's existing scheme rather
+        // than introducing a parallel one.
         using var req = new HttpRequestMessage();
         req.Headers.Add("X-Demo-User", _principal);
 

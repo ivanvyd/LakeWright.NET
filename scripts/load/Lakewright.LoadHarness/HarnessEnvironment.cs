@@ -55,20 +55,24 @@ public sealed class HarnessEnvironment : IAsyncDisposable
     public static async Task<HarnessEnvironment> CreateAsync(HarnessOptions options)
     {
         var postgres = new PostgreSqlBuilder(options.PostgresImage)
-            // The harness measures pool utilisation against max_connections. Set a known
-            // value so the SLO gate is meaningful: at 100 connections and 80% utilisation,
-            // the harness is telling us we have 80 of 100 in use at peak.
-            .WithEnvironment("POSTGRES_MAX_CONNECTIONS", options.MaxPoolSize.ToString())
+            // ADR 0015: max_connections = 200 on production Postgres; the harness mirrors that
+            // here so the pool-utilisation SLO gate measures real headroom, not a configured
+            // default that is too small to be meaningful.
+            .WithEnvironment("POSTGRES_MAX_CONNECTIONS", options.PostgresMaxConnections.ToString())
+            // Pin the testcontainer's default database to `postgres` so the harness's seed
+            // and the host's LakeWrightDbContext point at the same schema. The testcontainer
+            // image's default POSTGRES_DB is `test` (matching the image's tag), which would
+            // split the seed and the host's queries across two schemas.
+            .WithEnvironment("POSTGRES_DB", "postgres")
             .WithReuse(false)
             .Build();
         await postgres.StartAsync();
 
         var connectionString = postgres.GetConnectionString();
 
-        // Seed tenants on the harness's Postgres. The sample's seeding code targets its own
-        // configured connection string, which is irrelevant here — we just need a known set of
-        // tenants the harness can hit. The actual work happens in the API host below, which
-        // uses the harness's connection string via configuration.
+        // pgcrypto is required for the model's gen_random_uuid() calls. EnsureCreatedAsync
+        // does not create extensions; without this, the schema creation below fails on a fresh
+        // Postgres 17 image. The CREATE EXTENSION IF NOT EXISTS is idempotent.
         var seedBuilder = new NpgsqlConnectionStringBuilder(connectionString) { Database = "postgres" };
         await using (var conn = new NpgsqlConnection(seedBuilder.ConnectionString))
         {
@@ -78,7 +82,7 @@ public sealed class HarnessEnvironment : IAsyncDisposable
             await cmd.ExecuteNonQueryAsync();
         }
 
-        var fixture = new HarnessPostgresFixture(connectionString, options.SeedTenants);
+        var fixture = new HarnessPostgresFixture(connectionString, options.SeedTenants, options.PostgresPoolSize);
         var seed = await fixture.InitializeAsync();
 
         var factory = new WebApplicationFactory<SampleProgram>()
@@ -128,29 +132,28 @@ internal sealed class HarnessPostgresFixture
 {
     private readonly string _connectionString;
     private readonly int _seedTenants;
-    private int _dbCounter;
+    private readonly int _poolSize;
 
-    public HarnessPostgresFixture(string connectionString, int seedTenants)
+    public HarnessPostgresFixture(string connectionString, int seedTenants, int poolSize)
     {
         _connectionString = connectionString;
         _seedTenants = seedTenants;
+        _poolSize = poolSize;
     }
 
     public async Task<SeedResult> InitializeAsync()
     {
-        // One database per harness run, isolated from the others. Matches the test project
-        // convention of fresh databases per fixture.
-        var dbName = $"harness_{Interlocked.Increment(ref _dbCounter)}";
-        var adminBuilder = new NpgsqlConnectionStringBuilder(_connectionString) { Database = "postgres" };
-        await using (var conn = new NpgsqlConnection(adminBuilder.ConnectionString))
-        {
-            await conn.OpenAsync();
-            await using var cmd = conn.CreateCommand();
-            cmd.CommandText = $"CREATE DATABASE {dbName};";
-            await cmd.ExecuteNonQueryAsync();
-        }
-
-        var builder = new NpgsqlConnectionStringBuilder(_connectionString) { Database = dbName };
+        // Seed into the testcontainer's default database (whatever `POSTGRES_DB` is set to,
+        // defaulting to `postgres` after the harness's `WithEnvironment` override). The host's
+        // LakeWrightDbContext also uses the harness's connection string, so the seed and the
+        // resolver queries hit the same schema. The previous design created a separate database
+        // per run, which split the two and caused 100% error rates.
+        var builder = new NpgsqlConnectionStringBuilder(_connectionString);
+        // ADR 0015: cap the per-process EF Core pool at 12 so 15 processes × 12 = 180 fits under
+        // 200 Postgres max_connections. The harness's pool-utilisation SLO gate measures real
+        // headroom, not a configured default. Set this on the connection string builder before
+        // passing the string into EF Core, so Npgsql's pool sees the cap.
+        builder.MaxPoolSize = _poolSize;
         var options = new DbContextOptionsBuilder<LakeWrightDbContext>()
             .UseNpgsql(builder.ConnectionString)
             .Options;
@@ -184,7 +187,11 @@ internal sealed class HarnessPostgresFixture
                 Id = Guid.CreateVersion7(),
                 OrganizationId = orgId,
                 PrincipalId = principal,
-                Role = MembershipRole.Viewer,
+                // /operations requires TenantPolicies.Member; /cost only needs Viewer. The
+                // harness drives both endpoints, so the seeded role has to clear the higher
+                // floor. (A product would distinguish read-only users from operators; the
+                // harness simulates the operator, since that is the load it exists to model.)
+                Role = MembershipRole.Member,
                 CreatedAt = now,
             });
         }

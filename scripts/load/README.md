@@ -55,7 +55,8 @@ All flags:
 | `--rps` | 500 | Target requests per second |
 | `--duration` | 300 | Run length, seconds |
 | `--connections` | 1024 | HTTP client max connections per endpoint |
-| `--max-pool` | 100 | EF Core / Npgsql max pool size (passed to Postgres as `max_connections`) |
+| `--pg-max-connections` | 200 | Postgres `max_connections` on the testcontainer (ADR 0015) |
+| `--pg-pool` | 12 | EF Core / Npgsql per-process pool (ADR 0015) |
 | `--p99-operations` | 500 | SLO gate, /operations POST p99 in ms |
 | `--p99-cost` | 200 | SLO gate, /cost GET p99 in ms |
 | `--error-rate` | 0.001 | SLO gate, combined error rate (0..1) |
@@ -74,6 +75,33 @@ the error correctly — the SLO gate fires — but the underlying cause is in ho
 sample's auth scheme interacts with the test server. This is a real bug in the
 integration, not in the harness. Track it under "Cost endpoint integration test"
 in the load-harness follow-up work.
+
+### What the diagnostic showed (commit-time investigation)
+
+With the harness seed-loop logging in place, the run shows:
+
+```
+[diag-seed] SaveChanges wrote 4 rows
+[diag-seed] 2 orgs: Tenant 1(01a05006-...), Tenant 2(01a05006-...)
+[diag-seed] 2 memberships: harness-user-1@01a05006-..., harness-user-2@01a05006-...
+```
+
+The harness's seed is correct: rows are committed and visible on the same
+`LakewrightDbContext`. Yet the next-stage log line is the standard "the resolver
+found nothing, 404" — meaning the host's separate `LakewrightDbContext` query
+sees a database that does not have those rows.
+
+The most likely cause is a connection-pooling race on the in-process TestServer:
+the host's `LakewrightDbContext` may be reading from a snapshot of the database
+that pre-dates the harness's commit. The fix is either to seed from within the
+host's startup (a delegated `IServiceCollection` callback) rather than from
+`HarnessEnvironment.CreateAsync`, or to introduce a barrier that waits for the
+host to see the seeded data. The cleanest path forward is the former.
+
+The second-best path: bypass `WebApplicationFactory<SampleProgram>` entirely and
+mirror the test project's approach — register the host's services manually with
+the harness's `LakewrightDbContext` configuration. That is the established pattern
+in the existing test suite and removes the lifecycle ambiguity.
 
 ## Why these defaults
 

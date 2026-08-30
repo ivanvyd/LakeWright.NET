@@ -56,9 +56,9 @@ public static class SloGate
         var combinedErr = total == 0
             ? 1.0
             : (opsErr * m.OperationsPostCount + costErr * m.CostGetCount) / total;
-        var poolUtil = o.MaxPoolSize == 0
+        var poolUtil = o.PostgresMaxConnections == 0
             ? 0
-            : (double)m.PeakPostgresConnections / o.MaxPoolSize;
+            : (double)m.PeakPostgresConnections / o.PostgresMaxConnections;
 
         return new Verdict
         {
