@@ -80,6 +80,11 @@ public sealed class HarnessEnvironment : IAsyncDisposable
             // value so the SLO gate is meaningful: at 100 connections and 80% utilisation,
             // the harness is telling us we have 80 of 100 in use at peak.
             .WithEnvironment("POSTGRES_MAX_CONNECTIONS", options.MaxPoolSize.ToString())
+            // Pin the testcontainer's default database to `postgres` so the harness's seed
+            // and the host's LakewrightDbContext point at the same schema. The testcontainer
+            // image's default POSTGRES_DB is `test` (matching the image's tag), which would
+            // split the seed and the host's queries across two schemas.
+            .WithEnvironment("POSTGRES_DB", "postgres")
             .WithReuse(false)
             .Build();
         await postgres.StartAsync();
