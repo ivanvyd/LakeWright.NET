@@ -120,7 +120,7 @@ library's.
   - workspace token shared across tenants/dashboards/viewers
   - 20 concurrent callers for the same key collapse to one exchange
   - advancing the clock past `ExpiresAt - 30s` triggers a refresh
-- 6 existing `EmbedToken` unit tests (no-cache path) still pass.
+- 7 existing `EmbedToken` unit tests (no-cache path) still pass.
 - Other test failures in the suite are environmental: Testcontainers
   (Docker not running) and `LiveEmbeddingTests` (no live workspace).
   They are unaffected by this change.
