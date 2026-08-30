@@ -76,9 +76,11 @@ free-form input from the request.
 ## Verification
 
 - `dotnet build samples/Signalboard/Signalboard.csproj` clean.
-- 5 new unit tests under `tests/LakeWright.TenantIsolation.Tests/`:
-  reserved-char rejection (3 cases), null means no change, non-null
-  composes with `~`. The composition test uses
+- 8 new unit tests under `tests/LakeWright.TenantIsolation.Tests/TenantScopeVersionTests`:
+  reserved-char rejection (3 cases), null means no change, empty
+  treated as null, non-null composes with `~`, scope-version
+  differences yield different filters, broker-fallback
+  for null versions. The composition tests use
   `FakeDashboardTokenHost` (the same stub the existing embed suite
-  uses), so it is hermetic — no live workspace required.
-- 6 existing `EmbedToken` unit tests still pass.
+  uses), so they are hermetic — no live workspace required.
+- 7 existing `EmbedToken` unit tests still pass.
