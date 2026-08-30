@@ -5,9 +5,11 @@ What has been run against a real system, what has only been read in documentatio
 Anything not listed as **Verified** should be treated as unverified regardless of how confident the
 surrounding prose sounds.
 
-Last updated 2026-08-29, when the elapsed-time cost proxy and the Bicep reference template shipped.
-The proxy is verified against a real application database; the Bicep template compiles against the
-public schema. The real currency path remains blocked on a metastore-admin grant.
+Last updated 2026-08-30, when the prerelease guard was removed and the project stabilized at
+1.0.0. The proxy is verified against a real application database; the Bicep template compiles
+against the public schema. The real currency path remains blocked on a metastore-admin grant.
+A `Documented` row is not promoted to `Verified` by a stable version number; the matrix
+records the work that has been done, not a claim about future work.
 
 ## Legend
 
