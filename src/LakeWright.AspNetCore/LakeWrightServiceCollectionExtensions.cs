@@ -105,6 +105,7 @@ public static class LakeWrightServiceCollectionExtensions
 
         services.AddScoped<ITenantSchemaProvisioner, DatabricksSchemaProvisioner>();
         services.AddScoped<IStatementExecutor, DatabricksStatementExecutor>();
+        services.AddHttpClient<ITenantScopedExport, DatabricksTenantScopedExport>();
         services.AddScoped<IJobSubmitter, DatabricksJobSubmitter>();
 
         return services;
