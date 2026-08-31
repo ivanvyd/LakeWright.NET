@@ -8,12 +8,31 @@ note.
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-08-30
+
+The first stable release. The compat promise is the one the project has been holding:
+breaking changes between 1.0.0 and 2.0.0 ship behind a SemVer minor bump and a CHANGELOG
+migration note. The compatibility matrix in [docs/compatibility.md](docs/compatibility.md)
+remains the single source of which surface has been shown to work against a real workspace;
+a `Documented` row is honest about the gap and a `Unverified` row is honest about the
+unmeasured risk. ADR 0019.
+
+A `v1.0.0` tag is the maintainer's step. The release pipeline already does the rest:
+refuse an unsigned or lightweight tag, derive the version from the tag, restore, build,
+test, pack, attest provenance, generate the SBOM, create the GitHub release, exchange
+the OIDC token for a one-hour nuget.org key, push the packages.
+
 ### Security
 
 - `SSH.NET` pinned to `2026.0.0` (was 2025.1.0) to clear GHSA-q939-rpr3-3284 / CVE-2026-48798,
   a high-severity advisory. The vulnerable-package gate in CI caught it on the next run after
   the advisory was published; the pin note next to `Microsoft.OpenApi` in `Directory.Packages.props`
   documents the shape.
+- Tenant-scope publish gate (#96). `IDashboardTokenBroker` now signs the embed token in as
+  `external_value` from a `TenantContext` rather than taking a `tenantId` parameter, so a
+  caller cannot mint a token filtered to somebody else's rows. The previous
+  `MintAsync(string tenantId, ...)` form is removed. Closes the string-literal bypass the
+  previous shape allowed.
 
 ### Added
 
@@ -35,6 +54,30 @@ note.
   `LakeWright.Multitenancy` when `Lakewright:OpenTelemetry:Enabled=true` and forwards to the
   configured OTLP endpoint. The library continues to take no OpenTelemetry dependency; the
   reference is the sample. ADR 0013.
+- Multi-target `LakeWright.Embedding` and `LakeWright.Core` for `net8.0` (#92). The
+  `net10.0` target is the default; `net8.0` is the explicit alternative a downstream
+  product on the LTS line can take without taking a dependency on a preview SDK.
+- `TenantContext.ScopeVersion` and a resolver seam (#93). A tenant whose catalog contents
+  change in a way the embed cache cannot see — schema swap, re-publish with different
+  filters — bumps the `ScopeVersion`, and downstream token exchanges pick up the new
+  version on the next read. The broker surfaces it; the cache key is composed from it.
+- Embed-token caching in `LakeWright.Embedding` (#94). The per-tenant, per-scope exchange
+  result is cached for the lifetime of the issued token. A revocation bumps `ScopeVersion`
+  and the next read recomputes; the path a hot dashboard takes is one in-memory read.
+- `IDashboardCatalog` / `DashboardCatalog` in `LakeWright.Embedding` (#95). Lists published
+  dashboards with `dashboard_id`, `display_name`, `parent_path`, `published_at`, and a
+  forwarding `page_token`. Tenant assignment is left to the caller: which tenant may see
+  which dashboard is application policy, and the library is right to leave it out.
+- Split embed and ops service principals in `LakeWright.Embedding` (#95). The embed SP
+  mints per-viewer tokens with `external_viewer_id` and `external_value`; the ops SP lists
+  dashboards and drives refresh. Same workspace, two principals, two permission sets.
+  `AddLakeWrightDashboardOps` registers the second `HttpClient` against
+  `LakeWright:DashboardOps`. A product that only embeds never carries the ops secret.
+- `ITenantScopedExport.StreamAsync` in `LakeWright.Databricks` (#97). An async stream of
+  `ExportRow` over the warehouse's presigned chunk links, with the column header yielded
+  first and one row per chunk in the warehouse's order. Memory profile is bounded by one
+  chunk at a time; the chunk fetch is a plain `HttpClient` (the presigned SAS does not
+  accept an `Authorization` header).
 
 ### Changed
 
@@ -45,9 +88,20 @@ note.
   rule that was a docstring is now a build gate.
 - `docs/compatibility.md` records the cost proxy and the OTel wiring as `Documented`. A live
   workspace was not used; a real billing read remains blocked on the metastore-admin grant.
+  The chunked export, the embed token cache, the dual-SP split, the publish gate, and the
+  `ScopeVersion` plumbing are recorded as `Verified` against a real workspace; the catalog
+  list shape is `Documented` from the response of an existing call path, not a fresh
+  end-to-end run.
 - `docs/security/threat-model.md` T5 updates from "partly mitigated" to "mitigated with a
   proxy", and the concurrency ceiling in `OperationWorker:MaxInFlightPerTenant` remains the
   control that acts in time.
+- `release.yml`: the "Refuse a stable version" guard is removed. A tag without a hyphen no
+  longer fails the workflow. A tag with a hyphen still publishes as a SemVer prerelease
+  on the GitHub release, and the `Read whether the version is a prerelease` step keeps
+  the classification in one place. ADR 0019.
+- `Directory.Build.props`: `VersionPrefix` is `1.0.0`. The release workflow still derives
+  the package version from the tag, so a local `dotnet pack` that bypasses the workflow
+  produces a package with a version the next tag would not contradict.
 
 ## [0.1.2-preview.1] — 2026-08-06
 
