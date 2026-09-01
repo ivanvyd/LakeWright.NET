@@ -50,17 +50,18 @@
 
   <ItemGroup Label="Testing">
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
-    <PackageVersion Include="xunit.v3" Version="4.0.0" />
+    <!-- xUnit 4 defaults to Microsoft Testing Platform v2. This repository intentionally keeps
+         the VSTest pipeline for TRX and coverlet compatibility, so use the official opt-out
+         package until the test infrastructure is migrated as one deliberate change. -->
+    <PackageVersion Include="xunit.v3.mtp-off" Version="4.0.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
     <PackageVersion Include="Shouldly" Version="4.3.0" />
     <PackageVersion Include="NSubstitute" Version="6.2.0" />
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.14.0" />
-    <!-- Pinned above the transitive 2025.1.0 that Testcontainers 4.13.0 resolves. That version is
+    <!-- Pinned above the transitive SSH.NET version resolved by Testcontainers. Older versions are
          GHSA-q939-rpr3-3284 (high): ScpClient's recursive download writes wherever a malicious
-         server's filenames point. Patched in 2026.0.0, and Testcontainers 4.13.0 is its own latest
-         release, so there is no upstream bump to wait for. `NuGetAudit` turns that advisory into
-         NU1903, and `TreatWarningsAsErrors` makes it fatal, so this pin is what keeps CI able to
-         restore at all. Drop it when Testcontainers resolves 2026.0.0 itself. -->
+         server's filenames point. Patched in 2026.0.0. Keep the direct pin until Testcontainers
+         resolves 2026.0.0 itself. -->
     <!-- SSH.NET 2026.0.0 is pinned once in the Extensions group above (for the Databricks SDK
          transitive); Central Package Management requires a single PackageVersion entry, and the
          version is the same. -->
