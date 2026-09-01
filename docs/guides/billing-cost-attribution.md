@@ -35,7 +35,9 @@ builder.Services.AddLakeWrightBillingCostAttribution(builder.Configuration);
   "DatabricksBilling": {
     "WorkspaceId": "...",
     "PollIntervalMilliseconds": 250,
-    "PollingTimeoutSeconds": 120
+    "PollingTimeoutSeconds": 120,
+    "MaxConcurrentStatements": 4,
+    "MaxOutstandingStatements": 32
   }
 }
 ```
@@ -54,11 +56,19 @@ overlap. The same prorated quantity feeds both DBUs and effective list cost, and
 inside one usage row contributes one segment at each effective price. The endpoint never adds
 amounts in unlike currencies when ordering operation kinds; it orders by DBUs, then kind.
 
-One report is limited to 500 distinct tenant-owned job runs and issues one billing-system query.
+One report is limited to 31 days, may end at most one day in the future, contains at most 500
+distinct tenant-owned job runs, and issues one billing-system query. These limits are enforced by
+the public service and reader as well as the HTTP endpoint, so direct DI consumers cannot bypass
+the scan bounds.
 HTTP 422 with code `REPORT_TOO_LARGE` means the caller must narrow the window. This prevents a
 high-volume tenant from turning one request into repeated scans of the account-wide billing table.
 A statement that remains pending past `PollingTimeoutSeconds` is cancelled best-effort and returns
 the transient code `POLL_TIMEOUT`.
+
+The billing reader is shared across request scopes. At most `MaxConcurrentStatements` statement
+lifecycles run at once, and active plus queued work cannot exceed `MaxOutstandingStatements`.
+Additional requests fail with transient code `BILLING_BUSY`; the HTTP endpoint maps it to 503.
+Choose bounds that fit the configured warehouse and apply normal edge rate limiting as well.
 
 ## Live verification
 

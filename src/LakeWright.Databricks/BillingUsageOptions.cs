@@ -20,4 +20,15 @@ public sealed class BillingUsageOptions
     /// <summary>Overall deadline for a billing statement, including all polls.</summary>
     [Range(1, 900)]
     public int PollingTimeoutSeconds { get; set; } = 120;
+
+    /// <summary>Maximum billing statements this process may execute concurrently.</summary>
+    [Range(1, 64)]
+    public int MaxConcurrentStatements { get; set; } = 4;
+
+    /// <summary>
+    /// Maximum active and queued billing statements in this process. Requests beyond the bound
+    /// fail with the transient code <c>BILLING_BUSY</c> instead of growing an unbounded queue.
+    /// </summary>
+    [Range(1, 1_024)]
+    public int MaxOutstandingStatements { get; set; } = 32;
 }

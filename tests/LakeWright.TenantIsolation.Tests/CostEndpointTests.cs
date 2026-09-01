@@ -193,4 +193,32 @@ public class CostEndpointTests(PostgresFixture postgres)
         body.ShouldContain("REPORT_TOO_LARGE");
         body.ShouldContain(BillingUsageLimits.MaxJobRunsPerReport.ToString());
     }
+
+    [Fact]
+    public async Task A_saturated_billing_reader_answers_503_with_a_safe_transient_code()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var cost = Substitute.For<ICostAttribution>();
+        cost.ResolveAsync(
+                Arg.Any<LakeWright.Core.Tenancy.TenantContext>(),
+                Arg.Any<DateTimeOffset>(),
+                Arg.Any<DateTimeOffset>(),
+                Arg.Any<CancellationToken>())
+            .Returns<Task<TenantCostSummary>>(_ => throw new BillingUsageException(
+                "BILLING_BUSY",
+                isTransient: true));
+        var (host, client) = await StartAsync(
+            postgres,
+            services => services.AddScoped(_ => cost));
+        using var _h = host;
+
+        var response = await client.SendAsync(
+            As(Vera, HttpMethod.Get, $"/organizations/{AcmeId.Value}/cost"),
+            cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
+        body.ShouldContain("BILLING_BUSY");
+        body.ShouldContain("transient");
+    }
 }

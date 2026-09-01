@@ -17,7 +17,7 @@ namespace LakeWright.Databricks;
 /// Databricks SQL. The system table is account-wide, so <c>workspace_id</c> is an additional
 /// mandatory bound filter rather than an assumption that run ids are globally unique.
 /// </remarks>
-public sealed class DatabricksBillingUsageReader : IBillingUsageReader
+public sealed class DatabricksBillingUsageReader : IBillingUsageReader, IDisposable
 {
     private const NumberStyles DecimalStyles =
         NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint | NumberStyles.AllowExponent;
@@ -68,6 +68,9 @@ public sealed class DatabricksBillingUsageReader : IBillingUsageReader
     private readonly DatabricksOptions _databricks;
     private readonly BillingUsageOptions _billing;
     private readonly TimeProvider _timeProvider;
+    private readonly SemaphoreSlim _statementSlots;
+    private readonly int _maxOutstandingStatements;
+    private int _outstandingStatements;
 
     public DatabricksBillingUsageReader(
         DatabricksClient client,
@@ -93,6 +96,8 @@ public sealed class DatabricksBillingUsageReader : IBillingUsageReader
         _databricks = databricks;
         _billing = billing;
         _timeProvider = timeProvider;
+        _statementSlots = new SemaphoreSlim(billing.MaxConcurrentStatements);
+        _maxOutstandingStatements = billing.MaxOutstandingStatements;
     }
 
     public async Task<IReadOnlyList<BillingRunUsage>> ReadAsync(
@@ -104,10 +109,7 @@ public sealed class DatabricksBillingUsageReader : IBillingUsageReader
     {
         ArgumentNullException.ThrowIfNull(tenant);
         ArgumentNullException.ThrowIfNull(jobRunIds);
-        if (from >= until)
-        {
-            throw new ArgumentException("from must be earlier than until.", nameof(from));
-        }
+        BillingUsageLimits.ValidateReportWindow(from, until, _timeProvider.GetUtcNow());
 
         if (jobRunIds.Count == 0)
         {
@@ -125,11 +127,35 @@ public sealed class DatabricksBillingUsageReader : IBillingUsageReader
             throw new BillingUsageException("REPORT_TOO_LARGE", isTransient: false);
         }
 
-        var request = CreateRequest(from, until, uniqueRunIds);
-        var outcome = await _session.ExecuteAsync(request, tenant.TenantId, cancellationToken);
-        outcome = await WaitForCompletionAsync(tenant, outcome, cancellationToken);
-        return Parse(outcome);
+        var outstanding = Interlocked.Increment(ref _outstandingStatements);
+        if (outstanding > _maxOutstandingStatements)
+        {
+            Interlocked.Decrement(ref _outstandingStatements);
+            throw new BillingUsageException("BILLING_BUSY", isTransient: true);
+        }
+
+        try
+        {
+            await _statementSlots.WaitAsync(cancellationToken);
+            try
+            {
+                var request = CreateRequest(from, until, uniqueRunIds);
+                var outcome = await _session.ExecuteAsync(request, tenant.TenantId, cancellationToken);
+                outcome = await WaitForCompletionAsync(tenant, outcome, cancellationToken);
+                return Parse(outcome);
+            }
+            finally
+            {
+                _statementSlots.Release();
+            }
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _outstandingStatements);
+        }
     }
+
+    public void Dispose() => _statementSlots.Dispose();
 
     private SqlStatement CreateRequest(
         DateTimeOffset from,

@@ -99,7 +99,23 @@ public sealed class OptionalDatabricksTests
 
         cost.ImplementationType.ShouldBe(typeof(BillingCostAttribution));
         reader.ImplementationType.ShouldBe(typeof(DatabricksBillingUsageReader));
+        reader.Lifetime.ShouldBe(ServiceLifetime.Singleton);
         Validator(services).ShouldNotThrow();
+    }
+
+    [Fact]
+    public void Billing_cost_rejects_invalid_statement_bounds()
+    {
+        var services = new ServiceCollection();
+        services.AddLakeWrightBillingCostAttribution(Configuration(new()
+        {
+            ["DatabricksBilling:WorkspaceId"] = "workspace-123",
+            ["DatabricksBilling:MaxConcurrentStatements"] = "0",
+            ["DatabricksBilling:MaxOutstandingStatements"] = "0"
+        }));
+
+        Validator(services).ShouldThrow<OptionsValidationException>()
+            .Message.ShouldContain(nameof(BillingUsageOptions.MaxConcurrentStatements));
     }
 
     private static Action Validator(IServiceCollection services)

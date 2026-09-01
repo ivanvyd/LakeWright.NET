@@ -72,6 +72,84 @@ public class DatabricksBillingUsageReaderTests
     }
 
     [Fact]
+    public async Task ReadAsync_rejects_an_oversized_window_before_starting_a_statement()
+    {
+        var session = new StubStatementSession(Success([]));
+        var time = new FakeTimeProvider(Until);
+
+        var exception = await Should.ThrowAsync<BillingUsageException>(async () =>
+            await Reader(session, time).ReadAsync(
+                Acme(),
+                Until.AddDays(-(BillingUsageLimits.MaxReportWindowDays + 1)),
+                Until,
+                [11],
+                TestContext.Current.CancellationToken));
+
+        exception.Code.ShouldBe("REPORT_WINDOW_TOO_LARGE");
+        session.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ReadAsync_rejects_a_distant_future_window_before_starting_a_statement()
+    {
+        var session = new StubStatementSession(Success([]));
+        var time = new FakeTimeProvider(From);
+
+        var exception = await Should.ThrowAsync<BillingUsageException>(async () =>
+            await Reader(session, time).ReadAsync(
+                Acme(),
+                From.AddDays(1),
+                From.AddDays(BillingUsageLimits.MaxFutureWindowDays + 1),
+                [11],
+                TestContext.Current.CancellationToken));
+
+        exception.Code.ShouldBe("REPORT_WINDOW_IN_FUTURE");
+        session.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ReadAsync_limits_concurrent_statement_lifecycles()
+    {
+        var session = new BlockingStatementSession();
+        var reader = Reader(session, maxConcurrentStatements: 1);
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        var first = reader.ReadAsync(Acme(), From, Until, [11], cancellationToken);
+        await session.FirstRequestStarted;
+        var second = reader.ReadAsync(Acme(), From, Until, [22], cancellationToken);
+
+        session.RequestCount.ShouldBe(1);
+        session.ReleaseRequests();
+        await Task.WhenAll(first, second);
+
+        session.RequestCount.ShouldBe(2);
+        session.MaxActiveRequests.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ReadAsync_rejects_work_beyond_the_outstanding_statement_bound()
+    {
+        var session = new BlockingStatementSession();
+        var reader = Reader(
+            session,
+            maxConcurrentStatements: 1,
+            maxOutstandingStatements: 1);
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        var first = reader.ReadAsync(Acme(), From, Until, [11], cancellationToken);
+        await session.FirstRequestStarted;
+
+        var exception = await Should.ThrowAsync<BillingUsageException>(async () =>
+            await reader.ReadAsync(Acme(), From, Until, [22], cancellationToken));
+
+        exception.Code.ShouldBe("BILLING_BUSY");
+        exception.IsTransient.ShouldBeTrue();
+        session.RequestCount.ShouldBe(1);
+        session.ReleaseRequests();
+        await first;
+    }
+
+    [Fact]
     public async Task ReadAsync_prorates_the_same_quantity_at_report_and_price_boundaries()
     {
         var session = new StubStatementSession(Success([]));
@@ -221,7 +299,7 @@ public class DatabricksBillingUsageReaderTests
     [Fact]
     public async Task ReadAsync_cancels_a_pending_statement_at_the_overall_deadline()
     {
-        var time = new FakeTimeProvider(From);
+        var time = new FakeTimeProvider(Until);
         var session = new StubStatementSession(
             new StatementOutcome.Pending("statement-1"),
             new StatementOutcome.Pending("statement-1"));
@@ -256,14 +334,18 @@ public class DatabricksBillingUsageReaderTests
     private static DatabricksBillingUsageReader Reader(
         IDatabricksStatementSession session,
         TimeProvider? timeProvider = null,
-        int pollingTimeoutSeconds = 120) => new(
+        int pollingTimeoutSeconds = 120,
+        int maxConcurrentStatements = 4,
+        int maxOutstandingStatements = 32) => new(
         session,
         new DatabricksOptions { WarehouseId = "warehouse-1", WorkspaceUrl = "https://example" },
         new BillingUsageOptions
         {
             WorkspaceId = "workspace-123",
             PollIntervalMilliseconds = 50,
-            PollingTimeoutSeconds = pollingTimeoutSeconds
+            PollingTimeoutSeconds = pollingTimeoutSeconds,
+            MaxConcurrentStatements = maxConcurrentStatements,
+            MaxOutstandingStatements = maxOutstandingStatements
         },
         timeProvider ?? TimeProvider.System);
 
@@ -322,12 +404,113 @@ public class DatabricksBillingUsageReaderTests
             return Task.CompletedTask;
         }
     }
+
+    private sealed class BlockingStatementSession : IDatabricksStatementSession
+    {
+        private readonly TaskCompletionSource _firstRequestStarted = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _releaseRequests = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _activeRequests;
+        private int _maxActiveRequests;
+        private int _requestCount;
+
+        public Task FirstRequestStarted => _firstRequestStarted.Task;
+        public int RequestCount => Volatile.Read(ref _requestCount);
+        public int MaxActiveRequests => Volatile.Read(ref _maxActiveRequests);
+
+        public async Task<StatementOutcome> ExecuteAsync(
+            SqlStatement request,
+            TenantId tenantId,
+            CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _requestCount);
+            var active = Interlocked.Increment(ref _activeRequests);
+            UpdateMaximum(active);
+            _firstRequestStarted.TrySetResult();
+            try
+            {
+                await _releaseRequests.Task.WaitAsync(cancellationToken);
+                return Success([]);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _activeRequests);
+            }
+        }
+
+        public Task<StatementOutcome> GetAsync(
+            TenantId tenantId,
+            string statementId,
+            CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("No statement should require polling.");
+
+        public Task CancelAsync(string statementId, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public void ReleaseRequests() => _releaseRequests.TrySetResult();
+
+        private void UpdateMaximum(int active)
+        {
+            var observed = Volatile.Read(ref _maxActiveRequests);
+            while (active > observed)
+            {
+                var replaced = Interlocked.CompareExchange(ref _maxActiveRequests, active, observed);
+                if (replaced == observed)
+                {
+                    return;
+                }
+
+                observed = replaced;
+            }
+        }
+    }
 }
 
 [Trait("Category", "TenantIsolation")]
 [Collection(nameof(PostgresTests))]
 public class BillingCostAttributionTests(PostgresFixture postgres)
 {
+    [Fact]
+    public async Task ResolveAsync_rejects_an_oversized_window_before_querying_either_store()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        var now = DateTimeOffset.Parse("2026-09-01T00:00:00Z", null);
+        var billing = Substitute.For<IBillingUsageReader>();
+
+        var exception = await Should.ThrowAsync<BillingUsageException>(async () =>
+            await new BillingCostAttribution(db, billing, new FakeTimeProvider(now)).ResolveAsync(
+                Acme(),
+                now.AddDays(-(BillingUsageLimits.MaxReportWindowDays + 1)),
+                now,
+                cancellationToken));
+
+        exception.Code.ShouldBe("REPORT_WINDOW_TOO_LARGE");
+        await billing.DidNotReceiveWithAnyArgs().ReadAsync(
+            default!, default, default, default!, cancellationToken);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_rejects_a_distant_future_window_before_querying_either_store()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        var now = DateTimeOffset.Parse("2026-09-01T00:00:00Z", null);
+        var billing = Substitute.For<IBillingUsageReader>();
+
+        var exception = await Should.ThrowAsync<BillingUsageException>(async () =>
+            await new BillingCostAttribution(db, billing, new FakeTimeProvider(now)).ResolveAsync(
+                Acme(),
+                now,
+                now.AddDays(BillingUsageLimits.MaxFutureWindowDays + 1),
+                cancellationToken));
+
+        exception.Code.ShouldBe("REPORT_WINDOW_IN_FUTURE");
+        await billing.DidNotReceiveWithAnyArgs().ReadAsync(
+            default!, default, default, default!, cancellationToken);
+    }
+
     [Fact]
     public async Task ResolveAsync_correlates_in_application_and_counts_distinct_runs()
     {

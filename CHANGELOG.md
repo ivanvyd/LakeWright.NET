@@ -8,6 +8,18 @@ note.
 
 ## [Unreleased]
 
+## [1.1.1] — 2026-09-01
+
+### Fixed
+
+- Billing-backed cost attribution now enforces the 31-day and one-day-future report bounds in the
+  public service and Databricks reader, not only at the HTTP endpoint. A process-wide configurable
+  concurrency gate also bounds active and queued billing statements; saturation returns the safe,
+  transient `BILLING_BUSY` code and HTTP 503 instead of growing an unbounded queue.
+- Completed the durable publication record for 1.1.0 after verifying its signed tag, release
+  workflow, package digests, build-provenance attestations, NuGet registration and an isolated
+  public-package consumer.
+
 ## [1.1.0] — 2026-09-01
 
 ### Added

@@ -27,6 +27,34 @@ public static class BillingUsageLimits
     /// account-wide system-table query, so callers must narrow the window when this limit is hit.
     /// </summary>
     public const int MaxJobRunsPerReport = 500;
+
+    /// <summary>Maximum time covered by one account-wide billing query.</summary>
+    public const int MaxReportWindowDays = 31;
+
+    /// <summary>Maximum future drift accepted for a report's upper bound.</summary>
+    public const int MaxFutureWindowDays = 1;
+
+    /// <summary>Rejects report windows that could cause an unbounded billing-table scan.</summary>
+    public static void ValidateReportWindow(
+        DateTimeOffset from,
+        DateTimeOffset until,
+        DateTimeOffset now)
+    {
+        if (from >= until)
+        {
+            throw new ArgumentException("from must be earlier than until.", nameof(from));
+        }
+
+        if (until > now.AddDays(MaxFutureWindowDays))
+        {
+            throw new BillingUsageException("REPORT_WINDOW_IN_FUTURE", isTransient: false);
+        }
+
+        if (until - from > TimeSpan.FromDays(MaxReportWindowDays))
+        {
+            throw new BillingUsageException("REPORT_WINDOW_TOO_LARGE", isTransient: false);
+        }
+    }
 }
 
 /// <summary>Priced usage attributed to one Lakeflow job run.</summary>

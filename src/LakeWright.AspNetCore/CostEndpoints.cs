@@ -44,9 +44,8 @@ public static class CostEndpoints
         CancellationToken cancellationToken)
     {
         var tenant = tenants.Required();
-        var effectiveUntil = until ?? http.RequestServices
-            .GetRequiredService<TimeProvider>()
-            .GetUtcNow();
+        var now = http.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow();
+        var effectiveUntil = until ?? now;
         var effectiveFrom = from ?? effectiveUntil.AddDays(-7);
 
         if (effectiveFrom >= effectiveUntil)
@@ -59,7 +58,7 @@ public static class CostEndpoints
 
         // Reject windows that end in the distant future, so a caller cannot ask for a 30-day
         // window anchored at year 9999 and have the implementation scan a multi-millennium range.
-        var maxUntil = DateTimeOffset.UtcNow.AddDays(1);
+        var maxUntil = now.AddDays(BillingUsageLimits.MaxFutureWindowDays);
         if (effectiveUntil > maxUntil)
         {
             return Results.ValidationProblem(new Dictionary<string, string[]>
@@ -68,11 +67,11 @@ public static class CostEndpoints
             });
         }
 
-        if ((effectiveUntil - effectiveFrom).TotalDays > 31)
+        if (effectiveUntil - effectiveFrom > TimeSpan.FromDays(BillingUsageLimits.MaxReportWindowDays))
         {
             return Results.ValidationProblem(new Dictionary<string, string[]>
             {
-                ["from"] = ["Window cannot exceed 31 days."]
+                ["from"] = [$"Window cannot exceed {BillingUsageLimits.MaxReportWindowDays} days."]
             });
         }
 
@@ -97,6 +96,19 @@ public static class CostEndpoints
                     {
                         ["code"] = exception.Code,
                         ["maxJobRuns"] = BillingUsageLimits.MaxJobRunsPerReport
+                    });
+            }
+
+            if (exception.Code == "BILLING_BUSY")
+            {
+                return Results.Problem(
+                    statusCode: StatusCodes.Status503ServiceUnavailable,
+                    title: "Billing usage is busy.",
+                    detail: "Retry after an in-flight billing statement completes.",
+                    extensions: new Dictionary<string, object?>
+                    {
+                        ["code"] = exception.Code,
+                        ["transient"] = true
                     });
             }
 
