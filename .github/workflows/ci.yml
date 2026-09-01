@@ -78,6 +78,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Scan for confidential identifiers
+        env:
+          OSS_CONFIDENTIAL_TERMS_B64: ${{ secrets.OSS_CONFIDENTIAL_TERMS_B64 }}
+        run: bash scripts/check-confidential-identifiers.sh
       - run: bash scripts/check-doc-links.sh
       # Links rot first; claims rot quietly. A re-read on 2026-08-05 found six claims describing
       # a repository that had moved on without them, two in the compliance mapping an assessor

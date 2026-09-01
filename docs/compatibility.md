@@ -31,7 +31,7 @@ The commands, results and cleanup evidence are in the
 
 | | |
 |---|---|
-| Current verification workspace | `dbw-vrm-dev`, Azure, premium SKU |
+| Current verification workspace | Authenticated Azure development workspace, premium SKU; identifier intentionally omitted |
 | Earlier specialized verification workspace | `lakewright-dev`, Azure, eastus2, premium SKU |
 | Current warehouse | Serverless PRO, 10 minute auto-stop |
 | .NET | 10.0.400 |
@@ -52,11 +52,11 @@ dotnet test --no-build --no-restore -c Release --filter "Category!=Live"
 dotnet test --no-build --no-restore -c Release --filter "Category=TenantIsolation"
 docker compose -p lakewright-v101-local -f samples/Signalboard/compose.yaml up -d --build
 docker compose -p lakewright-v101-local -f samples/Signalboard/compose.yaml down -v
-databricks bundle validate -t dev --var catalog=dbw_vrm_test
+databricks bundle validate -t dev --var catalog=<temporary-validation-catalog>
 dotnet test --no-build -c Release --filter "FullyQualifiedName~LiveDatabricksTests"
 ```
 
-The live run used a temporary `dbw_vrm_test.reference` schema, SQL notebook and job. All three
+The live run used a temporary validation catalog with a `reference` schema, SQL notebook and job. All three
 were removed after the three tests passed. The current workspace does not contain the model-serving
 endpoint, Genie space, published dashboard and service-principal credentials required by
 `LiveChatTests`, `LiveGenieTests` and `LiveEmbeddingTests`, so those historical rows were not dated

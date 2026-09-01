@@ -56,8 +56,8 @@ anyone else's, and pauses schedules. Observed after `deploy -t dev`:
 
 | Declared | Deployed as |
 |---|---|
-| `lakewright-analytics` | `[dev ivan_vydrin] lakewright-analytics` |
-| `reference` | `dev_ivan_vydrin_reference` |
+| `lakewright-analytics` | `[dev contributor] lakewright-analytics` |
+| `reference` | `dev_contributor_reference` |
 
 The paused schedule is the behaviour that stops a personal copy of an hourly job running all
 weekend.

@@ -13,8 +13,7 @@ column inside a string literal — `WHERE col = '__aibi_external_value'`
 — passes a substring search but ships unscoped, and any tenant that
 opens it sees every row.
 
-The gap analysis (gap §3.4) records a real instance of exactly this
-bypass in production, in `VRM.HasTenantScopedDatasets`. A gate that
+Security testing reproduced exactly this string-literal bypass. A gate that
 "looks for the marker in the dataset SQL" is a tempting, plausible
 implementation that is silently wrong. The fix is structural: do not
 treat the contents of a string literal as code.
@@ -51,7 +50,7 @@ only when:
 
 ## What this closes and what it does not
 
-This closes the string-literal bypass that bit VRM, and the comment
+This closes the reproduced string-literal bypass and the comment
 forms of the same trick. It does not, and is not intended to, defeat a
 board that reconstructs the marker by concatenation (`'__aibi_' ||
 'external_value'`). Such a board is genuinely unscoped; the gate
@@ -67,8 +66,8 @@ trivial to call from a publish pipeline, a unit test, or a CI hook.
 ## Consequences
 
 - A library consumer that runs every candidate dashboard through the
-  gate before publishing ships the same safety net the gap analysis
-  called for, in a tested form that does not contain the bypass.
+  gate before publishing gets a tested safety net that does not contain
+  the bypass.
 - The gate's output is a structured verdict (offsets, reason), so a
   CI integration can log the exact byte offset of each reference for
   audit and review.
