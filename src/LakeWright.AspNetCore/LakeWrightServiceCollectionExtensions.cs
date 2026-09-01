@@ -3,6 +3,7 @@ using LakeWright.Core.Jobs;
 using LakeWright.Core.Tenancy;
 using LakeWright.Databricks;
 using LakeWright.Multitenancy;
+using LakeWright.Multitenancy.Cost;
 using LakeWright.Multitenancy.Model;
 using LakeWright.Multitenancy.Operations;
 using Microsoft.AspNetCore.Authorization;
@@ -104,6 +105,7 @@ public static class LakeWrightServiceCollectionExtensions
 
         services.AddScoped<ITenantSchemaProvisioner, DatabricksSchemaProvisioner>();
         services.AddScoped<IStatementExecutor, DatabricksStatementExecutor>();
+        services.AddHttpClient<ITenantScopedExport, DatabricksTenantScopedExport>();
         services.AddScoped<IJobSubmitter, DatabricksJobSubmitter>();
 
         return services;
@@ -128,6 +130,33 @@ public static class LakeWrightServiceCollectionExtensions
 
         services.TryAddSingletonTimeProvider();
         services.AddHostedService<OperationWorker>();
+        return services;
+    }
+
+    /// <summary>
+    /// Registers per-tenant cost attribution, computed from the operations table against a
+    /// configured warehouse SKU.
+    /// </summary>
+    /// <remarks>
+    /// Opt-in, like the Databricks clients. Cost attribution reads the application database and
+    /// not Databricks, but the choice of warehouse SKU and DBU rate is a product decision the
+    /// rest of the library should not make on an adopter's behalf. A product that wants a real
+    /// billing-table read wires its own <c>ICostAttribution</c> after this returns and the
+    /// registration is the single seam to replace.
+    /// </remarks>
+    public static IServiceCollection AddLakeWrightCostAttribution(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        services.AddOptions<CostAttributionOptions>()
+            .Bind(configuration.GetSection(CostAttributionOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.AddLakeWrightCostAttribution();
         return services;
     }
 

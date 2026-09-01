@@ -79,23 +79,24 @@ roles is a deployment requirement, not something code can enforce.
 
 A tenant, or a bug, drives unbounded Databricks compute.
 
-**Partly mitigated.** `OperationWorker:MaxInFlightPerTenant` caps how many operations one tenant can
-have running at once, across every worker, which is a ceiling on the compute a runaway loop can buy
-before anyone notices. Warehouse auto-stop bounds the idle half. Evidence:
-`OperationClaimTests.A_tenant_at_its_ceiling_is_skipped_rather_than_failed`.
+**Mitigated with a proxy.** The real-time control is `OperationWorker:MaxInFlightPerTenant`, which
+caps how many operations one tenant can have running at once, across every worker. That is a
+ceiling on the compute a runaway loop can buy before anyone notices. Warehouse auto-stop bounds
+the idle half. Evidence: `OperationClaimTests.A_tenant_at_its_ceiling_is_skipped_rather_than_failed`.
 
-What is still missing is a budget in currency. That needs Databricks billing data, which arrives
-hours after the compute is spent — too late to stop anything in flight, and useful only for alerting
-and chargeback after the fact. A concurrency ceiling is the control that acts in time; a spend
-ceiling is the control an auditor asks for, and this project has the first and not the second.
+The reporting half is `ICostAttribution` (ADR 0012), with the elapsed-time proxy as its first
+implementation. The proxy sums `EXTRACT(EPOCH FROM (CompletedAt - ClaimedAt))` per kind and
+weights it by the configured warehouse SKU's DBU/hour. The result is `CostSource.Proxy` and
+is documented as a proxy rather than a currency read. The interface exists so a real
+billing-table read replaces this implementation without changing the call sites; the
+`CostSource` discriminator tells the caller which one ran.
 
 Nothing here caps the *cost of one query*. A single operation against a large warehouse is bounded
-only by the run timeout — which now cancels the run rather than merely abandoning it, so the
-timeout is a real ceiling on a single operation's spend rather than a ceiling on how long anyone
-watches it.
+only by the run timeout — which cancels the run rather than merely abandoning it, so the timeout
+is a real ceiling on a single operation's spend rather than a ceiling on how long anyone watches it.
 
 **What a currency budget would take, established 2026-08-01 rather than assumed.** Two things
-block it, and neither is the code anyone would write first:
+block a real billing read, and neither is the code anyone would write first:
 
 The tenant does not reach the compute in a form billing can see. `TenantScopedJobRun` passes
 `lakewright_tenant_id` as a *job parameter*, and Databricks attributes usage in
@@ -107,12 +108,10 @@ lives in our database, not in theirs, and that is the correct place for it.
 
 Reading those tables needs a grant this project does not have. Querying `system.billing.usage` as
 the workspace identity returns `INSUFFICIENT_PERMISSIONS: User does not have USE SCHEMA on Schema
-'system.billing'`. It is a metastore-admin grant, so the prerequisite for cost attribution is an
-administrative decision rather than a feature.
-
-Until both are settled, this stays partly mitigated and says so. Attribution by elapsed compute
-time — which the `operations` table already holds, in `ClaimedAt` and `CompletedAt` — is available
-without any of that, and is a proxy for cost rather than cost.
+'system.billing'`. It is a metastore-admin grant, so the prerequisite for cost attribution in
+currency is an administrative decision rather than a feature. The proxy is the alternative until
+that grant is made; a product with the grant registers its own `ICostAttribution`, returns
+`CostSource.Billing`, and the rest of the system reads it the same way.
 
 ### T6. Denial of service against the operation queue
 

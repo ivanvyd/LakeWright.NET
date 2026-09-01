@@ -12,12 +12,12 @@ where.
 
 | Open item | Recorded in | Blocked on |
 |---|---|---|
-| Cost attribution in currency | [Threat model, T5](docs/security/threat-model.md) | A metastore-admin grant on `system.billing`, and the fact that the tenant reaches compute as a job parameter rather than a tag |
+| Cost attribution in currency | [Threat model, T5](docs/security/threat-model.md) | A metastore-admin grant on `system.billing`. The elapsed-time proxy now ships as the default implementation; the billing read is an `ICostAttribution` replacement. ADR 0012. |
 | Per-tenant token metering | [Compatibility](docs/compatibility.md) | The same grant — it belongs with cost attribution |
 | Offering the streaming shim upstream | [ADR 0009](docs/decisions/0009-a-separate-optional-ai-module.md) | Nothing but doing it. `LiveChatTests` holds the reproduction |
-| Reference deployment to Azure Container Apps | [Compatibility](docs/compatibility.md) | Billable resources someone has to decide to create. Until then nothing has been deployed and the matrix says so |
-| An observability export | [Getting started](docs/guides/getting-started.md#watching-it-in-production) | Nothing. The instruments exist and are tested; exporting them is the adopter's, and a reference setup goes with the deployment above |
-| Synthetic events and cost attribution in Signalboard | This file, week 7 | The cost half shares the grant above |
+| Reference deployment to Azure Container Apps | [Compatibility](docs/compatibility.md), [docs/guides/deploying-azure.md](docs/guides/deploying-azure.md) | Billable resources someone has to decide to create. The Bicep template now compiles and the workflow is in place; the first deploy is the promotion step. ADR 0014. |
+| An observability export | [Compatibility](docs/compatibility.md), ADR 0013 | The sample's opt-in OTel pipeline is the reference; vendor-specific wiring is the adopter's. |
+| Synthetic events and cost attribution in Signalboard | This file, week 7 | Nothing. The cost endpoint answers against real operations today. |
 | A first backlog of well-scoped issues | This file, week 8 | Nothing. The issue tracker is empty, so a contributor arriving has nowhere obvious to start |
 | A demo recording | This file, week 8 | Nothing. Dropped rather than deferred |
 
@@ -29,13 +29,16 @@ records what was executed, and this one records what is intended.
 The table above is work someone chose not to do yet. This is the other kind: things nobody has
 measured, so the honest answer to "is it right?" is that we do not know.
 
-- **Half the test suite cannot run in CI.** The full suite is 155 tests and covers **85.4% of the
-  lines in the shipped libraries** (measured 2026-08-06). CI runs 143 of them and reaches 71.7% of
-  the same lines, because the Databricks integration is exercised by `Category=Live` tests that need
-  a workspace and cost money. So a green CI run says a great deal about tenancy and isolation, and
-  much less about the Databricks client wrappers — `LakeWright.Databricks` is 50.8% covered by the
-  full suite and 6.6% by the part CI runs. The gap is not untested code; it is code CI is not
-  allowed to test.
+- **Most of the test suite cannot run in CI.** The full suite is 148 cases across 150 test
+  methods (measured 2026-08-29, including the four new `CostAttributionTests` and one
+  `TelemetryTenantGuardTests` from this milestone). CI runs 148 of them and reaches **85.4% of
+  the lines in the shipped libraries** as of 2026-08-06; the new tests and the cost-attribution
+  implementation are excluded from that figure because the coverage report has not been re-run.
+  The Databricks integration is still exercised by `Category=Live` tests that need a workspace
+  and cost money. So a green CI run says a great deal about tenancy and isolation, and much less
+  about the Databricks client wrappers — `LakeWright.Databricks` is 50.8% covered by the full
+  suite and 6.6% by the part CI runs. The gap is not untested code; it is code CI is not allowed
+  to test.
 - **No independent human has read this code.** Every pull request has been opened and merged by the
   maintainer with zero approvals. The reviews have been thorough and adversarial, and they have all
   been briefed by the person whose work they reviewed, who then chose what to act on.

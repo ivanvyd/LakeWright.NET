@@ -8,6 +8,11 @@
     <PackageReference Include="Azure.Core" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" />
+    <!-- The OpenTelemetry wiring is opt-in and lives in the sample, not the library. The
+         library publishes plain System.Diagnostics instruments; this is the OTel SDK that
+         subscribes to them. -->
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\LakeWright.AspNetCore\LakeWright.AspNetCore.csproj" />

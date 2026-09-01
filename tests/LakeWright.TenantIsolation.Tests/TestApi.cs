@@ -1,8 +1,10 @@
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using LakeWright.AspNetCore;
+using LakeWright.Core.Cost;
 using LakeWright.Core.Tenancy;
 using LakeWright.Multitenancy;
+using LakeWright.Multitenancy.Cost;
 using LakeWright.Multitenancy.Model;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
@@ -99,6 +101,7 @@ public static class TestApi
                     services.AddHttpContextAccessor();
                     services.AddScoped<ITenantContextAccessor, HttpTenantContextAccessor>();
                     services.AddScoped<IAuthorizationHandler, TenantRoleHandler>();
+                    services.AddLakeWrightCostAttribution();
                     services.Configure<MultitenancyOptions>(o => o.Catalog = "analytics");
 
                     services.AddAuthentication(StubAuth.SchemeName)
@@ -118,7 +121,11 @@ public static class TestApi
                     app.UseAuthentication();
                     app.UseLakeWrightTenancy();
                     app.UseAuthorization();
-                    app.UseEndpoints(e => e.MapLakeWrightOperations());
+                    app.UseEndpoints(e =>
+                    {
+                        e.MapLakeWrightOperations();
+                        e.MapLakeWrightCost();
+                    });
                 }))
             .StartAsync();
 

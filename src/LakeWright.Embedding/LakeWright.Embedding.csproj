@@ -1,15 +1,36 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <Description>Scoped access tokens for embedding Databricks AI/BI dashboards to a tenant's end users.</Description>
+    <!-- Multi-targeted for net8.0 because the only third-party deps are Microsoft.Extensions.*,
+         which the runtime supports. Other LakeWright packages pin EF Core 10 and Npgsql 10 and so
+         stay on net10.0 only. Consumers that embed dashboards and need net8.0 are the common
+         case; the rest of the library carries its own dependencies. -->
+    <!-- Directory.Build.props sets a single TargetFramework=net10.0; clear it here so the
+         plural TargetFrameworks actually takes effect. -->
+    <TargetFramework />
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Http" />
     <PackageReference Include="Microsoft.Extensions.Options" />
+    <!-- TimeProvider and TimeProvider.System are net8.0+, but on net8.0 the type lives in
+         Microsoft.Bcl.TimeProvider (the polyfill the runtime ships). The reference is conditional
+         so the net10.0 build does not double up on a type that already ships in the BCL. -->
+    <PackageReference Include="Microsoft.Bcl.TimeProvider" Condition="'$(TargetFramework)' == 'net8.0'" />
   </ItemGroup>
   <ItemGroup>
     <!-- Core only. The token exchange is OAuth over HTTP and needs nothing from the Databricks
          client library, so a product that embeds a dashboard does not acquire a SQL stack. -->
     <ProjectReference Include="..\LakeWright.Core\LakeWright.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- The memory-backed token cache implementations are internal so the public surface
+         stays at the IWorkspaceTokenCache / IEmbedTokenCache seam — a consumer that wants a
+         different backing store (Redis, distributed) implements those, not these. The test
+         project constructs the memory implementation directly to exercise the cache without
+         going through DI. -->
+    <InternalsVisibleTo Include="LakeWright.TenantIsolation.Tests" />
+  </ItemGroup>
 </Project>
+
