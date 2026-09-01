@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace LakeWright.Embedding;
 
@@ -42,7 +43,7 @@ public static class EmbeddingServiceCollectionExtensions
         services.AddHttpClient<IDashboardTokenBroker, DashboardTokenBroker>((provider, client) =>
         {
             var options = provider
-                .GetRequiredService<Microsoft.Extensions.Options.IOptions<DashboardEmbeddingOptions>>()
+                .GetRequiredService<IOptions<DashboardEmbeddingOptions>>()
                 .Value;
 
             // Trailing slash: without it a relative request path replaces the last segment rather
@@ -95,7 +96,7 @@ public static class EmbeddingServiceCollectionExtensions
         services.AddHttpClient<IOpsTokenBroker, OpsTokenBroker>((provider, client) =>
         {
             var options = provider
-                .GetRequiredService<Microsoft.Extensions.Options.IOptions<DashboardOpsOptions>>()
+                .GetRequiredService<IOptions<DashboardOpsOptions>>()
                 .Value;
             client.BaseAddress = new Uri(options.WorkspaceUrl.TrimEnd('/') + "/");
         });
@@ -103,7 +104,7 @@ public static class EmbeddingServiceCollectionExtensions
         services.AddHttpClient<IDashboardCatalog, DashboardCatalog>((provider, client) =>
         {
             var options = provider
-                .GetRequiredService<Microsoft.Extensions.Options.IOptions<DashboardOpsOptions>>()
+                .GetRequiredService<IOptions<DashboardOpsOptions>>()
                 .Value;
             client.BaseAddress = new Uri(options.WorkspaceUrl.TrimEnd('/') + "/");
         });
