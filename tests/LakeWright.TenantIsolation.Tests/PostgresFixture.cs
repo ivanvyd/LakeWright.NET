@@ -33,10 +33,6 @@ public sealed class PostgresFixture : IAsyncLifetime
         var builder = new Npgsql.NpgsqlConnectionStringBuilder(_container.GetConnectionString())
         {
             Database = name,
-
-            // Every test gets a unique database, which means every connection string gets a
-            // distinct pool. Retaining one idle connector per completed test eventually exhausts
-            // Postgres' default 100-client limit before the full suite finishes.
             Pooling = false
         };
 
