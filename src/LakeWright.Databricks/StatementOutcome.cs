@@ -1,3 +1,5 @@
+using System.Net;
+
 namespace LakeWright.Databricks;
 
 /// <summary>
@@ -60,7 +62,11 @@ public abstract record StatementOutcome
         string ErrorCode,
         string Message,
         string? StatementId,
-        bool IsTransient) : StatementOutcome;
+        bool IsTransient) : StatementOutcome
+    {
+        /// <summary>HTTP status for request-level failures, when the provider supplied one.</summary>
+        public HttpStatusCode? StatusCode { get; init; }
+    }
 
     /// <summary>
     /// The statement did not finish inside the wait timeout and is still running. The Statement

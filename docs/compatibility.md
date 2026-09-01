@@ -8,7 +8,8 @@ surrounding prose sounds.
 Last updated 2026-09-01 for the 1.0.1 release. The core Databricks statement and Jobs paths were
 re-run against the active development workspace, and the bundle was validated there. The proxy is
 verified against a real application database; the Bicep template compiles against the public
-schema. The real currency path remains blocked on a metastore-admin grant.
+schema. The currency path is implemented and locally verified, but its system-table read remains
+blocked on a metastore-admin grant in the verification workspace.
 A `Documented` row is not promoted to `Verified` by a stable version number; the matrix
 records the work that has been done, not a claim about future work.
 
@@ -63,6 +64,7 @@ request, package-consumer, publication and cleanup commands are in the
 | Capability | Status | Date | Evidence |
 |---|---|---|---|
 | Elapsed-time cost attribution (per-tenant, per-kind DBU) | **Documented** | 2026-08-29 | `OperationCostAttribution` against a real Postgres; the aggregation runs in `EXTRACT(EPOCH FROM (CompletedAt - ClaimedAt))` and is bounded by `ClaimedAt` to `CompletedAt` to exclude in-flight work. ADR 0012. |
+| Billing cost attribution (per-tenant DBU and effective list-price currency) | **Documented** | 2026-09-01 | Local tests cover indexed distinct tenant-owned run selection in PostgreSQL, the 500-run/one-query budget, bound workspace/run/window parameters, report/price overlap proration, corrections, malformed rows, polling deadline and best-effort cancellation. The live system-table read is not verified because the development identity lacks the grant. [Runbook](guides/billing-cost-attribution.md), ADR 0012. |
 | Bicep reference deployment template compiles | **Documented** | 2026-08-29 | `az bicep build --file infra/azure-container-apps/main.bicep` against the public schema. No deploy has been run. ADR 0014. |
 | OpenTelemetry export via the sample's opt-in pipeline | **Documented** | 2026-08-29 | The sample's `Program.cs` subscribes to `LakeWright.Multitenancy` when `Lakewright:OpenTelemetry:Enabled=true`. Vendor-specific wiring is the adopter's. ADR 0013. |
 | Entra ID token accepted as a Databricks bearer token (user principal) | **Verified** | 2026-09-01 | `LiveDatabricksTests`; previously [spike 01](planning/spike-01-statement-execution.md) |
@@ -121,10 +123,10 @@ request, package-consumer, publication and cleanup commands are in the
 
 ## Known gaps
 
-- No per-tenant cost attribution **in currency**. The elapsed-time proxy in
-  `OperationCostAttribution` ships, labelled `CostSource.Proxy`; a real billing read remains
-  blocked on a metastore-admin grant on `system.billing.usage` — see T5 in
-  [the threat model](security/threat-model.md) and ADR 0012.
+- Billing attribution is not live-verified in the development workspace. The implementation ships
+  as an opt-in, but the development identity still lacks access to `system.billing.usage` and
+  `system.billing.list_prices`; the proxy remains the default. See the
+  [billing runbook](guides/billing-cost-attribution.md), T5 in the threat model and ADR 0012.
 - No reference deployment *executed*. The Bicep template in `infra/azure-container-apps/`
   compiles; the workflow in `.github/workflows/deploy-azure.yml` is in place; no one has run a
   deploy with it, so the ingress half of encryption in transit and the managed identity path in

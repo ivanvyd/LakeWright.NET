@@ -1,5 +1,7 @@
 using LakeWright.AspNetCore;
+using LakeWright.Core.Cost;
 using LakeWright.Databricks;
+using LakeWright.Multitenancy.Cost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -68,6 +70,36 @@ public sealed class OptionalDatabricksTests
 
         // Assert
         validate.ShouldNotThrow();
+    }
+
+    [Fact]
+    public void Billing_cost_rejects_a_missing_workspace_id()
+    {
+        var services = new ServiceCollection();
+        services.AddLakeWrightBillingCostAttribution(Configuration([]));
+
+        var validate = Validator(services);
+
+        validate.ShouldThrow<OptionsValidationException>()
+            .Message.ShouldContain(nameof(BillingUsageOptions.WorkspaceId));
+    }
+
+    [Fact]
+    public void Billing_cost_registration_composes_the_reader_and_replaces_the_proxy()
+    {
+        var services = new ServiceCollection();
+        services.AddLakeWrightCostAttribution();
+        services.AddLakeWrightBillingCostAttribution(Configuration(new()
+        {
+            ["DatabricksBilling:WorkspaceId"] = "workspace-123"
+        }));
+
+        var cost = services.Last(descriptor => descriptor.ServiceType == typeof(ICostAttribution));
+        var reader = services.Last(descriptor => descriptor.ServiceType == typeof(IBillingUsageReader));
+
+        cost.ImplementationType.ShouldBe(typeof(BillingCostAttribution));
+        reader.ImplementationType.ShouldBe(typeof(DatabricksBillingUsageReader));
+        Validator(services).ShouldNotThrow();
     }
 
     private static Action Validator(IServiceCollection services)

@@ -3,7 +3,9 @@ using System.Net.Http.Json;
 using LakeWright.Core.Cost;
 using LakeWright.Multitenancy;
 using LakeWright.Multitenancy.Model;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using NSubstitute;
 using static LakeWright.TenantIsolation.Tests.TestApi;
 
 namespace LakeWright.TenantIsolation.Tests;
@@ -134,5 +136,61 @@ public class CostEndpointTests(PostgresFixture postgres)
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task A_billing_provider_failure_answers_502_without_the_provider_message()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var cost = Substitute.For<ICostAttribution>();
+        cost.ResolveAsync(
+                Arg.Any<LakeWright.Core.Tenancy.TenantContext>(),
+                Arg.Any<DateTimeOffset>(),
+                Arg.Any<DateTimeOffset>(),
+                Arg.Any<CancellationToken>())
+            .Returns<Task<TenantCostSummary>>(_ => throw new BillingUsageException(
+                "PERMISSION_DENIED",
+                isTransient: false));
+        var (host, client) = await StartAsync(
+            postgres,
+            services => services.AddScoped(_ => cost));
+        using var _h = host;
+
+        var response = await client.SendAsync(
+            As(Vera, HttpMethod.Get, $"/organizations/{AcmeId.Value}/cost"),
+            cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadGateway);
+        body.ShouldContain("PERMISSION_DENIED");
+        body.ShouldNotContain("system.billing.usage");
+    }
+
+    [Fact]
+    public async Task An_oversized_billing_report_answers_422_with_the_enforced_run_limit()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var cost = Substitute.For<ICostAttribution>();
+        cost.ResolveAsync(
+                Arg.Any<LakeWright.Core.Tenancy.TenantContext>(),
+                Arg.Any<DateTimeOffset>(),
+                Arg.Any<DateTimeOffset>(),
+                Arg.Any<CancellationToken>())
+            .Returns<Task<TenantCostSummary>>(_ => throw new BillingUsageException(
+                "REPORT_TOO_LARGE",
+                isTransient: false));
+        var (host, client) = await StartAsync(
+            postgres,
+            services => services.AddScoped(_ => cost));
+        using var _h = host;
+
+        var response = await client.SendAsync(
+            As(Vera, HttpMethod.Get, $"/organizations/{AcmeId.Value}/cost"),
+            cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.UnprocessableEntity);
+        body.ShouldContain("REPORT_TOO_LARGE");
+        body.ShouldContain(BillingUsageLimits.MaxJobRunsPerReport.ToString());
     }
 }
