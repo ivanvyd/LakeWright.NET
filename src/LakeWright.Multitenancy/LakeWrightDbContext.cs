@@ -114,13 +114,11 @@ public sealed class LakeWrightDbContext(DbContextOptions<LakeWrightDbContext> op
         modelBuilder.Entity<AuditEvent>(e =>
         {
             e.ToTable("audit_events");
-            // Composite key with OccurredAt. Postgres native partitioning requires every unique
-            // constraint on a partitioned table to include the partition key, so the primary
-            // key has to be (Id, OccurredAt). Id alone is still unique-enough for a single
-            // partition's index; the (Id, OccurredAt) composite only matters when querying
-            // across months. See DatabasePartitioning for the DDL that creates the partitioned
-            // table and replaces the one EF would otherwise build.
-            e.HasKey(x => new { x.Id, x.OccurredAt });
+            // The public identity remains Id. PostgreSQL cannot put a global unique index on a
+            // range-partitioned table unless the partition key is part of it, so the partition
+            // migration enforces this key through its non-partitioned audit_event_ids registry.
+            // Keeping the model key unchanged prevents partitioning from leaking into callers.
+            e.HasKey(x => x.Id);
             // Nullable both ways. AuditEvent.OrganizationId documents null as valid — "events
             // outside a tenant, such as an organization being created" — and the forgiving
             // converter here would have thrown on exactly that value the first time anything
@@ -133,6 +131,7 @@ public sealed class LakeWrightDbContext(DbContextOptions<LakeWrightDbContext> op
             e.Property(x => x.ResourceType).HasMaxLength(100).IsRequired();
             e.Property(x => x.ResourceId).HasMaxLength(200);
             e.Property(x => x.Detail).HasColumnType("jsonb");
+            e.HasIndex(x => new { x.OrganizationId, x.OccurredAt });
         });
     }
 

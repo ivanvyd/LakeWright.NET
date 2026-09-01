@@ -43,6 +43,14 @@ Audit events are append-only, so retention is enforced by deletion at the databa
 role that is allowed to, never by the application. That is the same asymmetry as everywhere else
 here: the application can add history and cannot rewrite it.
 
+Audit retention is implemented as monthly PostgreSQL partitions. The migration-role-only
+`LakeWright.DatabaseMaintenance maintain` command defaults to seven calendar years and drops only
+a partition whose complete range is older than the cutoff. Schedule it at least monthly; daily is
+recommended so a failed run has time to alert before the pre-created future window is exhausted.
+The application role has no DDL privileges and cannot invoke maintenance. See
+[ADR 0020](../decisions/0020-safe-audit-table-partitioning.md) for the migration, validation,
+rollback, and finalization sequence.
+
 ## Deleting a tenant
 
 `OrganizationState.PendingDeletion` stops reads before anything is destroyed, so deletion is

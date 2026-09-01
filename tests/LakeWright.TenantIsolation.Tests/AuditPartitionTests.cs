@@ -2,119 +2,203 @@ using LakeWright.Core.Tenancy;
 using LakeWright.Multitenancy;
 using LakeWright.Multitenancy.Model;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using static LakeWright.TenantIsolation.Tests.TestApi;
 
 namespace LakeWright.TenantIsolation.Tests;
 
-/// <summary>
-/// <c>audit_events</c> is partitioned by month so retention sweeps are cheap.
-/// </summary>
-/// <remarks>
-/// The audit table grows without bound and the append-only guarantee keeps its rows honest; it
-/// does nothing about their size. Postgres native range partitioning by <c>OccurredAt</c> keeps
-/// each month's rows in a child table; dropping a partition is a metadata operation. The
-/// <see cref="PostgresFixture"/> calls <see cref="DatabasePartitioning.EnsurePartitionedAuditAsync"/>
-/// on every test database, so these tests verify the property the partition manager is meant
-/// to maintain.
-/// </remarks>
+[Trait("Category", "TenantIsolation")]
 [Collection(nameof(PostgresTests))]
 public class AuditPartitionTests(PostgresFixture postgres)
 {
-    [Fact]
-    public async Task Audit_events_is_a_partitioned_table()
-    {
-        // Arrange
-        var ct = TestContext.Current.CancellationToken;
-        await using var db = await postgres.NewDatabaseAsync();
-
-        // Act
-        var isPartitioned = await DatabasePartitioning.IsPartitionedForTestAsync(db, ct);
-
-        // Assert
-        isPartitioned.ShouldBeTrue(
-            "audit_events must be partitioned by month so a retention sweep is a DROP TABLE on a " +
-            "child rather than a DELETE on the parent.");
-    }
+    private static readonly DateTimeOffset FixedNow = new(2030, 6, 15, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    public async Task The_current_month_has_a_partition()
+    public async Task Populated_migration_is_lossless_and_preserves_global_id_identity()
     {
-        // Arrange
         var ct = TestContext.Current.CancellationToken;
         await using var db = await postgres.NewDatabaseAsync();
-
-        // Act
-        var partitions = await ListAuditPartitionsAsync(db, ct);
-
-        // Assert
-        var expected = $"audit_events_{DateTimeOffset.UtcNow:yyyy_MM}";
-        partitions.ShouldContain(expected,
-            $"the current month ({expected}) must have a partition, otherwise an insert in this " +
-            "month fails with 'no partition of relation \"audit_events\" found for row'.");
-    }
-
-    [Fact]
-    public async Task The_next_month_has_a_partition_pre_created()
-    {
-        // Arrange — pre-creating next month's partition is a deploy-time nicety, not a runtime
-        // correctness property. Skipping it lets a row whose OccurredAt lands just after the
-        // boundary fail until something notices.
-        var ct = TestContext.Current.CancellationToken;
-        await using var db = await postgres.NewDatabaseAsync();
-
-        // Act
-        var partitions = await ListAuditPartitionsAsync(db, ct);
-        var next = DateTimeOffset.UtcNow.AddMonths(1);
-
-        // Assert
-        partitions.ShouldContain($"audit_events_{next:yyyy_MM}");
-    }
-
-    [Fact]
-    public async Task Inserts_round_trip_through_the_partitioned_table()
-    {
-        // Arrange
-        var ct = TestContext.Current.CancellationToken;
-        await using var db = await postgres.NewDatabaseAsync();
-        var now = DateTimeOffset.UtcNow;
-
-        // Act — write through the EF model. The composite key is (Id, OccurredAt), so the same
-        // Id in two different months would be a key collision, not a data collision. Use
-        // distinct Ids here.
-        db.AuditEvents.Add(new AuditEvent
-        {
-            Id = Guid.NewGuid(),
-            OrganizationId = AcmeId,
-            PrincipalId = Alice,
-            Action = "test.action",
-            ResourceType = "Test",
-            ResourceId = "1",
-            OccurredAt = now,
-            Detail = null,
-        });
+        var first = NewEvent(new DateTimeOffset(2029, 12, 12, 0, 0, 0, TimeSpan.Zero), "first");
+        var second = NewEvent(new DateTimeOffset(2030, 6, 1, 0, 0, 0, TimeSpan.Zero), "second");
+        db.AuditEvents.AddRange(first, second);
         await db.SaveChangesAsync(ct);
 
-        // Assert
-        var stored = await db.AuditEvents.SingleAsync(e => e.PrincipalId == Alice, ct);
-        stored.Action.ShouldBe("test.action");
-        stored.OrganizationId.ShouldBe(AcmeId);
+        await DatabasePartitioning.MigrateAsync(db, FixedNow, cancellationToken: ct);
+        await DatabasePartitioning.ValidateAsync(db, ct);
+
+        (await db.AuditEvents.OrderBy(row => row.OccurredAt).Select(row => row.Id).ToListAsync(ct))
+            .ShouldBe([first.Id, second.Id]);
+        (await DatabasePartitioning.IsPartitionedAsync(db, ct)).ShouldBeTrue();
+
+        db.ChangeTracker.Clear();
+        db.AuditEvents.Add(NewEvent(FixedNow.AddMonths(1), "duplicate", first.Id));
+        var duplicate = await Should.ThrowAsync<DbUpdateException>(
+            async () => await db.SaveChangesAsync(ct));
+        duplicate.InnerException.ShouldBeOfType<PostgresException>().SqlState
+            .ShouldBe(PostgresErrorCodes.UniqueViolation);
     }
 
-    private static async Task<List<string>> ListAuditPartitionsAsync(
-        LakeWrightDbContext db,
-        CancellationToken cancellationToken)
+    [Fact]
+    public async Task Migration_preserves_application_acl_row_security_and_append_only_rules()
     {
-        var names = await db.Database
-            .SqlQueryRaw<string>(
+        const string role = "lakewright_partition_app";
+        const string password = "partition-probe-password";
+        var ct = TestContext.Current.CancellationToken;
+        await using var owner = await postgres.NewDatabaseAsync();
+        await DatabaseHardening.ApplyAsync(owner, role, password, ct);
+        await owner.Database.ExecuteSqlRawAsync(
+            """
+            ALTER TABLE audit_events ENABLE ROW LEVEL SECURITY;
+            CREATE POLICY audit_principal_policy ON audit_events
+                TO lakewright_partition_app
+                USING ("PrincipalId" = current_user)
+                WITH CHECK ("PrincipalId" = current_user);
+            """,
+            ct);
+
+        owner.AuditEvents.AddRange(
+            NewEvent(FixedNow, role),
+            NewEvent(FixedNow, "hidden-principal"));
+        await owner.SaveChangesAsync(ct);
+        await DatabasePartitioning.MigrateAsync(owner, FixedNow, cancellationToken: ct);
+
+        await using var app = PostgresFixture.AsApplicationRole(owner, role, password);
+        (await app.AuditEvents.Select(row => row.PrincipalId).ToListAsync(ct)).ShouldBe([role]);
+        app.AuditEvents.Add(NewEvent(FixedNow.AddDays(1), role));
+        await app.SaveChangesAsync(ct);
+
+        var backupWrite = await Should.ThrowAsync<PostgresException>(
+            async () => await app.Database.ExecuteSqlRawAsync(
                 """
-                SELECT child.relname AS "Value"
-                FROM pg_inherits i
-                JOIN pg_class parent ON parent.oid = i.inhparent
-                JOIN pg_class child ON child.oid = i.inhrelid
-                WHERE parent.relname = 'audit_events'
-                ORDER BY child.relname
-                """)
-            .ToListAsync(cancellationToken);
-        return names;
+                INSERT INTO audit_events_unpartitioned_backup
+                    ("Id", "PrincipalId", "Action", "ResourceType", "OccurredAt")
+                VALUES ('00000000-0000-0000-0000-000000000002', 'lakewright_partition_app',
+                        'test.audit', 'test', '2030-06-16T00:00:00Z')
+                """,
+                ct));
+        backupWrite.SqlState.ShouldBe(PostgresErrorCodes.InsufficientPrivilege);
+
+        await DatabasePartitioning.ValidateAsync(owner, ct);
+        await DatabasePartitioning.FinalizeMigrationAsync(owner, ct);
+
+        var update = await Should.ThrowAsync<PostgresException>(
+            async () => await app.AuditEvents.ExecuteUpdateAsync(
+                setters => setters.SetProperty(row => row.Action, "tampered"), ct));
+        update.SqlState.ShouldBe(PostgresErrorCodes.InsufficientPrivilege);
+
+        var registryWrite = await Should.ThrowAsync<PostgresException>(
+            async () => await app.Database.ExecuteSqlRawAsync(
+                "INSERT INTO audit_event_ids (\"Id\", \"OccurredAt\") VALUES ('00000000-0000-0000-0000-000000000001', now())",
+                ct));
+        registryWrite.SqlState.ShouldBe(PostgresErrorCodes.InsufficientPrivilege);
     }
+
+    [Fact]
+    public async Task Fixed_clock_maintenance_is_idempotent_and_covers_future_months()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        await DatabasePartitioning.MigrateAsync(
+            db,
+            FixedNow,
+            new AuditPartitionOptions { FutureMonths = 3 },
+            ct);
+
+        var first = await DatabasePartitioning.MaintainAsync(
+            db,
+            FixedNow,
+            new AuditPartitionOptions { FutureMonths = 3 },
+            ct);
+        var second = await DatabasePartitioning.MaintainAsync(
+            db,
+            FixedNow.AddMonths(2),
+            new AuditPartitionOptions { FutureMonths = 3 },
+            ct);
+
+        first.CreatedPartitions.ShouldBe(0);
+        second.CreatedPartitions.ShouldBe(2);
+        (await ListPartitionsAsync(db, ct)).ShouldContain("audit_events_2030_11");
+    }
+
+    [Fact]
+    public async Task Retention_drops_only_partitions_wholly_before_the_cutoff()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        var expired = NewEvent(new DateTimeOffset(2023, 5, 31, 23, 0, 0, TimeSpan.Zero), "expired");
+        var boundary = NewEvent(new DateTimeOffset(2023, 6, 1, 0, 0, 0, TimeSpan.Zero), "boundary");
+        db.AuditEvents.AddRange(expired, boundary);
+        await db.SaveChangesAsync(ct);
+        await DatabasePartitioning.MigrateAsync(db, FixedNow, cancellationToken: ct);
+        await DatabasePartitioning.FinalizeMigrationAsync(db, ct);
+
+        var result = await DatabasePartitioning.MaintainAsync(db, FixedNow, cancellationToken: ct);
+
+        result.DroppedPartitions.ShouldBe(1);
+        (await db.AuditEvents.Select(row => row.Id).ToListAsync(ct)).ShouldBe([boundary.Id]);
+        (await ListPartitionsAsync(db, ct)).ShouldNotContain("audit_events_2023_05");
+        (await ListPartitionsAsync(db, ct)).ShouldContain("audit_events_2023_06");
+    }
+
+    [Fact]
+    public async Task Rollback_copies_post_migration_rows_before_restoring_the_original_table()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        db.AuditEvents.Add(NewEvent(FixedNow, "before"));
+        await db.SaveChangesAsync(ct);
+        await DatabasePartitioning.MigrateAsync(db, FixedNow, cancellationToken: ct);
+
+        db.ChangeTracker.Clear();
+        db.AuditEvents.Add(NewEvent(FixedNow.AddDays(1), "after"));
+        await db.SaveChangesAsync(ct);
+        await DatabasePartitioning.RollbackMigrationAsync(db, ct);
+
+        (await DatabasePartitioning.IsPartitionedAsync(db, ct)).ShouldBeFalse();
+        (await db.AuditEvents.Select(row => row.PrincipalId).OrderBy(value => value).ToListAsync(ct))
+            .ShouldBe(["after", "before"]);
+    }
+
+    [Fact]
+    public async Task Application_role_cannot_run_partition_maintenance()
+    {
+        const string role = "lakewright_partition_ddl_probe";
+        const string password = "partition-ddl-password";
+        var ct = TestContext.Current.CancellationToken;
+        await using var owner = await postgres.NewDatabaseAsync();
+        await DatabasePartitioning.MigrateAsync(owner, FixedNow, cancellationToken: ct);
+        await DatabasePartitioning.FinalizeMigrationAsync(owner, ct);
+        await DatabaseHardening.ApplyAsync(owner, role, password, ct);
+        await using var app = PostgresFixture.AsApplicationRole(owner, role, password);
+
+        var refused = await Should.ThrowAsync<PostgresException>(
+            async () => await DatabasePartitioning.MaintainAsync(app, FixedNow.AddMonths(1), cancellationToken: ct));
+
+        refused.SqlState.ShouldBe(PostgresErrorCodes.InsufficientPrivilege);
+    }
+
+    private static AuditEvent NewEvent(DateTimeOffset occurredAt, string principal, Guid? id = null) => new()
+    {
+        Id = id ?? Guid.CreateVersion7(),
+        OrganizationId = AcmeId,
+        PrincipalId = principal,
+        Action = "test.audit",
+        ResourceType = "test",
+        ResourceId = principal,
+        OccurredAt = occurredAt,
+        Detail = null
+    };
+
+    private static Task<List<string>> ListPartitionsAsync(
+        LakeWrightDbContext db,
+        CancellationToken cancellationToken) =>
+        db.Database.SqlQueryRaw<string>(
+            """
+            SELECT child.relname AS "Value"
+            FROM pg_catalog.pg_inherits inheritance
+            JOIN pg_catalog.pg_class parent ON parent.oid = inheritance.inhparent
+            JOIN pg_catalog.pg_class child ON child.oid = inheritance.inhrelid
+            WHERE parent.relname = 'audit_events'
+            ORDER BY child.relname
+            """).ToListAsync(cancellationToken);
 }
