@@ -117,6 +117,18 @@ internal static partial class DatabasePartitioning
                    JOIN pg_catalog.pg_attribute attribute
                      ON attribute.attrelid = index_row.indrelid
                     AND attribute.attnum = index_row.indkey[0]
+                   WHERE index_row.indrelid = pg_catalog.to_regclass('public.audit_event_ids')
+                     AND index_row.indisprimary
+                     AND index_row.indisunique
+                     AND index_row.indisvalid
+                     AND index_row.indnkeyatts = 1
+                     AND attribute.attname = 'Id')
+               AND EXISTS (
+                   SELECT 1
+                   FROM pg_catalog.pg_index index_row
+                   JOIN pg_catalog.pg_attribute attribute
+                     ON attribute.attrelid = index_row.indrelid
+                    AND attribute.attnum = index_row.indkey[0]
                    WHERE index_row.indexrelid = pg_catalog.to_regclass('public.audit_event_ids_occurred_at')
                      AND index_row.indrelid = pg_catalog.to_regclass('public.audit_event_ids')
                      AND index_row.indisvalid
@@ -132,7 +144,13 @@ internal static partial class DatabasePartitioning
                      AND trigger_row.tgname = 'lakewright_register_audit_event_id'
                      AND trigger_row.tgfoid = pg_catalog.to_regprocedure('public.lakewright_register_audit_event_id()')
                      AND trigger_row.tgtype = 7
+                     AND trigger_row.tgenabled <> 'D'
                      AND NOT trigger_row.tgisinternal)
+               AND EXISTS (
+                   SELECT 1
+                   FROM pg_catalog.pg_proc function_row
+                   WHERE function_row.oid = pg_catalog.to_regprocedure('public.lakewright_register_audit_event_id()')
+                     AND function_row.prosecdef)
             """,
             cancellationToken,
             ("trigger_table", triggerTable));
