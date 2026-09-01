@@ -54,7 +54,9 @@ The live run used a temporary `dbw_private-project_test.reference` schema, SQL n
 were removed after the three tests passed. The current workspace does not contain the model-serving
 endpoint, Genie space, published dashboard and service-principal credentials required by
 `LiveChatTests`, `LiveGenieTests` and `LiveEmbeddingTests`, so those historical rows were not dated
-forward. Bundle deployment was not repeated; only authenticated validation was rerun.
+forward. Bundle deployment was not repeated; only authenticated validation was rerun. The complete
+request, package-consumer, publication and cleanup commands are in the
+[1.0.1 release evidence](release-evidence/v1.0.1.md).
 
 ## Databricks
 
