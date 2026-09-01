@@ -116,6 +116,7 @@ request, package-consumer, publication and cleanup commands are in the
 | Isolation suite fails when isolation is broken | **Verified** | 2026-07-31, same |
 | `audit_events` refuses update and delete in application code | **Verified** | 2026-07-31 |
 | `audit_events` refuses `ExecuteDelete`/`ExecuteUpdate` at the database | **Verified** | 2026-07-31, as the restricted application role |
+| Populated `audit_events` migration, monthly retention, ACL/RLS preservation and rollback | **Verified** | 2026-09-01, PostgreSQL 17 through `AuditPartitionTests`; scheduling the maintenance command remains an adopter operation. ADR 0020. |
 | An operation is invisible to a tenant that does not own it | **Verified** | 2026-07-31 |
 | EF Core model on Lakebase | Unverified | Standard Postgres only; no Lakebase-specific feature is used |
 

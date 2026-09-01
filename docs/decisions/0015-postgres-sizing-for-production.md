@@ -62,12 +62,10 @@ default moves to 200 and the EF Core pool default to 12.
   `Microsoft.DBforPostgreSQL/flexibleServers` SKU (`Standard_B1ms` in
   the current template) supports this; if we hit it, the Bicep
   template's tier moves up.
-- **Audit partitioning is a real change.** The harness's tests
-  do not exercise audit volume, so the partition migration is
-  covered by a one-off migration script and verified by a smoke
-  query (insert N rows, query for N across partitions). The test
-  suite's existing `AuditTrailTests` continues to run against the
-  partitioned table with the same assertions.
+- **Audit partitioning is a real change.** ADR 0020 owns its later implementation: an atomic
+  populated-table migration, an executable migration-role path, recurring maintenance, and real
+  PostgreSQL tests for losslessness, isolation controls, retention boundaries, and rollback.
+  This sizing decision supplies the reason for partitioning, not its migration mechanics.
 - **The migration role split (already documented in
   `docs/compliance/permissions.md`) is now enforced by the
   deployment**, not just by convention. The Bicep template's
