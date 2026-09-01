@@ -64,15 +64,8 @@ public sealed class DashboardTokenBroker : IDashboardTokenBroker
         string viewerId,
         CancellationToken cancellationToken = default)
     {
-        // The external value is the bridge between the application database and the Databricks
-        // workspace. By default it is the bare tenant id, which is what the library ships.
-        // When the tenant carries a ScopeVersion — the property added so a product's
-        // per-tenant scope changes can be reflected in cached data — the broker composes
-        // `{tenantId}~{version}`. The delimiter `~` is the only delimiter that does not occur
-        // inside a GUID, does not occur inside a version value (an md5 hex string), and does
-        // not conflict with the claim format: `urn:aibi:external_data:<val>:<viewer>:<board>`.
-        // `|` and `:` are reserved; `-` and `_` occur inside GUIDs; verified against the claim
-        // format in the vendor docs and against a live workspace this session.
+        // ScopeVersion changes the external value so a scope change bypasses the vendor's
+        // cached filter. See docs/decisions/0017-scope-version.md for the delimiter contract.
         var externalValue = string.IsNullOrEmpty(tenant.ScopeVersion)
             ? tenant.TenantId.ToString()
             : $"{tenant.TenantId.ToString()}~{tenant.ScopeVersion}";
@@ -85,10 +78,6 @@ public sealed class DashboardTokenBroker : IDashboardTokenBroker
                 nameof(viewerId));
         }
 
-        // The downscoped (leg-3) token is what the caller actually consumes. Caching it
-        // collapses the second-and-subsequent open of the same (tenant, dashboard, viewer) to
-        // zero HTTP roundtrips. The full three-leg exchange runs as the factory, so a cache
-        // miss pays the full price and a cache hit pays nothing.
         if (_embedCache is not null)
         {
             return await _embedCache.GetOrAddAsync(
@@ -128,9 +117,6 @@ public sealed class DashboardTokenBroker : IDashboardTokenBroker
         AuthenticationHeaderValue basic,
         CancellationToken cancellationToken)
     {
-        // The workspace token is shared across tenants, dashboards, and viewers. Caching it
-        // collapses N board opens to one leg-1 roundtrip. The cache key is the service
-        // principal id (rotating credentials is the only legitimate invalidation).
         if (_workspaceCache is not null)
         {
             return await _workspaceCache.GetOrAddAsync(

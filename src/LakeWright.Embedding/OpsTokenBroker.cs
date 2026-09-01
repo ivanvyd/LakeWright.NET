@@ -12,11 +12,8 @@ namespace LakeWright.Embedding;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Each call mints a fresh token. Caching the ops token is a separate piece of work (the same
-/// <c>IWorkspaceTokenCache</c> abstraction introduced for the embed path, keyed on the ops
-/// <c>ClientId</c>); this class does not cache because the embed cache lives in a separate
-/// branch and pulling it in would create a cross-PR dependency. A consumer that needs cached
-/// ops tokens today can wrap this broker in a decorator.
+/// Each call mints a fresh token. A consumer that needs cached ops tokens can wrap this broker
+/// in a caching decorator.
 /// </para>
 /// <para>
 /// The lifetime is read from the response's <c>expires_in</c>, falling back to one hour if
