@@ -72,14 +72,14 @@
         "type": "Project",
         "dependencies": {
           "Azure.Core": "[1.60.0, )",
-          "LakeWright.Core": "[0.1.0, )",
+          "LakeWright.Core": "[1.0.1, )",
           "Microsoft.Azure.Databricks.Client": "[2.9.3, )"
         }
       },
       "lakewright.multitenancy": {
         "type": "Project",
         "dependencies": {
-          "LakeWright.Core": "[0.1.0, )",
+          "LakeWright.Core": "[1.0.1, )",
           "Microsoft.EntityFrameworkCore": "[10.0.11, )",
           "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.3, )"
         }
