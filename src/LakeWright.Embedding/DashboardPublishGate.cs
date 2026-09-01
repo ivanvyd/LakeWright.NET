@@ -15,7 +15,7 @@ namespace LakeWright.Embedding;
 /// <para>
 /// The check is a tokenizer that tracks three string states — single-quoted, line comment,
 /// block comment — and reports the marker only when it appears in code. That is enough to
-/// close the bypass that bit VRM in production. It is <em>not</em> an AST walk: a board that
+/// close the reproduced string-literal bypass. It is <em>not</em> an AST walk: a board that
 /// reconstructs the marker by concatenation (<c>'__aibi_' || 'external_value'</c>) is
 /// genuinely unscoped and the gate will refuse it. Closing that case is the warehouse's
 /// <c>parsed_query</c> job, not this one's; see ADR 0017.

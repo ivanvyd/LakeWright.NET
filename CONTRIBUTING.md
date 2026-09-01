@@ -9,6 +9,18 @@ you have written the code is a bad experience for both of us.
 Good first issues are labelled `good-first-issue` and are genuinely scoped: each states the file to
 change, the expected behaviour, and how to verify it.
 
+## Protect confidential context
+
+This is a public repository. Never include real client or customer names, project codenames,
+workspace or catalog identifiers, private document paths, internal domains, or other identifying
+details without explicit approval for that disclosure. Use neutral descriptions and placeholders
+in source, tests, examples, documentation, screenshots, commit messages, pull requests, issues,
+release notes, CI output, and generated package documentation.
+
+Before opening a pull request or publishing a package, inspect both the human-written change and
+the generated artifacts. A harmless-looking XML comment can become public API documentation inside
+a package, and a private identifier in a commit message remains visible even after the file changes.
+
 ## Running it
 
 You do not need a Databricks account to work on this. You do need Docker, because the isolation

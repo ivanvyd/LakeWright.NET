@@ -80,6 +80,11 @@ jobs:
             *)   echo "value=stable"    >> "$GITHUB_OUTPUT" ;;
           esac
 
+      - name: Scan source for confidential identifiers
+        env:
+          OSS_CONFIDENTIAL_TERMS_B64: ${{ secrets.OSS_CONFIDENTIAL_TERMS_B64 }}
+        run: bash scripts/check-confidential-identifiers.sh
+
       - run: dotnet restore --locked-mode
       - name: Build
         env:
@@ -99,6 +104,11 @@ jobs:
           count=$(find artifacts -name '*.nupkg' | wc -l)
           echo "packed $count package(s)"
           test "$count" -gt 0
+
+      - name: Scan packages for confidential identifiers
+        env:
+          OSS_CONFIDENTIAL_TERMS_B64: ${{ secrets.OSS_CONFIDENTIAL_TERMS_B64 }}
+        run: bash scripts/check-confidential-identifiers.sh artifacts
 
       # CycloneDX over the solution: one tool, matches the NuGet dependency graph.
       # actions/attest accepts either CycloneDX or SPDX, so this does not lock out
