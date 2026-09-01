@@ -92,6 +92,11 @@ public sealed class LakeWrightDbContext(DbContextOptions<LakeWrightDbContext> op
             // which is the trailing column here, so it reads straight from the index.
             e.HasIndex(x => new { x.State, x.ClaimedAt });
 
+            e.HasIndex(x => new { x.OrganizationId, x.CompletedAt })
+                .IncludeProperties(x => new { x.ClaimedAt, x.Kind, x.ExternalId })
+                .HasFilter("\"ExternalId\" IS NOT NULL AND \"ClaimedAt\" IS NOT NULL AND \"CompletedAt\" IS NOT NULL")
+                .HasDatabaseName("IX_operations_billing_window");
+
             // The claim query orders by CreatedAt, which the index above does not cover, so
             // Postgres sorted every pending row on every claim. Measured against Postgres 17:
             // 25.6ms at a 50,000-row backlog, and 141.7ms at 300,000 with the sort spilling 13.5MB

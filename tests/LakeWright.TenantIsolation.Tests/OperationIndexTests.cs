@@ -38,4 +38,23 @@ public class OperationIndexTests(PostgresFixture postgres)
               && i.Contains("WHERE", StringComparison.Ordinal),
             "the claim query orders by CreatedAt and sorts every pending row without this");
     }
+
+    [Fact]
+    public async Task The_billing_window_query_is_backed_by_a_tenant_time_index()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+
+        var indexes = await db.Database
+            .SqlQuery<string>($"SELECT indexdef AS \"Value\" FROM pg_indexes WHERE tablename = 'operations'")
+            .ToListAsync(cancellationToken);
+
+        indexes.ShouldContain(
+            index => index.Contains("IX_operations_billing_window", StringComparison.Ordinal)
+                && index.Contains("OrganizationId", StringComparison.Ordinal)
+                && index.Contains("CompletedAt", StringComparison.Ordinal)
+                && index.Contains("ExternalId", StringComparison.Ordinal)
+                && index.Contains("WHERE", StringComparison.Ordinal),
+            "billing attribution must not scan an unbounded tenant operation history");
+    }
 }

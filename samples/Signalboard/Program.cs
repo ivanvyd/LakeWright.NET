@@ -29,8 +29,8 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration["Databricks:WorkspaceUrl"])
 
 // Cost attribution: opt-in via configuration, like the Databricks clients. The sample ships the
 // elapsed-time proxy because it costs nothing to run and makes the cost endpoint answerable
-// without a live workspace. A product wired to its own billing table replaces this registration
-// with its own ICostAttribution.
+// without a live workspace. A product with the system-table grants replaces this call with
+// AddLakeWrightBillingCostAttribution; see docs/guides/billing-cost-attribution.md.
 builder.Services.AddLakeWrightCostAttribution(builder.Configuration);
 
 // OpenTelemetry: opt-in via configuration. The library publishes plain System.Diagnostics

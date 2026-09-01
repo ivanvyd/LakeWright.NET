@@ -1,4 +1,5 @@
 using Azure.Core;
+using LakeWright.Core.Cost;
 using LakeWright.Core.Jobs;
 using LakeWright.Core.Tenancy;
 using LakeWright.Databricks;
@@ -157,6 +158,34 @@ public static class LakeWrightServiceCollectionExtensions
             .ValidateOnStart();
 
         services.AddLakeWrightCostAttribution();
+        return services;
+    }
+
+    /// <summary>
+    /// Replaces proxy attribution with priced usage from Databricks billing system tables.
+    /// </summary>
+    /// <remarks>
+    /// Call after <see cref="AddLakeWright"/> and <see cref="AddLakeWrightDatabricks"/>. The
+    /// workspace identity needs <c>USE</c> and <c>SELECT</c> access to
+    /// <c>system.billing.usage</c> and <c>system.billing.list_prices</c>. The configured workspace
+    /// id is always included in the billing query; job-run ids are first selected from the
+    /// tenant-filtered PostgreSQL operations table and correlated in application code.
+    /// </remarks>
+    public static IServiceCollection AddLakeWrightBillingCostAttribution(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        services.AddOptions<BillingUsageOptions>()
+            .Bind(configuration.GetSection(BillingUsageOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.TryAddSingletonTimeProvider();
+        services.AddScoped<IBillingUsageReader, DatabricksBillingUsageReader>();
+        services.AddScoped<ICostAttribution, BillingCostAttribution>();
         return services;
     }
 
