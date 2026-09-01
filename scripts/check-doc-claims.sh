@@ -23,6 +23,17 @@ set -uo pipefail
 
 violations=0
 
+if ! git rev-parse --is-inside-work-tree >/dev/null; then
+  echo "ERROR: documentation claims must be checked from a Git worktree."
+  exit 1
+fi
+
+mapfile -d '' documents < <(git ls-files -z --cached --others --exclude-standard -- '*.md')
+if [ "${#documents[@]}" -eq 0 ]; then
+  echo "ERROR: no repository Markdown files were found."
+  exit 1
+fi
+
 # $1 = extended regex, $2 = why it is wrong now
 #
 # grep exits 0 on a match, 1 on none, and 2 or more on a real error — a malformed pattern, an
@@ -31,9 +42,10 @@ violations=0
 # the green check is then evidence of nothing.
 forbid() {
   local pattern="$1" reason="$2" hits status
-  # No pipe: after `hits=$(a | b)` the status of `a` is not recoverable, so .git is excluded by
-  # grep itself and `$?` means exactly what it says.
-  hits=$(grep -rniE --include='*.md' --exclude='*.local.md' --exclude-dir=.git "$pattern" .)
+  # No pipe: after `hits=$(a | b)` the status of `a` is not recoverable, so `$?` means exactly
+  # what it says. The file list includes tracked and non-ignored new documents, but not ignored
+  # personal notes or build output.
+  hits=$(grep -niE "$pattern" "${documents[@]}")
   status=$?
   if [ "$status" -gt 1 ]; then
     echo "ERROR: grep failed (exit $status) on rule: $reason"
