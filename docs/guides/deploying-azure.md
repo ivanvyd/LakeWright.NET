@@ -89,13 +89,36 @@ subject must include the branch or environment the workflow runs under.
 
 ## After the deploy
 
-1. Grant the managed identity `CAN RUN` on the published dashboard in Databricks if the
+1. Run the database migration as the PostgreSQL table owner, never with the application
+   connection string:
+
+   ```bash
+   export LAKEWRIGHT_MIGRATION_CONNECTION_STRING='<migration-role connection string>'
+   dotnet run --project tools/LakeWright.DatabaseMaintenance -- migrate
+   dotnet run --project tools/LakeWright.DatabaseMaintenance -- validate
+   ```
+
+   Smoke the deployed application's audit read and append paths through its restricted role. Then
+   run `finalize`; run `rollback` instead if the smoke fails. Schedule `maintain` at least monthly
+   with the same migration identity (daily is recommended). Its default is seven years and two
+   future partitions; override those with `LAKEWRIGHT_AUDIT_RETENTION_YEARS` and
+   `LAKEWRIGHT_AUDIT_FUTURE_MONTHS`. The bounded migration defaults to a 15-second lock wait,
+   five-minute statement timeout, one million rows, and 2 GiB. Configure those ceilings with
+   `LAKEWRIGHT_AUDIT_LOCK_TIMEOUT_SECONDS`, `LAKEWRIGHT_AUDIT_STATEMENT_TIMEOUT_SECONDS`,
+   `LAKEWRIGHT_AUDIT_MAX_MIGRATION_ROWS`, and `LAKEWRIGHT_AUDIT_MAX_MIGRATION_BYTES`. The historical
+   month span defaults to 120 partitions and is configured with
+   `LAKEWRIGHT_AUDIT_MAX_HISTORICAL_PARTITIONS` (maximum 1,200). If rollback is used, inspect the
+   retained partitioned copy and run `finalize` to clean it up before another `migrate`. Alert on a
+   non-zero exit. See
+   [ADR 0020](../decisions/0020-safe-audit-table-partitioning.md).
+
+2. Grant the managed identity `CAN RUN` on the published dashboard in Databricks if the
    product is using `LakeWright.Embedding`.
-2. Configure the federated credential between the managed identity and the Databricks service
+3. Configure the federated credential between the managed identity and the Databricks service
    principal, if OBO is needed. The template does not create the federated credential because
    the trust direction (Azure → Databricks, or Databricks → Azure) is a platform decision the
    bundle does not own.
-3. Run `databricks bundle deploy -t prod` to land the platform half, then point the container
+4. Run `databricks bundle deploy -t prod` to land the platform half, then point the container
    image at the deploy commit and re-run the workflow.
 
 ## Compatibility

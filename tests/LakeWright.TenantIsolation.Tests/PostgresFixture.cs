@@ -16,6 +16,7 @@ namespace LakeWright.TenantIsolation.Tests;
 public sealed class PostgresFixture : IAsyncLifetime
 {
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:17-alpine")
+        .WithEnvironment("POSTGRES_MAX_CONNECTIONS", "200")
         .WithReuse(false)
         .Build();
 
@@ -33,6 +34,9 @@ public sealed class PostgresFixture : IAsyncLifetime
         var builder = new Npgsql.NpgsqlConnectionStringBuilder(_container.GetConnectionString())
         {
             Database = name,
+            // A unique database is created for every test. Pooling those one-use connections
+            // retained a pool per database for the lifetime of the process and eventually made
+            // the partition suite fail for lack of server connections.
             Pooling = false
         };
 
