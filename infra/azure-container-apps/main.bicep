@@ -118,6 +118,20 @@ resource postgres 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' = {
   }
 }
 
+// ADR 0015: production Postgres is sized for the harness's 15-process × 12-connection
+// footprint. The default max_connections on Flexible Server B1ms is 100, which would
+// exhaust the pool well before 15 web+worker replicas reach steady state. Set 200 here
+// and let the application own the per-process pool size (it's 12, in the harness and
+// in the Bicep's env).
+resource postgresMaxConnections 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@2024-08-01' = {
+  parent: postgres
+  name: 'max_connections'
+  properties: {
+    value: '200'
+    source: 'user-override'
+  }
+}
+
 resource postgresDb 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2024-08-01' = {
   parent: postgres
   name: postgresDbName
@@ -144,7 +158,11 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
       secrets: [
         {
           name: 'db-connection-string'
-          value: 'Host=${postgres.properties.fullyQualifiedDomainName};Database=${postgresDbName};Username=${postgresAdminLogin};Password=${postgresAdminPassword}'
+          // ADR 0015: Maximum Pool Size=12 caps each replica's EF Core / Npgsql pool so
+          // 15 replicas × 12 = 180 fits under 200 server-side max_connections. The Bicep
+          // sets the server ceiling and the connection string sets the client ceiling;
+          // the gap between them is the SLO the harness measures.
+          value: 'Host=${postgres.properties.fullyQualifiedDomainName};Database=${postgresDbName};Username=${postgresAdminLogin};Password=${postgresAdminPassword};Maximum Pool Size=12;Timeout=15;Command Timeout=30'
         }
       ]
       ingress: {

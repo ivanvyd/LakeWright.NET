@@ -41,15 +41,21 @@ public sealed class DashboardTokenBroker : IDashboardTokenBroker
     private readonly HttpClient _http;
     private readonly DashboardEmbeddingOptions _options;
     private readonly TimeProvider _time;
+    private readonly IWorkspaceTokenCache? _workspaceCache;
+    private readonly IEmbedTokenCache? _embedCache;
 
     public DashboardTokenBroker(
         HttpClient http,
         IOptions<DashboardEmbeddingOptions> options,
-        TimeProvider time)
+        TimeProvider time,
+        IWorkspaceTokenCache? workspaceCache = null,
+        IEmbedTokenCache? embedCache = null)
     {
         _http = http;
         _options = options.Value;
         _time = time;
+        _workspaceCache = workspaceCache;
+        _embedCache = embedCache;
     }
 
     public async Task<EmbedToken> IssueAsync(
@@ -58,7 +64,11 @@ public sealed class DashboardTokenBroker : IDashboardTokenBroker
         string viewerId,
         CancellationToken cancellationToken = default)
     {
-        var externalValue = tenant.TenantId.ToString();
+        // ScopeVersion changes the external value so a scope change bypasses the vendor's
+        // cached filter. See docs/decisions/0017-scope-version.md for the delimiter contract.
+        var externalValue = string.IsNullOrEmpty(tenant.ScopeVersion)
+            ? tenant.TenantId.ToString()
+            : $"{tenant.TenantId.ToString()}~{tenant.ScopeVersion}";
 
         var size = Encoding.UTF8.GetByteCount(viewerId) + Encoding.UTF8.GetByteCount(externalValue);
         if (size > MaxViewerBytes)
@@ -68,19 +78,30 @@ public sealed class DashboardTokenBroker : IDashboardTokenBroker
                 nameof(viewerId));
         }
 
+        if (_embedCache is not null)
+        {
+            return await _embedCache.GetOrAddAsync(
+                new EmbedCacheKey(tenant.TenantId, tenant.ScopeVersion, dashboardId, viewerId),
+                ct => new ValueTask<EmbedToken>(IssueUncachedAsync(tenant, dashboardId, viewerId, externalValue, ct)),
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        return await IssueUncachedAsync(tenant, dashboardId, viewerId, externalValue, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<EmbedToken> IssueUncachedAsync(
+        TenantContext tenant,
+        string dashboardId,
+        string viewerId,
+        string externalValue,
+        CancellationToken cancellationToken)
+    {
         var basic = new AuthenticationHeaderValue(
             "Basic",
             Convert.ToBase64String(
                 Encoding.UTF8.GetBytes($"{_options.ClientId}:{_options.ClientSecret}")));
 
-        var workspaceToken = await RequestTokenAsync(
-            basic,
-            new Dictionary<string, string>
-            {
-                ["grant_type"] = "client_credentials",
-                ["scope"] = "all-apis",
-            },
-            cancellationToken).ConfigureAwait(false);
+        var workspaceToken = await AcquireWorkspaceTokenAsync(basic, cancellationToken).ConfigureAwait(false);
 
         var tokenInfo = await ReadTokenInfoAsync(
             workspaceToken.AccessToken,
@@ -90,6 +111,35 @@ public sealed class DashboardTokenBroker : IDashboardTokenBroker
             cancellationToken).ConfigureAwait(false);
 
         return await RequestTokenAsync(basic, tokenInfo, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<EmbedToken> AcquireWorkspaceTokenAsync(
+        AuthenticationHeaderValue basic,
+        CancellationToken cancellationToken)
+    {
+        if (_workspaceCache is not null)
+        {
+            return await _workspaceCache.GetOrAddAsync(
+                _options.ClientId,
+                ct => new ValueTask<EmbedToken>(RequestTokenAsync(
+                    basic,
+                    new Dictionary<string, string>
+                    {
+                        ["grant_type"] = "client_credentials",
+                        ["scope"] = "all-apis",
+                    },
+                    ct)),
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        return await RequestTokenAsync(
+            basic,
+            new Dictionary<string, string>
+            {
+                ["grant_type"] = "client_credentials",
+                ["scope"] = "all-apis",
+            },
+            cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<EmbedToken> RequestTokenAsync(
