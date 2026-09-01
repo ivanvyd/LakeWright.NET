@@ -15,4 +15,6 @@ Closes #
       isolation suite
 - [ ] Changes architecture or public API? An ADR is included in this pull request
 - [ ] Breaking change? Listed in `CHANGELOG.md` with a migration note
+- [ ] No unapproved client/customer names, project codenames, environment identifiers, private
+      paths, or other confidential context appears in the change, metadata, logs, or artifacts
 - [ ] Commits signed off (`git commit -s`)

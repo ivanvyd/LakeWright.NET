@@ -14,7 +14,7 @@ namespace LakeWright.TenantIsolation.Tests;
 /// bypass rode through and the cases the gate still has to handle correctly.
 /// </para>
 /// <para>
-/// The private-project reproduction is the most important test: a board whose WHERE clause
+/// The production-shape reproduction is the most important test: a board whose WHERE clause
 /// mentions the marker only inside a string literal used to pass with no tenant
 /// filter. The gate must refuse it. If this test ever flips green the bypass is
 /// back and any tenant the board is shipped to leaks every row.
@@ -48,7 +48,7 @@ public class DashboardPublishGateTests
     }
 
     /// <summary>
-    /// The bypass private-project hit: the marker appears only inside a single-quoted string
+    /// The reproduced bypass: the marker appears only inside a single-quoted string
     /// literal. A naive substring search would accept this; the gate must not.
     /// </summary>
     [Fact]

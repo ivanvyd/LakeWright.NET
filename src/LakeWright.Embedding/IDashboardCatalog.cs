@@ -14,10 +14,8 @@ namespace LakeWright.Embedding;
 /// </para>
 /// <para>
 /// The library is intentionally not opinionated about *which* dashboards a tenant is
-/// allowed to embed: that is the application's per-tenant assignment model and the
-/// <c>private-project.DatabricksDashboardCatalog</c> reference in the gap analysis is the shape of a
-/// complete one. The library only exposes the workspace list and lets the caller intersect
-/// it with its own assignment table.
+/// allowed to embed: that is the application's per-tenant assignment model. The library only
+/// exposes the workspace list and lets the caller intersect it with its own assignment table.
 /// </para>
 /// </remarks>
 public interface IDashboardCatalog
