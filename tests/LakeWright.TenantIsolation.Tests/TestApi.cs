@@ -68,7 +68,9 @@ public static class TestApi
         }
     }
 
-    public static async Task<(IHost Host, HttpClient Client)> StartAsync(PostgresFixture postgres)
+    public static async Task<(IHost Host, HttpClient Client)> StartAsync(
+        PostgresFixture postgres,
+        Action<IServiceCollection>? configureServices = null)
     {
         ArgumentNullException.ThrowIfNull(postgres);
 
@@ -102,6 +104,7 @@ public static class TestApi
                     services.AddScoped<ITenantContextAccessor, HttpTenantContextAccessor>();
                     services.AddScoped<IAuthorizationHandler, TenantRoleHandler>();
                     services.AddLakeWrightCostAttribution();
+                    configureServices?.Invoke(services);
                     services.Configure<MultitenancyOptions>(o => o.Catalog = "analytics");
 
                     services.AddAuthentication(StubAuth.SchemeName)
