@@ -34,7 +34,8 @@ builder.Services.AddLakeWrightBillingCostAttribution(builder.Configuration);
   },
   "DatabricksBilling": {
     "WorkspaceId": "...",
-    "PollIntervalMilliseconds": 250
+    "PollIntervalMilliseconds": 250,
+    "PollingTimeoutSeconds": 120
   }
 }
 ```
@@ -47,6 +48,17 @@ The response retains the existing DBU fields. `EstimatedListCost` is a collectio
 `pricing.effective_list.default`; it does not include a private negotiated discount and must not be
 presented as an invoice total. `ElapsedSeconds` is zero for billing rows because the billing table
 reports quantities and usage intervals, not the operation wall-clock value used by the proxy.
+
+Usage rows that cross either report-window or price-validity boundaries are prorated by their
+overlap. The same prorated quantity feeds both DBUs and effective list cost, and a price change
+inside one usage row contributes one segment at each effective price. The endpoint never adds
+amounts in unlike currencies when ordering operation kinds; it orders by DBUs, then kind.
+
+One report is limited to 500 distinct tenant-owned job runs and issues one billing-system query.
+HTTP 422 with code `REPORT_TOO_LARGE` means the caller must narrow the window. This prevents a
+high-volume tenant from turning one request into repeated scans of the account-wide billing table.
+A statement that remains pending past `PollingTimeoutSeconds` is cancelled best-effort and returns
+the transient code `POLL_TIMEOUT`.
 
 ## Live verification
 

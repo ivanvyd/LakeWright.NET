@@ -16,4 +16,8 @@ public sealed class BillingUsageOptions
     /// <summary>Delay between Statement Execution polls after the initial wait expires.</summary>
     [Range(50, 10_000)]
     public int PollIntervalMilliseconds { get; set; } = 250;
+
+    /// <summary>Overall deadline for a billing statement, including all polls.</summary>
+    [Range(1, 900)]
+    public int PollingTimeoutSeconds { get; set; } = 120;
 }

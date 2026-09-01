@@ -32,12 +32,32 @@ public sealed class BillingCostAttribution(
                 && operation.CompletedAt != null
                 && operation.CompletedAt > from
                 && operation.ClaimedAt < until)
-            .Select(operation => new { operation.Kind, operation.ExternalId })
+            .GroupBy(operation => operation.ExternalId)
+            .Select(group => new
+            {
+                ExternalId = group.Key,
+                FirstKind = group.Min(operation => operation.Kind),
+                LastKind = group.Max(operation => operation.Kind)
+            })
+            .Take(BillingUsageLimits.MaxJobRunsPerReport + 1)
             .ToListAsync(cancellationToken);
+
+        if (candidates.Count > BillingUsageLimits.MaxJobRunsPerReport)
+        {
+            throw new BillingUsageException("REPORT_TOO_LARGE", isTransient: false);
+        }
 
         var ownedRuns = new Dictionary<long, string>();
         foreach (var candidate in candidates)
         {
+            var kind = candidate.FirstKind;
+            if (kind is null
+                || candidate.LastKind is null
+                || !string.Equals(kind, candidate.LastKind, StringComparison.Ordinal))
+            {
+                throw new BillingUsageException("AMBIGUOUS_RUN", isTransient: false);
+            }
+
             if (!long.TryParse(
                     candidate.ExternalId,
                     NumberStyles.None,
@@ -49,12 +69,12 @@ public sealed class BillingCostAttribution(
             }
 
             if (ownedRuns.TryGetValue(runId, out var existingKind)
-                && !string.Equals(existingKind, candidate.Kind, StringComparison.Ordinal))
+                && !string.Equals(existingKind, kind, StringComparison.Ordinal))
             {
                 throw new BillingUsageException("AMBIGUOUS_RUN", isTransient: false);
             }
 
-            ownedRuns[runId] = candidate.Kind;
+            ownedRuns[runId] = kind;
         }
 
         if (ownedRuns.Count == 0)
@@ -84,8 +104,7 @@ public sealed class BillingCostAttribution(
             {
                 EstimatedListCost = CurrencyTotals(group)
             })
-            .OrderByDescending(row => row.EstimatedListCost.Sum(amount => amount.Amount))
-            .ThenByDescending(row => row.DbusConsumed)
+            .OrderByDescending(row => row.DbusConsumed)
             .ThenBy(row => row.Kind, StringComparer.Ordinal)
             .ToArray();
 

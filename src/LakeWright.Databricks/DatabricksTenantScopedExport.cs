@@ -32,13 +32,10 @@ namespace LakeWright.Databricks;
 /// </remarks>
 public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
 {
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Tenant-scoped export rejected: tenant {TenantId} (HTTP {StatusCode})")]
-    private partial void LogRequestRejected(TenantId? tenantId, int statusCode);
-
     [LoggerMessage(Level = LogLevel.Warning, Message = "Tenant-scoped export failed: tenant {TenantId}, statement {StatementId}, code {ErrorCode}")]
     private partial void LogStatementFailed(TenantId? tenantId, string? statementId, string errorCode);
 
-    private readonly DatabricksClient _client;
+    private readonly IDatabricksStatementSession _session;
     private readonly DatabricksOptions _options;
     private readonly HttpClient _http;
     private readonly ILogger<DatabricksTenantScopedExport> _logger;
@@ -49,8 +46,20 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
         HttpClient http,
         ILogger<DatabricksTenantScopedExport> logger)
     {
-        _client = client;
+        _session = new DatabricksStatementSession(client, logger);
         _options = options.Value;
+        _http = http;
+        _logger = logger;
+    }
+
+    internal DatabricksTenantScopedExport(
+        IDatabricksStatementSession session,
+        DatabricksOptions options,
+        HttpClient http,
+        ILogger<DatabricksTenantScopedExport> logger)
+    {
+        _session = session;
+        _options = options;
         _http = http;
         _logger = logger;
     }
@@ -85,58 +94,37 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
             OnWaitTimeout = SqlStatementOnWaitTimeout.CONTINUE
         };
 
-        StatementExecution response;
-        try
-        {
-            response = await _client.SQL.StatementExecution.Execute(request, cancellationToken).ConfigureAwait(false);
-        }
-        catch (ClientApiException ex)
-        {
-            LogRequestRejected(statement.Tenant.TenantId, (int)ex.StatusCode);
-            throw new HttpRequestException(
-                string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"Databricks rejected the export for tenant {statement.Tenant.TenantId} (HTTP {(int)ex.StatusCode})."),
-                inner: ex,
-                statusCode: ex.StatusCode);
-        }
+        var outcome = await _session.ExecuteAsync(
+            request,
+            statement.Tenant.TenantId,
+            cancellationToken).ConfigureAwait(false);
 
-        if (response.Status is null
-            || response.Status.State is StatementExecutionState.FAILED
-            || response.Status.State is StatementExecutionState.CANCELED
-            || response.Status.State is StatementExecutionState.CLOSED)
+        if (outcome is StatementOutcome.Failure failure)
         {
-            var errorCode = response.Status?.Error?.ErrorCode.ToString() ?? "UNKNOWN";
-            LogStatementFailed(statement.Tenant.TenantId, response.StatementId, errorCode);
+            LogStatementFailed(statement.Tenant.TenantId, failure.StatementId, failure.ErrorCode);
             throw new HttpRequestException(
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"Databricks ended the export in state {response.Status?.State} (code {errorCode})."),
+                    $"Databricks rejected or failed the export (code {failure.ErrorCode})."),
                 inner: null,
-                statusCode: null);
+                statusCode: failure.StatusCode);
         }
 
-        if (response.Status.State is StatementExecutionState.PENDING or StatementExecutionState.RUNNING)
+        if (outcome is StatementOutcome.Pending)
         {
-            // The executor already covered the polling path; the export is a single-call
-            // surface, so a not-yet-finished result is a programming error. Calling Get
-            // here would force the export to be aware of polling, which leaks the
-            // executor's state machine into a surface that is supposed to be a stream.
             throw new InvalidOperationException(
                 "Databricks returned a still-running statement; the export is not a polling surface. " +
                 "Use IStatementExecutor.ExecuteAsync and poll the returned statement id, then call " +
                 "ITenantScopedExport.StreamAsync with a shorter statement or longer WaitTimeout.");
         }
 
-        if (response.Manifest is null || response.Result is null)
+        if (outcome is not StatementOutcome.LargeResult result)
         {
             throw new InvalidOperationException(
-                "Databricks returned a successful statement with no manifest or result.");
+                "Databricks export did not return an external-links result.");
         }
 
-        var columnNames = response.Manifest.Schema.Columns
-            .Select(c => c.Name)
-            .ToArray();
+        var columnNames = result.ColumnNames.ToArray();
 
         if (columnNames.Length == 0)
         {
@@ -147,13 +135,10 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
         // the header to write its column-name row, then write the values.
         yield return new ExportRow(new ExportColumn(columnNames), Array.Empty<string?>());
 
-        var chunkLinks = response.Result.ExternalLinks
-            ?? throw new InvalidOperationException("EXTERNAL_LINKS disposition returned no chunk links.");
-
-        foreach (var link in chunkLinks)
+        foreach (var link in result.Links)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await foreach (var row in FetchChunkAsync(new Uri(link.ExternalLink), columnNames, cancellationToken).ConfigureAwait(false))
+            await foreach (var row in FetchChunkAsync(link, columnNames, cancellationToken).ConfigureAwait(false))
             {
                 yield return row;
             }

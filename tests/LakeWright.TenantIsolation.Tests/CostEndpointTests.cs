@@ -165,4 +165,32 @@ public class CostEndpointTests(PostgresFixture postgres)
         body.ShouldContain("PERMISSION_DENIED");
         body.ShouldNotContain("system.billing.usage");
     }
+
+    [Fact]
+    public async Task An_oversized_billing_report_answers_422_with_the_enforced_run_limit()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var cost = Substitute.For<ICostAttribution>();
+        cost.ResolveAsync(
+                Arg.Any<LakeWright.Core.Tenancy.TenantContext>(),
+                Arg.Any<DateTimeOffset>(),
+                Arg.Any<DateTimeOffset>(),
+                Arg.Any<CancellationToken>())
+            .Returns<Task<TenantCostSummary>>(_ => throw new BillingUsageException(
+                "REPORT_TOO_LARGE",
+                isTransient: false));
+        var (host, client) = await StartAsync(
+            postgres,
+            services => services.AddScoped(_ => cost));
+        using var _h = host;
+
+        var response = await client.SendAsync(
+            As(Vera, HttpMethod.Get, $"/organizations/{AcmeId.Value}/cost"),
+            cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.UnprocessableEntity);
+        body.ShouldContain("REPORT_TOO_LARGE");
+        body.ShouldContain(BillingUsageLimits.MaxJobRunsPerReport.ToString());
+    }
 }

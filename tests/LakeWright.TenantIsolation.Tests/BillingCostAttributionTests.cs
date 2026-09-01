@@ -5,6 +5,7 @@ using LakeWright.Multitenancy;
 using LakeWright.Multitenancy.Cost;
 using LakeWright.Multitenancy.Model;
 using Microsoft.Azure.Databricks.Client.Models;
+using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 using static LakeWright.TenantIsolation.Tests.TestApi;
 
@@ -51,22 +52,54 @@ public class DatabricksBillingUsageReaderTests
     }
 
     [Fact]
-    public async Task ReadAsync_chunks_large_run_sets_without_changing_the_SQL()
+    public async Task ReadAsync_rejects_a_report_that_would_require_repeated_system_table_scans()
     {
-        var session = new StubStatementSession(Success([]), Success([]));
+        var session = new StubStatementSession(Success([]));
         var reader = Reader(session);
 
-        await reader.ReadAsync(
-            Acme(),
-            From,
-            Until,
-            Enumerable.Range(1, 501).Select(value => (long)value).ToArray(),
-            TestContext.Current.CancellationToken);
+        var exception = await Should.ThrowAsync<BillingUsageException>(async () =>
+            await reader.ReadAsync(
+                Acme(),
+                From,
+                Until,
+                Enumerable.Range(1, BillingUsageLimits.MaxJobRunsPerReport + 1)
+                    .Select(value => (long)value)
+                    .ToArray(),
+                TestContext.Current.CancellationToken));
 
-        session.Requests.Count.ShouldBe(2);
-        session.Requests.Select(request => request.Statement).Distinct().Count().ShouldBe(1);
-        Parameters(session.Requests[0])["job_run_ids"].Split(',').Length.ShouldBe(500);
-        Parameters(session.Requests[1])["job_run_ids"].ShouldBe("501");
+        exception.Code.ShouldBe("REPORT_TOO_LARGE");
+        session.Requests.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ReadAsync_prorates_the_same_quantity_at_report_and_price_boundaries()
+    {
+        var session = new StubStatementSession(Success([]));
+
+        await Reader(session).ReadAsync(
+            Acme(), From, Until, [11], TestContext.Current.CancellationToken);
+
+        var sql = session.Requests.Single().Statement;
+        sql.ShouldContain("greatest(u.usage_start_time, :from, p.price_start_time)");
+        sql.ShouldContain("least(u.usage_end_time, :until, coalesce(p.price_end_time, u.usage_end_time))");
+        sql.ShouldContain("u.usage_end_time > p.price_start_time");
+        sql.ShouldContain("u.usage_start_time < p.price_end_time");
+        sql.ShouldContain(":until > p.price_start_time");
+        sql.ShouldContain(":from < p.price_end_time");
+        sql.ShouldContain("THEN WindowQuantity ELSE 0 END");
+        sql.ShouldContain("WindowQuantity * EffectiveListPrice");
+        sql.Split("WindowQuantity * EffectiveListPrice").Length.ShouldBe(2);
+
+        // A quantity of 8 over 00:00-04:00 contributes 2 to each of the two price intervals
+        // intersecting a 01:00-03:00 report. The CTE emits one row per interval and both the DBU
+        // and price sums consume that same apportioned quantity: 2 + 2, never 8 or 16.
+        var quantity = 8m;
+        var usageDuration = TimeSpan.FromHours(4);
+        var firstPriceOverlap = TimeSpan.FromHours(1);
+        var secondPriceOverlap = TimeSpan.FromHours(1);
+        var expectedWindowQuantity = quantity * firstPriceOverlap.Ticks / usageDuration.Ticks
+            + quantity * secondPriceOverlap.Ticks / usageDuration.Ticks;
+        expectedWindowQuantity.ShouldBe(4m);
     }
 
     [Fact]
@@ -106,7 +139,7 @@ public class DatabricksBillingUsageReaderTests
 
         rows.Single().ShouldBe(
             new BillingRunUsage(11, -1.25m, new CurrencyAmount("USD", -0.3125m)));
-        session.Requests.Single().Statement.ShouldContain("SUM(u.usage_quantity");
+        session.Requests.Single().Statement.ShouldContain("u.usage_quantity");
     }
 
     [Theory]
@@ -168,15 +201,71 @@ public class DatabricksBillingUsageReaderTests
         session.CancelledStatementIds.ShouldBe(["statement-1"]);
     }
 
-    private static DatabricksBillingUsageReader Reader(IDatabricksStatementSession session) => new(
+    [Fact]
+    public async Task ReadAsync_keeps_caller_cancellation_when_best_effort_cancel_fails()
+    {
+        var session = new StubStatementSession(new StatementOutcome.Pending("statement-1"))
+        {
+            CancelException = new HttpRequestException("cancel transport failed")
+        };
+        using var cancellation = new CancellationTokenSource();
+
+        var read = Reader(session).ReadAsync(Acme(), From, Until, [11], cancellation.Token);
+        await Task.Delay(10, TestContext.Current.CancellationToken);
+        cancellation.Cancel();
+
+        await Should.ThrowAsync<OperationCanceledException>(async () => await read);
+        session.CancelledStatementIds.ShouldBe(["statement-1"]);
+    }
+
+    [Fact]
+    public async Task ReadAsync_cancels_a_pending_statement_at_the_overall_deadline()
+    {
+        var time = new FakeTimeProvider(From);
+        var session = new StubStatementSession(
+            new StatementOutcome.Pending("statement-1"),
+            new StatementOutcome.Pending("statement-1"));
+        var read = Reader(session, time, pollingTimeoutSeconds: 1)
+            .ReadAsync(Acme(), From, Until, [11], TestContext.Current.CancellationToken);
+        await Task.Yield();
+
+        time.Advance(TimeSpan.FromSeconds(1));
+
+        var exception = await Should.ThrowAsync<BillingUsageException>(async () => await read);
+        exception.Code.ShouldBe("POLL_TIMEOUT");
+        exception.IsTransient.ShouldBeTrue();
+        session.CancelledStatementIds.ShouldBe(["statement-1"]);
+    }
+
+    [Fact]
+    public async Task ReadAsync_cancels_a_pending_statement_when_poll_transport_fails()
+    {
+        var session = new StubStatementSession(new StatementOutcome.Pending("statement-1"))
+        {
+            GetException = new HttpRequestException("poll transport failed")
+        };
+
+        var exception = await Should.ThrowAsync<HttpRequestException>(async () =>
+            await Reader(session).ReadAsync(
+                Acme(), From, Until, [11], TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldBe("poll transport failed");
+        session.CancelledStatementIds.ShouldBe(["statement-1"]);
+    }
+
+    private static DatabricksBillingUsageReader Reader(
+        IDatabricksStatementSession session,
+        TimeProvider? timeProvider = null,
+        int pollingTimeoutSeconds = 120) => new(
         session,
         new DatabricksOptions { WarehouseId = "warehouse-1", WorkspaceUrl = "https://example" },
         new BillingUsageOptions
         {
             WorkspaceId = "workspace-123",
-            PollIntervalMilliseconds = 50
+            PollIntervalMilliseconds = 50,
+            PollingTimeoutSeconds = pollingTimeoutSeconds
         },
-        TimeProvider.System);
+        timeProvider ?? TimeProvider.System);
 
     private static TenantContext Acme() => TenantContextFactory.ForTenant(AcmeId, "analytics");
 
@@ -198,6 +287,8 @@ public class DatabricksBillingUsageReaderTests
         public List<SqlStatement> Requests { get; } = [];
         public List<string> PolledStatementIds { get; } = [];
         public List<string> CancelledStatementIds { get; } = [];
+        public Exception? GetException { get; init; }
+        public Exception? CancelException { get; init; }
 
         public Task<StatementOutcome> ExecuteAsync(
             SqlStatement request,
@@ -214,12 +305,20 @@ public class DatabricksBillingUsageReaderTests
             CancellationToken cancellationToken)
         {
             PolledStatementIds.Add(statementId);
+            if (GetException is not null)
+            {
+                throw GetException;
+            }
             return Task.FromResult(_outcomes.Dequeue());
         }
 
         public Task CancelAsync(string statementId, CancellationToken cancellationToken)
         {
             CancelledStatementIds.Add(statementId);
+            if (CancelException is not null)
+            {
+                throw CancelException;
+            }
             return Task.CompletedTask;
         }
     }
@@ -326,6 +425,118 @@ public class BillingCostAttributionTests(PostgresFixture postgres)
         exception.Code.ShouldBe("INVALID_OPERATION_RUN_ID");
         await billing.DidNotReceiveWithAnyArgs().ReadAsync(
             default!, default, default, default!, cancellationToken);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_rejects_more_runs_than_one_billing_query_can_bound()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        var from = DateTimeOffset.Parse("2026-08-01T00:00:00Z", null);
+        db.Organizations.Add(Organization(AcmeId, "Acme", "acme", from));
+        db.Operations.AddRange(Enumerable
+            .Range(1, BillingUsageLimits.MaxJobRunsPerReport + 1)
+            .Select(runId => Operation(AcmeId, "analysis", runId.ToString(), from)));
+        await db.SaveChangesAsync(cancellationToken);
+        var billing = Substitute.For<IBillingUsageReader>();
+
+        var exception = await Should.ThrowAsync<BillingUsageException>(async () =>
+            await new BillingCostAttribution(db, billing).ResolveAsync(
+                Acme(), from, from.AddDays(1), cancellationToken));
+
+        exception.Code.ShouldBe("REPORT_TOO_LARGE");
+        await billing.DidNotReceiveWithAnyArgs().ReadAsync(
+            default!, default, default, default!, cancellationToken);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_bounds_distinct_run_ids_not_duplicate_operation_rows()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        var from = DateTimeOffset.Parse("2026-08-01T00:00:00Z", null);
+        db.Organizations.Add(Organization(AcmeId, "Acme", "acme", from));
+        db.Operations.AddRange(Enumerable
+            .Range(1, BillingUsageLimits.MaxJobRunsPerReport)
+            .Select(runId => Operation(AcmeId, "analysis", runId.ToString(), from)));
+        db.Operations.AddRange(Enumerable
+            .Range(0, 10)
+            .Select(_ => Operation(AcmeId, "analysis", "1", from)));
+        await db.SaveChangesAsync(cancellationToken);
+        var billing = Substitute.For<IBillingUsageReader>();
+        billing.ReadAsync(
+                Arg.Any<TenantContext>(),
+                Arg.Any<DateTimeOffset>(),
+                Arg.Any<DateTimeOffset>(),
+                Arg.Any<IReadOnlyCollection<long>>(),
+                Arg.Any<CancellationToken>())
+            .Returns([]);
+
+        await new BillingCostAttribution(db, billing).ResolveAsync(
+            Acme(), from, from.AddDays(1), cancellationToken);
+
+        await billing.Received(1).ReadAsync(
+            Arg.Any<TenantContext>(),
+            from,
+            from.AddDays(1),
+            Arg.Is<IReadOnlyCollection<long>>(ids =>
+                ids.Count == BillingUsageLimits.MaxJobRunsPerReport),
+            cancellationToken);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_rejects_one_run_recorded_for_conflicting_kinds()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        var from = DateTimeOffset.Parse("2026-08-01T00:00:00Z", null);
+        db.Organizations.Add(Organization(AcmeId, "Acme", "acme", from));
+        db.Operations.AddRange(
+            Operation(AcmeId, "analysis", "101", from),
+            Operation(AcmeId, "export", "101", from));
+        await db.SaveChangesAsync(cancellationToken);
+        var billing = Substitute.For<IBillingUsageReader>();
+
+        var exception = await Should.ThrowAsync<BillingUsageException>(async () =>
+            await new BillingCostAttribution(db, billing).ResolveAsync(
+                Acme(), from, from.AddDays(1), cancellationToken));
+
+        exception.Code.ShouldBe("AMBIGUOUS_RUN");
+        await billing.DidNotReceiveWithAnyArgs().ReadAsync(
+            default!, default, default, default!, cancellationToken);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_orders_kinds_by_dbus_without_adding_unlike_currencies()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        var from = DateTimeOffset.Parse("2026-08-01T00:00:00Z", null);
+        db.Organizations.Add(Organization(AcmeId, "Acme", "acme", from));
+        db.Operations.AddRange(
+            Operation(AcmeId, "more-dbus", "101", from),
+            Operation(AcmeId, "more-money", "102", from));
+        await db.SaveChangesAsync(cancellationToken);
+        var billing = Substitute.For<IBillingUsageReader>();
+        billing.ReadAsync(
+                Arg.Any<TenantContext>(),
+                Arg.Any<DateTimeOffset>(),
+                Arg.Any<DateTimeOffset>(),
+                Arg.Any<IReadOnlyCollection<long>>(),
+                Arg.Any<CancellationToken>())
+            .Returns([
+                new BillingRunUsage(101, 10m, new CurrencyAmount("EUR", 1m)),
+                new BillingRunUsage(102, 2m, new CurrencyAmount("USD", 999m))
+            ]);
+
+        var summary = await new BillingCostAttribution(db, billing).ResolveAsync(
+            Acme(), from, from.AddDays(1), cancellationToken);
+
+        summary.ByKind.Select(row => row.Kind).ShouldBe(["more-dbus", "more-money"]);
+        summary.EstimatedListCost.ShouldBe([
+            new CurrencyAmount("EUR", 1m),
+            new CurrencyAmount("USD", 999m)
+        ]);
     }
 
     private static TenantContext Acme() => TenantContextFactory.ForTenant(AcmeId, "analytics");

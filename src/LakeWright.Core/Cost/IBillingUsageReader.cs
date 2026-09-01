@@ -19,6 +19,16 @@ public interface IBillingUsageReader
         CancellationToken cancellationToken);
 }
 
+/// <summary>Resource limits shared by billing attribution implementations.</summary>
+public static class BillingUsageLimits
+{
+    /// <summary>
+    /// Maximum distinct Databricks job runs in one report. The billing reader performs one
+    /// account-wide system-table query, so callers must narrow the window when this limit is hit.
+    /// </summary>
+    public const int MaxJobRunsPerReport = 500;
+}
+
 /// <summary>Priced usage attributed to one Lakeflow job run.</summary>
 /// <param name="JobRunId">The Databricks job run identifier.</param>
 /// <param name="DbusConsumed">Net DBU quantity, including correction records.</param>

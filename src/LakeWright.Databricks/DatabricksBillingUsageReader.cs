@@ -13,38 +13,55 @@ namespace LakeWright.Databricks;
 /// </summary>
 /// <remarks>
 /// The query is fixed text and every value is a Statement Execution parameter. Run identifiers
-/// are chunked and passed as one bound comma-delimited value; <c>split</c> turns it into an array
-/// in Databricks SQL. The system table is account-wide, so <c>workspace_id</c> is an additional
+/// are capped and passed as one bound comma-delimited value; <c>split</c> turns it into an array in
+/// Databricks SQL. The system table is account-wide, so <c>workspace_id</c> is an additional
 /// mandatory bound filter rather than an assumption that run ids are globally unique.
 /// </remarks>
 public sealed class DatabricksBillingUsageReader : IBillingUsageReader
 {
-    private const int RunIdsPerQuery = 500;
     private const NumberStyles DecimalStyles =
         NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint | NumberStyles.AllowExponent;
 
     private const string BillingSql =
         """
-        SELECT CAST(u.usage_metadata.job_run_id AS STRING) AS JobRunId,
-               COALESCE(SUM(CASE WHEN u.usage_unit = 'DBU' THEN u.usage_quantity ELSE 0 END), 0) AS DbusConsumed,
-               p.currency_code AS CurrencyCode,
-               COALESCE(SUM(u.usage_quantity * p.pricing.effective_list.default), 0) AS EstimatedListCost
-        FROM system.billing.usage u
-        JOIN system.billing.list_prices p
-          ON p.account_id = u.account_id
-         AND p.cloud = u.cloud
-         AND p.sku_name = u.sku_name
-         AND p.usage_unit = u.usage_unit
-         AND u.usage_end_time >= p.price_start_time
-         AND (p.price_end_time IS NULL OR u.usage_end_time < p.price_end_time)
-        WHERE u.workspace_id = :workspace_id
-          AND u.usage_metadata.job_run_id IS NOT NULL
-          AND array_contains(split(:job_run_ids, ','), CAST(u.usage_metadata.job_run_id AS STRING))
-          AND u.usage_start_time < :until
-          AND u.usage_end_time > :from
-          AND u.usage_date >= :from_date
-          AND u.usage_date <= :until_date
-        GROUP BY CAST(u.usage_metadata.job_run_id AS STRING), p.currency_code
+        WITH PricedUsage AS (
+            SELECT CAST(u.usage_metadata.job_run_id AS STRING) AS JobRunId,
+                   u.usage_unit AS UsageUnit,
+                   u.usage_quantity
+                     * CAST(timestampdiff(
+                           MICROSECOND,
+                           greatest(u.usage_start_time, :from, p.price_start_time),
+                           least(u.usage_end_time, :until, coalesce(p.price_end_time, u.usage_end_time)))
+                         AS DECIMAL(38, 12))
+                     / NULLIF(CAST(timestampdiff(
+                           MICROSECOND, u.usage_start_time, u.usage_end_time)
+                         AS DECIMAL(38, 12)), 0) AS WindowQuantity,
+                   p.currency_code AS CurrencyCode,
+                   p.pricing.effective_list.default AS EffectiveListPrice
+            FROM system.billing.usage u
+            JOIN system.billing.list_prices p
+              ON p.account_id = u.account_id
+             AND p.cloud = u.cloud
+             AND p.sku_name = u.sku_name
+             AND p.usage_unit = u.usage_unit
+             AND u.usage_end_time > p.price_start_time
+             AND (p.price_end_time IS NULL OR u.usage_start_time < p.price_end_time)
+             AND :until > p.price_start_time
+             AND (p.price_end_time IS NULL OR :from < p.price_end_time)
+            WHERE u.workspace_id = :workspace_id
+              AND u.usage_metadata.job_run_id IS NOT NULL
+              AND array_contains(split(:job_run_ids, ','), CAST(u.usage_metadata.job_run_id AS STRING))
+              AND u.usage_start_time < :until
+              AND u.usage_end_time > :from
+              AND u.usage_date >= :from_date
+              AND u.usage_date <= :until_date
+        )
+        SELECT JobRunId,
+               COALESCE(SUM(CASE WHEN UsageUnit = 'DBU' THEN WindowQuantity ELSE 0 END), 0) AS DbusConsumed,
+               CurrencyCode,
+               COALESCE(SUM(WindowQuantity * EffectiveListPrice), 0) AS EstimatedListCost
+        FROM PricedUsage
+        GROUP BY JobRunId, CurrencyCode
         """;
 
     private readonly IDatabricksStatementSession _session;
@@ -103,17 +120,15 @@ public sealed class DatabricksBillingUsageReader : IBillingUsageReader
         }
 
         var uniqueRunIds = jobRunIds.Distinct().Order().ToArray();
-
-        var rows = new List<BillingRunUsage>();
-        foreach (var chunk in uniqueRunIds.Chunk(RunIdsPerQuery))
+        if (uniqueRunIds.Length > BillingUsageLimits.MaxJobRunsPerReport)
         {
-            var request = CreateRequest(from, until, chunk);
-            var outcome = await _session.ExecuteAsync(request, tenant.TenantId, cancellationToken);
-            outcome = await WaitForCompletionAsync(tenant, outcome, cancellationToken);
-            rows.AddRange(Parse(outcome));
+            throw new BillingUsageException("REPORT_TOO_LARGE", isTransient: false);
         }
 
-        return rows;
+        var request = CreateRequest(from, until, uniqueRunIds);
+        var outcome = await _session.ExecuteAsync(request, tenant.TenantId, cancellationToken);
+        outcome = await WaitForCompletionAsync(tenant, outcome, cancellationToken);
+        return Parse(outcome);
     }
 
     private SqlStatement CreateRequest(
@@ -149,13 +164,22 @@ public sealed class DatabricksBillingUsageReader : IBillingUsageReader
         CancellationToken cancellationToken)
     {
         string? activeStatementId = null;
+        var deadline = _timeProvider.GetUtcNow().AddSeconds(_billing.PollingTimeoutSeconds);
         try
         {
             while (outcome is StatementOutcome.Pending pending)
             {
                 activeStatementId = pending.StatementId;
+                var remaining = deadline - _timeProvider.GetUtcNow();
+                if (remaining <= TimeSpan.Zero)
+                {
+                    throw new BillingUsageException("POLL_TIMEOUT", isTransient: true);
+                }
+
                 await Task.Delay(
-                    TimeSpan.FromMilliseconds(_billing.PollIntervalMilliseconds),
+                    TimeSpan.FromMilliseconds(_billing.PollIntervalMilliseconds) < remaining
+                        ? TimeSpan.FromMilliseconds(_billing.PollIntervalMilliseconds)
+                        : remaining,
                     _timeProvider,
                     cancellationToken);
                 outcome = await _session.GetAsync(
@@ -168,24 +192,31 @@ public sealed class DatabricksBillingUsageReader : IBillingUsageReader
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            if (activeStatementId is not null)
-            {
-                using var cancelTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                try
-                {
-                    await _session.CancelAsync(activeStatementId, cancelTimeout.Token);
-                }
-                catch (ClientApiException)
-                {
-                    // Cancellation is best effort. The caller's cancellation remains the result.
-                }
-                catch (OperationCanceledException) when (cancelTimeout.IsCancellationRequested)
-                {
-                    // The five-second best-effort cancel must not replace the caller's exception.
-                }
-            }
-
+            await CancelBestEffortAsync(activeStatementId);
             throw;
+        }
+        catch
+        {
+            await CancelBestEffortAsync(activeStatementId);
+            throw;
+        }
+    }
+
+    private async Task CancelBestEffortAsync(string? statementId)
+    {
+        if (statementId is null)
+        {
+            return;
+        }
+
+        using var cancelTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        try
+        {
+            await _session.CancelAsync(statementId, cancelTimeout.Token);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            // Cancellation must never replace the original timeout, transport error, or caller cancellation.
         }
     }
 

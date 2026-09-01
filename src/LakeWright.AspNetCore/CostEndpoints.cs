@@ -87,6 +87,19 @@ public static class CostEndpoints
         }
         catch (BillingUsageException exception)
         {
+            if (exception.Code == "REPORT_TOO_LARGE")
+            {
+                return Results.Problem(
+                    statusCode: StatusCodes.Status422UnprocessableEntity,
+                    title: "Billing report is too large.",
+                    detail: $"Narrow the window to at most {BillingUsageLimits.MaxJobRunsPerReport} distinct job runs.",
+                    extensions: new Dictionary<string, object?>
+                    {
+                        ["code"] = exception.Code,
+                        ["maxJobRuns"] = BillingUsageLimits.MaxJobRunsPerReport
+                    });
+            }
+
             return Results.Problem(
                 statusCode: StatusCodes.Status502BadGateway,
                 title: "Billing usage is unavailable.",

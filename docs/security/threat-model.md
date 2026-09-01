@@ -105,15 +105,19 @@ scale. So attribution goes the other way. PostgreSQL first selects `operations.E
 resolved tenant. The Databricks query receives only those job run ids as bound parameters and
 also filters the configured `workspace_id`; application code joins the returned rows to operation
 kinds. PostgreSQL is never named in Databricks SQL. A provider response containing any run id not
-in the tenant-owned set fails the report instead of being attributed.
+in the tenant-owned set fails the report instead of being attributed. The PostgreSQL selection is
+index-backed and stops after 501 distinct runs; more than 500 returns HTTP 422, so one request can
+issue at most one account-wide billing query. Pending statements also have an overall deadline and
+are cancelled best-effort on deadline, transport failure, or caller cancellation.
 
 Reading those tables needs a grant the default development identity does not have. Querying `system.billing.usage` as
 the workspace identity returns `INSUFFICIENT_PERMISSIONS: User does not have USE SCHEMA on Schema
 'system.billing'`. It is an administrative decision, so the proxy remains the default. A product
 with access to both `system.billing.usage` and `system.billing.list_prices` opts in with
 `AddLakeWrightBillingCostAttribution`. The code path is covered locally with fixed-query,
-malformed-row, correction, ownership, polling and cancellation tests; the system-table grants and
-live response shape remain workspace verification steps.
+window and price-boundary proration, malformed-row, correction, ownership, query-budget, polling
+and cancellation tests; the system-table grants and live response shape remain workspace
+verification steps.
 
 ### T6. Denial of service against the operation queue
 

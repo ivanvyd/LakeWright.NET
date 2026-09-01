@@ -24,21 +24,29 @@ reference the Databricks integration, and PostgreSQL is never assumed to be visi
 SQL.
 
 **The billing query is fixed SQL with bound values.** It filters both `workspace_id` and
-`usage_metadata.job_run_id`, plus timestamp and `usage_date` bounds. Run ids are chunked into bound
-parameters. Correlation and the distinct-operation count happen in application code. A billing
+`usage_metadata.job_run_id`, plus timestamp and `usage_date` bounds. PostgreSQL projects distinct
+run ownership through a tenant/time partial covering index and stops at 501 rows. At most 500 run
+ids enter one bound system-table query; a larger report returns `REPORT_TOO_LARGE` and HTTP 422
+rather than multiplying account-wide scans. Correlation happens in application code. A billing
 row for an id not selected from the tenant's operations is rejected rather than ignored.
 
 **Currency is explicit and additive.** `TenantCostSummary` and `CostByKind` retain their original
 constructors and gain init-only `EstimatedListCost` collections. Each `CurrencyAmount` keeps its
 currency code beside its amount; unlike currencies are never added. Cost is calculated from
-`system.billing.list_prices.pricing.effective_list.default` at the price effective when the usage
-ended. This is estimated effective list-price cost, not an adopter's negotiated invoice amount.
-The query sums every billing record, including negative correction rows, before the application
-aggregates by operation kind.
+`system.billing.list_prices.pricing.effective_list.default`. A usage row is split at report and
+price-validity boundaries; its quantity is prorated by each overlap and that same quantity feeds
+both DBUs and cost. This is estimated effective list-price cost, not an adopter's negotiated invoice
+amount. The query sums every billing record, including negative correction rows, before the
+application aggregates by operation kind. Kinds are ordered by DBUs and then name, never by adding
+unlike currency amounts.
 
 **Configuration belongs to the adopter, not the library.** A product running more than one warehouse SKU picks one as the proxy, or moves to a billing read. `CostAttributionOptions` carries the SKU and DBU/hour rate; the section is bound by `AddLakeWrightCostAttribution` rather than read by `AddLakeWright`, so a contributor working on the application without a workspace never hits a validation failure on a value they have no opinion about.
 
 **The endpoint is opt-in via `MapLakeWrightCost`, behind the Viewer policy, with a 31-day window cap.** A customer-facing usage page that lets a tenant ask for a multi-year range is asking Postgres to sum a range nobody actually wants.
+
+**Billing statement work has an overall deadline.** `PollingTimeoutSeconds` defaults to 120.
+Caller cancellation, deadline expiry, and poll transport failures all trigger a five-second
+best-effort statement cancellation; cancellation failure never replaces the original result.
 
 ## Consequences
 

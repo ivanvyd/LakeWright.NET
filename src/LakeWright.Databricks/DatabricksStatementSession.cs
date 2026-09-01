@@ -50,7 +50,10 @@ internal sealed partial class DatabricksStatementSession(
         catch (ClientApiException ex)
         {
             LogRequestRejected(logger, tenantId, (int)ex.StatusCode);
-            return new StatementOutcome.Failure("REQUEST_REJECTED", ex.Message, null, IsTransient: false);
+            return new StatementOutcome.Failure("REQUEST_REJECTED", ex.Message, null, IsTransient: false)
+            {
+                StatusCode = ex.StatusCode
+            };
         }
     }
 
@@ -67,7 +70,10 @@ internal sealed partial class DatabricksStatementSession(
         catch (ClientApiException ex)
         {
             return new StatementOutcome.Failure(
-                "REQUEST_REJECTED", ex.Message, statementId, IsTransient: false);
+                "REQUEST_REJECTED", ex.Message, statementId, IsTransient: false)
+            {
+                StatusCode = ex.StatusCode
+            };
         }
     }
 
