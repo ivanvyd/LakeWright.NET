@@ -102,7 +102,12 @@ subject must include the branch or environment the workflow runs under.
    run `finalize`; run `rollback` instead if the smoke fails. Schedule `maintain` at least monthly
    with the same migration identity (daily is recommended). Its default is seven years and two
    future partitions; override those with `LAKEWRIGHT_AUDIT_RETENTION_YEARS` and
-   `LAKEWRIGHT_AUDIT_FUTURE_MONTHS`. Alert on a non-zero exit. See
+   `LAKEWRIGHT_AUDIT_FUTURE_MONTHS`. The bounded migration defaults to a 15-second lock wait,
+   five-minute statement timeout, one million rows, and 2 GiB. Configure those ceilings with
+   `LAKEWRIGHT_AUDIT_LOCK_TIMEOUT_SECONDS`, `LAKEWRIGHT_AUDIT_STATEMENT_TIMEOUT_SECONDS`,
+   `LAKEWRIGHT_AUDIT_MAX_MIGRATION_ROWS`, and `LAKEWRIGHT_AUDIT_MAX_MIGRATION_BYTES`. If rollback
+   is used, inspect the retained partitioned copy and run `finalize` to clean it up before another
+   `migrate`. Alert on a non-zero exit. See
    [ADR 0020](../decisions/0020-safe-audit-table-partitioning.md).
 
 2. Grant the managed identity `CAN RUN` on the published dashboard in Databricks if the

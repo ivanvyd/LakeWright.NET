@@ -1,11 +1,13 @@
 using System.Data;
 using System.Data.Common;
+using System.Globalization;
+using LakeWright.Multitenancy;
 using Microsoft.EntityFrameworkCore;
 
-namespace LakeWright.Multitenancy;
+namespace LakeWright.DatabaseMaintenance;
 
 /// <summary>Controls audit partition creation and retention.</summary>
-public sealed class AuditPartitionOptions
+internal sealed class AuditPartitionOptions
 {
     /// <summary>Number of calendar years to retain. The documented default is seven years.</summary>
     public int RetentionYears { get; init; } = 7;
@@ -13,19 +15,39 @@ public sealed class AuditPartitionOptions
     /// <summary>Number of future calendar months to pre-create.</summary>
     public int FutureMonths { get; init; } = 2;
 
+    public TimeSpan LockTimeout { get; init; } = TimeSpan.FromSeconds(15);
+
+    public TimeSpan StatementTimeout { get; init; } = TimeSpan.FromMinutes(5);
+
+    public long MaxMigrationRows { get; init; } = 1_000_000;
+
+    public long MaxMigrationBytes { get; init; } = 2L * 1024 * 1024 * 1024;
+
     internal void Validate()
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(RetentionYears, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(RetentionYears, 100);
         ArgumentOutOfRangeException.ThrowIfLessThan(FutureMonths, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(FutureMonths, 24);
+        if (LockTimeout < TimeSpan.FromMilliseconds(100) || LockTimeout > TimeSpan.FromMinutes(5))
+        {
+            throw new ArgumentOutOfRangeException(nameof(LockTimeout));
+        }
+        if (StatementTimeout < TimeSpan.FromSeconds(1) || StatementTimeout > TimeSpan.FromHours(1))
+        {
+            throw new ArgumentOutOfRangeException(nameof(StatementTimeout));
+        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(MaxMigrationRows, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(MaxMigrationRows, 100_000_000);
+        ArgumentOutOfRangeException.ThrowIfLessThan(MaxMigrationBytes, 1024 * 1024);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(MaxMigrationBytes, 1024L * 1024 * 1024 * 1024);
     }
 }
 
 /// <summary>Result of one migration-role maintenance run.</summary>
 /// <param name="CreatedPartitions">Partitions created by the run.</param>
 /// <param name="DroppedPartitions">Expired partitions dropped by the run.</param>
-public sealed record AuditPartitionMaintenanceResult(int CreatedPartitions, int DroppedPartitions);
+internal sealed record AuditPartitionMaintenanceResult(int CreatedPartitions, int DroppedPartitions);
 
 /// <summary>
 /// Safely migrates and maintains the append-only <c>audit_events</c> table as monthly PostgreSQL
@@ -37,247 +59,10 @@ public sealed record AuditPartitionMaintenanceResult(int CreatedPartitions, int 
 /// inside the installed PostgreSQL helpers, where they are generated from a timestamp and quoted
 /// with <c>format('%I', ...)</c>.
 /// </remarks>
-public static class DatabasePartitioning
+internal static class DatabasePartitioning
 {
     private const long MaintenanceLockKey = 4_817_191_033_702_026_091L;
-
-    private const string InstallHelpersSql = """
-        CREATE TABLE IF NOT EXISTS audit_event_partitions (
-            "PartitionName" text PRIMARY KEY,
-            "StartsAt" timestamptz NOT NULL UNIQUE,
-            "EndsAt" timestamptz NOT NULL UNIQUE,
-            CONSTRAINT "CK_audit_event_partitions_bounds" CHECK ("StartsAt" < "EndsAt")
-        );
-
-        CREATE OR REPLACE FUNCTION lakewright_create_audit_partition(p_start timestamptz)
-        RETURNS boolean
-        LANGUAGE plpgsql
-        SECURITY INVOKER
-        SET search_path = pg_catalog, public
-        AS $function$
-        DECLARE
-            partition_start timestamptz := date_trunc('month', p_start);
-            partition_end timestamptz := partition_start + interval '1 month';
-            partition_name text := 'audit_events_' || to_char(partition_start, 'YYYY_MM');
-            index_name text := partition_name || '_org_occurred';
-            already_present boolean;
-        BEGIN
-            IF partition_start <> p_start THEN
-                RAISE EXCEPTION 'partition start must be the first instant of a UTC month';
-            END IF;
-
-            SELECT EXISTS (
-                SELECT 1
-                FROM pg_catalog.pg_inherits i
-                JOIN pg_catalog.pg_class child ON child.oid = i.inhrelid
-                JOIN pg_catalog.pg_class parent ON parent.oid = i.inhparent
-                JOIN pg_catalog.pg_namespace namespace ON namespace.oid = parent.relnamespace
-                WHERE namespace.nspname = 'public'
-                  AND parent.relname = 'audit_events'
-                  AND child.relname = partition_name
-            ) INTO already_present;
-
-            IF NOT already_present THEN
-                EXECUTE format(
-                    'CREATE TABLE public.%I PARTITION OF public.audit_events '
-                    || 'FOR VALUES FROM (%L) TO (%L)',
-                    partition_name,
-                    partition_start,
-                    partition_end);
-            END IF;
-
-            EXECUTE format(
-                'CREATE INDEX IF NOT EXISTS %I ON public.%I ("OrganizationId", "OccurredAt")',
-                index_name,
-                partition_name);
-
-            INSERT INTO public.audit_event_partitions
-                ("PartitionName", "StartsAt", "EndsAt")
-            VALUES (partition_name, partition_start, partition_end)
-            ON CONFLICT ("PartitionName") DO UPDATE
-            SET "StartsAt" = EXCLUDED."StartsAt", "EndsAt" = EXCLUDED."EndsAt";
-
-            RETURN NOT already_present;
-        END;
-        $function$;
-
-        CREATE OR REPLACE FUNCTION lakewright_drop_audit_partition(
-            p_name text,
-            p_start timestamptz,
-            p_end timestamptz)
-        RETURNS void
-        LANGUAGE plpgsql
-        SECURITY INVOKER
-        SET search_path = pg_catalog, public
-        AS $function$
-        BEGIN
-            IF p_name <> 'audit_events_' || to_char(p_start, 'YYYY_MM')
-               OR p_start <> date_trunc('month', p_start)
-               OR p_end <> p_start + interval '1 month' THEN
-                RAISE EXCEPTION 'refusing non-canonical audit partition %', p_name;
-            END IF;
-
-            IF NOT EXISTS (
-                SELECT 1
-                FROM pg_catalog.pg_inherits i
-                JOIN pg_catalog.pg_class child ON child.oid = i.inhrelid
-                JOIN pg_catalog.pg_class parent ON parent.oid = i.inhparent
-                JOIN pg_catalog.pg_namespace namespace ON namespace.oid = parent.relnamespace
-                WHERE namespace.nspname = 'public'
-                  AND parent.relname = 'audit_events'
-                  AND child.relname = p_name
-            ) THEN
-                RAISE EXCEPTION '% is not a partition of public.audit_events', p_name;
-            END IF;
-
-            DELETE FROM public.audit_event_ids
-            WHERE "OccurredAt" >= p_start AND "OccurredAt" < p_end;
-            EXECUTE format('DROP TABLE public.%I', p_name);
-            DELETE FROM public.audit_event_partitions WHERE "PartitionName" = p_name;
-        END;
-        $function$;
-
-        REVOKE ALL ON FUNCTION lakewright_create_audit_partition(timestamptz) FROM PUBLIC;
-        REVOKE ALL ON FUNCTION lakewright_drop_audit_partition(text, timestamptz, timestamptz) FROM PUBLIC;
-        """;
-
-    private const string CreateParentSql = """
-        CREATE TABLE audit_events (
-            "Id" uuid NOT NULL,
-            "OrganizationId" uuid NULL,
-            "PrincipalId" varchar(200) NOT NULL,
-            "Action" varchar(100) NOT NULL,
-            "ResourceType" varchar(100) NOT NULL,
-            "ResourceId" varchar(200) NULL,
-            "OccurredAt" timestamptz NOT NULL,
-            "Detail" jsonb NULL
-        ) PARTITION BY RANGE ("OccurredAt");
-
-        CREATE TABLE audit_event_ids (
-            "Id" uuid PRIMARY KEY,
-            "OccurredAt" timestamptz NOT NULL
-        );
-        """;
-
-    private const string CopyRowsSql = """
-        INSERT INTO audit_events
-            ("Id", "OrganizationId", "PrincipalId", "Action", "ResourceType", "ResourceId", "OccurredAt", "Detail")
-        SELECT "Id", "OrganizationId", "PrincipalId", "Action", "ResourceType", "ResourceId", "OccurredAt", "Detail"
-        FROM audit_events_unpartitioned_backup;
-
-        INSERT INTO audit_event_ids ("Id", "OccurredAt")
-        SELECT "Id", "OccurredAt" FROM audit_events_unpartitioned_backup;
-        """;
-
-    private const string InstallIdentityTriggerSql = """
-        CREATE OR REPLACE FUNCTION lakewright_register_audit_event_id()
-        RETURNS trigger
-        LANGUAGE plpgsql
-        SECURITY DEFINER
-        SET search_path = pg_catalog, public
-        AS $function$
-        BEGIN
-            INSERT INTO public.audit_event_ids ("Id", "OccurredAt")
-            VALUES (NEW."Id", NEW."OccurredAt");
-            RETURN NEW;
-        END;
-        $function$;
-
-        REVOKE ALL ON FUNCTION lakewright_register_audit_event_id() FROM PUBLIC;
-        DROP TRIGGER IF EXISTS lakewright_register_audit_event_id ON audit_events;
-        CREATE TRIGGER lakewright_register_audit_event_id
-            BEFORE INSERT ON audit_events
-            FOR EACH ROW EXECUTE FUNCTION lakewright_register_audit_event_id();
-        """;
-
-    private const string CopySecuritySql = """
-        DO $block$
-        DECLARE
-            source_table regclass := 'public.audit_events_unpartitioned_backup'::regclass;
-            grant_row record;
-            policy_row record;
-            command_name text;
-            role_list text;
-        BEGIN
-            FOR grant_row IN
-                SELECT grantee, privilege_type, is_grantable
-                FROM information_schema.role_table_grants
-                WHERE table_schema = 'public'
-                  AND table_name = 'audit_events_unpartitioned_backup'
-                  AND grantee <> current_user
-            LOOP
-                IF grant_row.privilege_type NOT IN
-                    ('SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER') THEN
-                    RAISE EXCEPTION 'unsupported audit_events privilege %', grant_row.privilege_type;
-                END IF;
-
-                EXECUTE format(
-                    'GRANT %s ON TABLE public.audit_events TO %s%s',
-                    grant_row.privilege_type,
-                    CASE WHEN grant_row.grantee = 'PUBLIC' THEN 'PUBLIC'
-                         ELSE format('%I', grant_row.grantee) END,
-                    CASE WHEN grant_row.is_grantable = 'YES' THEN ' WITH GRANT OPTION' ELSE '' END);
-
-                -- The rollback copy is evidence for the migration role, not a second append
-                -- surface for the application. Move every explicit grant to the new parent.
-                EXECUTE format(
-                    'REVOKE ALL ON TABLE public.audit_events_unpartitioned_backup FROM %s',
-                    CASE WHEN grant_row.grantee = 'PUBLIC' THEN 'PUBLIC'
-                         ELSE format('%I', grant_row.grantee) END);
-            END LOOP;
-
-            FOR policy_row IN
-                SELECT p.polname,
-                       p.polpermissive,
-                       p.polcmd,
-                       pg_catalog.pg_get_expr(p.polqual, p.polrelid) AS using_expression,
-                       pg_catalog.pg_get_expr(p.polwithcheck, p.polrelid) AS check_expression,
-                       ARRAY(
-                           SELECT CASE WHEN role_oid = 0 THEN 'PUBLIC'
-                                       ELSE format('%I', role.rolname) END
-                           FROM unnest(p.polroles) role_oid
-                           LEFT JOIN pg_catalog.pg_roles role ON role.oid = role_oid
-                       ) AS roles
-                FROM pg_catalog.pg_policy p
-                WHERE p.polrelid = source_table
-            LOOP
-                command_name := CASE policy_row.polcmd
-                    WHEN 'r' THEN 'SELECT'
-                    WHEN 'a' THEN 'INSERT'
-                    WHEN 'w' THEN 'UPDATE'
-                    WHEN 'd' THEN 'DELETE'
-                    WHEN '*' THEN 'ALL'
-                    ELSE NULL
-                END;
-
-                IF command_name IS NULL THEN
-                    RAISE EXCEPTION 'unsupported row-security command %', policy_row.polcmd;
-                END IF;
-
-                SELECT string_agg(role_name, ', ') INTO role_list
-                FROM unnest(policy_row.roles) role_name;
-
-                EXECUTE format(
-                    'CREATE POLICY %I ON public.audit_events AS %s FOR %s TO %s%s%s',
-                    policy_row.polname,
-                    CASE WHEN policy_row.polpermissive THEN 'PERMISSIVE' ELSE 'RESTRICTIVE' END,
-                    command_name,
-                    role_list,
-                    CASE WHEN policy_row.using_expression IS NULL THEN ''
-                         ELSE ' USING (' || policy_row.using_expression || ')' END,
-                    CASE WHEN policy_row.check_expression IS NULL THEN ''
-                         ELSE ' WITH CHECK (' || policy_row.check_expression || ')' END);
-            END LOOP;
-
-            IF (SELECT relrowsecurity FROM pg_catalog.pg_class WHERE oid = source_table) THEN
-                ALTER TABLE audit_events ENABLE ROW LEVEL SECURITY;
-            END IF;
-            IF (SELECT relforcerowsecurity FROM pg_catalog.pg_class WHERE oid = source_table) THEN
-                ALTER TABLE audit_events FORCE ROW LEVEL SECURITY;
-            END IF;
-        END;
-        $block$;
-        """;
+    private const int LifecycleSchemaVersion = 1;
 
     /// <summary>
     /// Atomically replaces an existing ordinary audit table with a partitioned parent, preserving
@@ -303,7 +88,8 @@ public static class DatabasePartitioning
         await ExecuteInTransactionAsync(db, async (connection, transaction) =>
         {
             await AcquireLockAsync(connection, transaction, cancellationToken);
-            await ExecuteAsync(connection, transaction, InstallHelpersSql, cancellationToken);
+            await ExecuteAsync(connection, transaction, AuditPartitionSql.InstallHelpers, cancellationToken);
+            var state = await ReadStateAsync(connection, transaction, cancellationToken);
 
             var kind = await ScalarAsync<string?>(
                 connection,
@@ -318,6 +104,8 @@ public static class DatabasePartitioning
 
             if (kind == "p")
             {
+                RequirePhase(state, AuditPartitionPhase.Migrated, AuditPartitionPhase.Finalized);
+                await AssertLifecycleTopologyAsync(connection, transaction, state!, cancellationToken);
                 await RequireManagedParentAsync(connection, transaction, cancellationToken);
                 await AssertIdentityRegistryAsync(connection, transaction, cancellationToken);
                 await EnsureWindowAsync(connection, transaction, now, options.FutureMonths, cancellationToken);
@@ -328,6 +116,12 @@ public static class DatabasePartitioning
             {
                 throw new InvalidOperationException(
                     "public.audit_events must be an ordinary or partitioned table before migration.");
+            }
+
+            if (state is not null)
+            {
+                throw new InvalidOperationException(
+                    $"Audit partition lifecycle is '{state.Phase}'; clean up that lifecycle before migrating again.");
             }
 
             var ownerIsCurrentRole = await ScalarAsync<bool>(
@@ -352,12 +146,29 @@ public static class DatabasePartitioning
                     "audit_events_unpartitioned_backup already exists; complete or roll back the prior migration.");
             }
 
+            if (await RelationExistsAsync(
+                    connection, transaction, "audit_events_partitioned_rollback", cancellationToken)
+                || await RelationExistsAsync(connection, transaction, "audit_event_ids", cancellationToken)
+                || await ScalarAsync<long>(
+                    connection,
+                    transaction,
+                    "SELECT count(*) FROM audit_event_partitions",
+                    cancellationToken) != 0)
+            {
+                throw new InvalidOperationException(
+                    "Audit partition artifacts exist without lifecycle state; manual inspection is required.");
+            }
+
+            await AssertAppendOnlyAclAsync(connection, transaction, cancellationToken);
+            await AssertMigrationSizeAsync(connection, transaction, options, exactRows: false, cancellationToken);
+
             await ExecuteAsync(
                 connection,
                 transaction,
                 "LOCK TABLE audit_events IN ACCESS EXCLUSIVE MODE; ALTER TABLE audit_events RENAME TO audit_events_unpartitioned_backup;",
                 cancellationToken);
-            await ExecuteAsync(connection, transaction, CreateParentSql, cancellationToken);
+            await AssertMigrationSizeAsync(connection, transaction, options, exactRows: true, cancellationToken);
+            await ExecuteAsync(connection, transaction, AuditPartitionSql.CreateParent, cancellationToken);
 
             var oldest = await ScalarAsync<DateTime?>(
                 connection, transaction, "SELECT min(\"OccurredAt\") FROM audit_events_unpartitioned_backup", cancellationToken);
@@ -375,11 +186,13 @@ public static class DatabasePartitioning
             }
             await EnsureWindowAsync(connection, transaction, now, options.FutureMonths, cancellationToken);
 
-            await ExecuteAsync(connection, transaction, CopyRowsSql, cancellationToken);
+            await ExecuteAsync(connection, transaction, AuditPartitionSql.CopyRows, cancellationToken);
             await AssertExactCopyAsync(connection, transaction, cancellationToken);
-            await ExecuteAsync(connection, transaction, InstallIdentityTriggerSql, cancellationToken);
-            await ExecuteAsync(connection, transaction, CopySecuritySql, cancellationToken);
-        }, cancellationToken);
+            await ExecuteAsync(connection, transaction, AuditPartitionSql.InstallIdentityTrigger, cancellationToken);
+            await ExecuteAsync(connection, transaction, AuditPartitionSql.CopySecurity, cancellationToken);
+            await WriteStateAsync(
+                connection, transaction, AuditPartitionPhase.Migrated, cancellationToken);
+        }, cancellationToken, options);
     }
 
     /// <summary>
@@ -402,13 +215,14 @@ public static class DatabasePartitioning
         await ExecuteInTransactionAsync(db, async (connection, transaction) =>
         {
             await AcquireLockAsync(connection, transaction, cancellationToken);
+            var state = await ReadRequiredStateAsync(connection, transaction, cancellationToken);
+            RequirePhase(state, AuditPartitionPhase.Migrated, AuditPartitionPhase.Finalized);
             await RequireManagedParentAsync(connection, transaction, cancellationToken);
             created = await EnsureWindowAsync(connection, transaction, now, options.FutureMonths, cancellationToken);
 
             var expired = await QueryPartitionsAsync(
                 connection, transaction, now.AddYears(-options.RetentionYears), cancellationToken);
-            if (expired.Count > 0 && await RelationExistsAsync(
-                    connection, transaction, "audit_events_unpartitioned_backup", cancellationToken))
+            if (expired.Count > 0 && state.Phase != AuditPartitionPhase.Finalized)
             {
                 throw new InvalidOperationException(
                     "Finalize or roll back the audit migration before retention drops old partitions.");
@@ -426,7 +240,7 @@ public static class DatabasePartitioning
                     ("end", partition.End));
                 dropped++;
             }
-        }, cancellationToken);
+        }, cancellationToken, options);
 
         return new AuditPartitionMaintenanceResult(created, dropped);
     }
@@ -440,6 +254,8 @@ public static class DatabasePartitioning
         await ExecuteInTransactionAsync(db, async (connection, transaction) =>
         {
             await AcquireLockAsync(connection, transaction, cancellationToken);
+            var state = await ReadRequiredStateAsync(connection, transaction, cancellationToken);
+            RequirePhase(state, AuditPartitionPhase.Migrated, AuditPartitionPhase.Finalized);
             await RequireManagedParentAsync(connection, transaction, cancellationToken);
             if (await RelationExistsAsync(
                     connection, transaction, "audit_events_unpartitioned_backup", cancellationToken))
@@ -450,7 +266,7 @@ public static class DatabasePartitioning
         }, cancellationToken);
     }
 
-    /// <summary>Deletes the validated rollback copy so retention maintenance can begin.</summary>
+    /// <summary>Accepts a migration, or removes retained artifacts after a rollback.</summary>
     public static async Task FinalizeMigrationAsync(
         LakeWrightDbContext db,
         CancellationToken cancellationToken = default)
@@ -459,15 +275,27 @@ public static class DatabasePartitioning
         await ExecuteInTransactionAsync(db, async (connection, transaction) =>
         {
             await AcquireLockAsync(connection, transaction, cancellationToken);
+            var state = await ReadRequiredStateAsync(connection, transaction, cancellationToken);
+            if (state.Phase == AuditPartitionPhase.Finalized)
+            {
+                return;
+            }
+            if (state.Phase == AuditPartitionPhase.RolledBack)
+            {
+                await CleanupRollbackAsync(connection, transaction, cancellationToken);
+                return;
+            }
+            RequirePhase(state, AuditPartitionPhase.Migrated);
             await RequireManagedParentAsync(connection, transaction, cancellationToken);
             if (!await RelationExistsAsync(
                     connection, transaction, "audit_events_unpartitioned_backup", cancellationToken))
             {
-                return;
+                throw new InvalidOperationException("Migrated lifecycle state requires the rollback copy.");
             }
             await AssertBackupContainedAsync(connection, transaction, cancellationToken);
             await AssertIdentityRegistryAsync(connection, transaction, cancellationToken);
             await ExecuteAsync(connection, transaction, "DROP TABLE audit_events_unpartitioned_backup", cancellationToken);
+            await WriteStateAsync(connection, transaction, AuditPartitionPhase.Finalized, cancellationToken);
         }, cancellationToken);
     }
 
@@ -483,6 +311,8 @@ public static class DatabasePartitioning
         await ExecuteInTransactionAsync(db, async (connection, transaction) =>
         {
             await AcquireLockAsync(connection, transaction, cancellationToken);
+            var state = await ReadRequiredStateAsync(connection, transaction, cancellationToken);
+            RequirePhase(state, AuditPartitionPhase.Migrated);
             await RequireManagedParentAsync(connection, transaction, cancellationToken);
             if (!await RelationExistsAsync(
                     connection, transaction, "audit_events_unpartitioned_backup", cancellationToken))
@@ -507,6 +337,8 @@ public static class DatabasePartitioning
                 ALTER TABLE audit_events_unpartitioned_backup RENAME TO audit_events;
                 """,
                 cancellationToken);
+            await ExecuteAsync(
+                connection, transaction, AuditPartitionSql.RestoreSecurityAfterRollback, cancellationToken);
 
             var mismatch = await ScalarAsync<bool>(
                 connection,
@@ -531,6 +363,7 @@ public static class DatabasePartitioning
             {
                 throw new InvalidOperationException("Rollback validation failed; no schema change was committed.");
             }
+            await WriteStateAsync(connection, transaction, AuditPartitionPhase.RolledBack, cancellationToken);
         }, cancellationToken);
     }
 
@@ -573,7 +406,8 @@ public static class DatabasePartitioning
     private static async Task ExecuteInTransactionAsync(
         LakeWrightDbContext db,
         Func<DbConnection, DbTransaction, Task> action,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        AuditPartitionOptions? options = null)
     {
         if (db.Database.CurrentTransaction is not null)
         {
@@ -590,6 +424,8 @@ public static class DatabasePartitioning
         try
         {
             await using var transaction = await connection.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+            options ??= new AuditPartitionOptions();
+            await ConfigureTimeoutsAsync(connection, transaction, options, cancellationToken);
             await action(connection, transaction);
             await transaction.CommitAsync(cancellationToken);
         }
@@ -612,6 +448,203 @@ public static class DatabasePartitioning
             "SELECT pg_catalog.pg_advisory_xact_lock(@key)",
             cancellationToken,
             ("key", MaintenanceLockKey));
+
+    private static Task ConfigureTimeoutsAsync(
+        DbConnection connection,
+        DbTransaction transaction,
+        AuditPartitionOptions options,
+        CancellationToken cancellationToken) =>
+        ExecuteAsync(
+            connection,
+            transaction,
+            "SELECT set_config('lock_timeout', @lock_timeout, true), set_config('statement_timeout', @statement_timeout, true)",
+            cancellationToken,
+            ("lock_timeout", ToPostgresTimeout(options.LockTimeout)),
+            ("statement_timeout", ToPostgresTimeout(options.StatementTimeout)));
+
+    private static string ToPostgresTimeout(TimeSpan timeout) =>
+        ((long)timeout.TotalMilliseconds).ToString(CultureInfo.InvariantCulture) + "ms";
+
+    private static async Task AssertAppendOnlyAclAsync(
+        DbConnection connection,
+        DbTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var unsafeGrant = await ScalarAsync<string?>(
+            connection,
+            transaction,
+            """
+            SELECT grantee || ':' || privilege_type
+            FROM information_schema.role_table_grants
+            WHERE table_schema = 'public'
+              AND table_name = 'audit_events'
+              AND grantee <> current_user
+              AND privilege_type IN ('UPDATE', 'DELETE', 'TRUNCATE')
+            ORDER BY grantee, privilege_type
+            LIMIT 1
+            """,
+            cancellationToken);
+        if (unsafeGrant is not null)
+        {
+            throw new InvalidOperationException(
+                $"Refusing to migrate mutable audit_events ACL '{unsafeGrant}'. Revoke UPDATE, DELETE and TRUNCATE first.");
+        }
+    }
+
+    private static async Task AssertMigrationSizeAsync(
+        DbConnection connection,
+        DbTransaction transaction,
+        AuditPartitionOptions options,
+        bool exactRows,
+        CancellationToken cancellationToken)
+    {
+        var relation = exactRows ? "audit_events_unpartitioned_backup" : "audit_events";
+        var bytes = await ScalarAsync<long>(
+            connection,
+            transaction,
+            "SELECT pg_catalog.pg_total_relation_size(pg_catalog.to_regclass('public.' || @relation))",
+            cancellationToken,
+            ("relation", relation));
+        if (bytes > options.MaxMigrationBytes)
+        {
+            throw new InvalidOperationException(
+                $"Audit table size {bytes} bytes exceeds the supported in-transaction migration limit {options.MaxMigrationBytes} bytes.");
+        }
+
+        var rows = exactRows
+            ? await ScalarAsync<long>(
+                connection,
+                transaction,
+                "SELECT count(*) FROM audit_events_unpartitioned_backup",
+                cancellationToken)
+            : await ScalarAsync<long>(
+                connection,
+                transaction,
+                "SELECT greatest(coalesce(reltuples, 0), 0)::bigint FROM pg_catalog.pg_class WHERE oid = 'public.audit_events'::regclass",
+                cancellationToken);
+        if (rows > options.MaxMigrationRows)
+        {
+            throw new InvalidOperationException(
+                $"Audit table row count {rows} exceeds the supported in-transaction migration limit {options.MaxMigrationRows}.");
+        }
+    }
+
+    private static async Task<AuditPartitionState?> ReadStateAsync(
+        DbConnection connection,
+        DbTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        await using var command = CreateCommand(
+            connection,
+            transaction,
+            "SELECT \"SchemaVersion\", \"Phase\" FROM lakewright_audit_partition_state WHERE \"StateKey\" = true");
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        var version = reader.GetInt32(0);
+        var phaseValue = reader.GetString(1);
+        if (await reader.ReadAsync(cancellationToken))
+        {
+            throw new InvalidOperationException("Audit partition lifecycle has more than one authoritative row.");
+        }
+        if (version != LifecycleSchemaVersion
+            || !Enum.TryParse<AuditPartitionPhase>(phaseValue, ignoreCase: false, out var phase))
+        {
+            throw new InvalidOperationException(
+                $"Unsupported audit partition lifecycle state version={version}, phase='{phaseValue}'.");
+        }
+        return new AuditPartitionState(phase);
+    }
+
+    private static async Task<AuditPartitionState> ReadRequiredStateAsync(
+        DbConnection connection,
+        DbTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var state = await ReadStateAsync(connection, transaction, cancellationToken)
+            ?? throw new InvalidOperationException("Audit partition lifecycle state is missing.");
+        await AssertLifecycleTopologyAsync(connection, transaction, state, cancellationToken);
+        return state;
+    }
+
+    private static void RequirePhase(AuditPartitionState? state, params AuditPartitionPhase[] expected)
+    {
+        if (state is null || !expected.Contains(state.Phase))
+        {
+            var actual = state?.Phase.ToString() ?? "missing";
+            throw new InvalidOperationException(
+                $"Audit partition lifecycle is '{actual}', expected {string.Join(" or ", expected)}.");
+        }
+    }
+
+    private static Task WriteStateAsync(
+        DbConnection connection,
+        DbTransaction transaction,
+        AuditPartitionPhase phase,
+        CancellationToken cancellationToken) =>
+        ExecuteAsync(
+            connection,
+            transaction,
+            """
+            INSERT INTO lakewright_audit_partition_state
+                ("StateKey", "SchemaVersion", "Phase", "UpdatedAt")
+            VALUES (true, @version, @phase, now())
+            ON CONFLICT ("StateKey") DO UPDATE
+            SET "SchemaVersion" = EXCLUDED."SchemaVersion",
+                "Phase" = EXCLUDED."Phase",
+                "UpdatedAt" = EXCLUDED."UpdatedAt"
+            """,
+            cancellationToken,
+            ("version", LifecycleSchemaVersion),
+            ("phase", phase.ToString()));
+
+    private static async Task AssertLifecycleTopologyAsync(
+        DbConnection connection,
+        DbTransaction transaction,
+        AuditPartitionState state,
+        CancellationToken cancellationToken)
+    {
+        var canonicalKind = await RelationKindAsync(connection, transaction, "audit_events", cancellationToken);
+        var hasBackup = await RelationExistsAsync(
+            connection, transaction, "audit_events_unpartitioned_backup", cancellationToken);
+        var hasRollback = await RelationExistsAsync(
+            connection, transaction, "audit_events_partitioned_rollback", cancellationToken);
+        var valid = state.Phase switch
+        {
+            AuditPartitionPhase.Migrated => canonicalKind == "p" && hasBackup && !hasRollback,
+            AuditPartitionPhase.Finalized => canonicalKind == "p" && !hasBackup && !hasRollback,
+            AuditPartitionPhase.RolledBack => canonicalKind == "r" && !hasBackup && hasRollback,
+            _ => false
+        };
+        if (!valid)
+        {
+            throw new InvalidOperationException(
+                $"Audit partition lifecycle '{state.Phase}' does not match the database topology.");
+        }
+    }
+
+    private static async Task CleanupRollbackAsync(
+        DbConnection connection,
+        DbTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        await ExecuteAsync(
+            connection,
+            transaction,
+            """
+            DROP TABLE audit_events_partitioned_rollback CASCADE;
+            DROP TABLE audit_event_ids;
+            DROP TABLE audit_event_partitions;
+            DROP FUNCTION lakewright_register_audit_event_id();
+            DROP FUNCTION lakewright_create_audit_partition(timestamptz);
+            DROP FUNCTION lakewright_drop_audit_partition(text, timestamptz, timestamptz);
+            DELETE FROM lakewright_audit_partition_state WHERE "StateKey" = true;
+            """,
+            cancellationToken);
+    }
 
     private static async Task<int> EnsureWindowAsync(
         DbConnection connection,
@@ -801,6 +834,23 @@ public static class DatabasePartitioning
             cancellationToken,
             ("relation", relation));
 
+    private static Task<string?> RelationKindAsync(
+        DbConnection connection,
+        DbTransaction transaction,
+        string relation,
+        CancellationToken cancellationToken) =>
+        ScalarAsync<string?>(
+            connection,
+            transaction,
+            """
+            SELECT c.relkind::text
+            FROM pg_catalog.pg_class c
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'public' AND c.relname = @relation
+            """,
+            cancellationToken,
+            ("relation", relation));
+
     private static async Task ExecuteAsync(
         DbConnection connection,
         DbTransaction? transaction,
@@ -860,6 +910,15 @@ public static class DatabasePartitioning
             throw new ArgumentException("Audit partition clocks must be UTC.", nameof(value));
         }
     }
+
+    private enum AuditPartitionPhase
+    {
+        Migrated,
+        Finalized,
+        RolledBack
+    }
+
+    private sealed record AuditPartitionState(AuditPartitionPhase Phase);
 
     private sealed record PartitionRange(string Name, DateTimeOffset Start, DateTimeOffset End);
 }
