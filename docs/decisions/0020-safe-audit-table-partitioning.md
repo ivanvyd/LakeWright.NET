@@ -36,9 +36,17 @@ The one-transaction copy is supported only up to one million rows and 2 GiB by d
 estimated relation size before the exclusive lock and the exact row count after it are checked.
 The lock wait defaults to 15 seconds and every maintenance transaction has a five-minute statement
 timeout. Enforced bounds are 100 milliseconds to five minutes for lock wait, one second to one
-hour for statement time, one to 100 million rows, and 1 MiB to 1 TiB. Larger tables need a
-separately designed staged migration; this command refuses them instead of beginning an unbounded
-outage.
+hour for statement time, one to 100 million rows, and 1 MiB to 1 TiB. Sparse history is bounded
+separately: the oldest-to-newest range defaults to at most 120 monthly partitions and may be set
+from one to 1,200. Larger tables or wider ranges need a separately designed staged migration; this
+command refuses them instead of beginning an unbounded outage.
+
+An owning migration role normally bypasses row security, but PostgreSQL `FORCE ROW LEVEL SECURITY`
+makes even the owner subject to policies. The migration records the source flags, disables only
+`FORCE` inside its rollback-safe transaction while copying and validating all rows, then restores
+the original flags on both the rollback copy and partitioned parent. Validation, rollback, and
+finalization use the same bounded owner bypass. Integration coverage runs this lifecycle as a real
+non-superuser owner whose policy hides one of two rows.
 
 The public EF identity remains `AuditEvent.Id`. A non-partitioned `audit_event_ids` registry has a
 primary key on `Id`; a locked-down `SECURITY DEFINER` trigger inserts into it in the same transaction
@@ -57,8 +65,9 @@ Maintenance is a recurring deployment job, not an application startup hook. Ever
 current month plus the configured future window (two months by default), then removes only managed
 partitions whose `EndsAt` is at or before the retention cutoff. Retention is configurable in whole
 calendar years and defaults to seven. Partition identifiers are generated and quoted inside
-PostgreSQL; month calculations and names are explicitly UTC regardless of the database session time
-zone. Clocks, bounds, retention cutoffs, and lock keys sent by .NET are parameters.
+PostgreSQL; month calculations, including month-end arithmetic across daylight-saving transitions,
+are explicitly UTC regardless of the database session time zone. Clocks, bounds, retention cutoffs,
+and lock keys sent by .NET are parameters.
 
 ## Deployment sequence
 
