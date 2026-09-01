@@ -65,23 +65,19 @@ jobs:
         id: version
         run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      # ADR 0010: packages publish with a prerelease suffix, so `dotnet add package` needs
-      # --prerelease and the version string carries the instability warning at the point of use.
-      # A stable tag would push a package that reads as a commitment to an API that is still
-      # moving, and nuget.org unlists but never deletes. Refusing the tag is the only cheap
-      # moment to catch it.
-      #
-      # Build metadata is stripped before the test. SemVer puts the prerelease label between the
-      # hyphen and the plus, so `1.0.0+exp-sha.5114f85` is a *stable* version that nonetheless
-      # contains a hyphen: a bare `*-*` test passes it and publishes a permanent stable 1.0.0.
-      - name: Refuse a stable version
+      # ADR 0019: a stable tag is no longer refused. The compat promise for 1.x is a
+      # SemVer minor + CHANGELOG migration note on any breaking change; the prerelease
+      # guard in ADR 0010 still applies to a future 0.x branch but is removed for 1.x.
+      # Build metadata is stripped before the prerelease check below so `1.0.0+exp-sha`
+      # is read as stable.
+      - name: Read whether the version is a prerelease
+        id: kind
         env:
           VERSION: ${{ steps.version.outputs.value }}
-          REF_NAME: ${{ github.ref_name }}
         run: |
           case "${VERSION%%+*}" in
-            *-*) echo "prerelease: $VERSION" ;;
-            *)   echo "Tag $REF_NAME carries no prerelease label. See ADR 0010."; exit 1 ;;
+            *-*) echo "value=prerelease" >> "$GITHUB_OUTPUT" ;;
+            *)   echo "value=stable"    >> "$GITHUB_OUTPUT" ;;
           esac
 
       - run: dotnet restore --locked-mode
@@ -163,12 +159,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.value }}
           REF_NAME: ${{ github.ref_name }}
+          KIND: ${{ steps.kind.outputs.value }}
         run: |
-          # A prerelease label means a pre-release under SemVer. gh does not infer that, so an RC
-          # tag would otherwise publish as an ordinary release. Build metadata is stripped first,
-          # for the reason the "Refuse a stable version" step gives.
+          # A prerelease label means a pre-release under SemVer. gh does not infer that, so a
+          # tag like 1.0.0-rc.1 would otherwise publish as an ordinary release. The
+          # classification is shared with the (now-removed) prerelease guard so the same
+          # version reads the same way in both places.
           prerelease=""
-          case "${VERSION%%+*}" in *-*) prerelease="--prerelease" ;; esac
+          if [ "$KIND" = "prerelease" ]; then
+            prerelease="--prerelease"
+          fi
 
           gh release create "$REF_NAME" \
             --title "$REF_NAME" \

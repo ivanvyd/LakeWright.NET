@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace LakeWright.Embedding;
 
@@ -30,10 +32,18 @@ public static class EmbeddingServiceCollectionExtensions
 
         services.AddSingleton(TimeProvider.System);
 
+        // The token caches default to in-memory (ADR 0018). Both implementations are singletons:
+        // a per-request cache would lose its entries between calls. A consumer that wants a
+        // different backing store (Redis, distributed) registers their own
+        // IWorkspaceTokenCache / IEmbedTokenCache before calling this method, and the
+        // TryAddSingleton calls below keep their registration.
+        services.TryAddSingleton<IWorkspaceTokenCache>(sp => new MemoryWorkspaceTokenCache(sp.GetRequiredService<TimeProvider>()));
+        services.TryAddSingleton<IEmbedTokenCache>(sp => new MemoryEmbedTokenCache(sp.GetRequiredService<TimeProvider>()));
+
         services.AddHttpClient<IDashboardTokenBroker, DashboardTokenBroker>((provider, client) =>
         {
             var options = provider
-                .GetRequiredService<Microsoft.Extensions.Options.IOptions<DashboardEmbeddingOptions>>()
+                .GetRequiredService<IOptions<DashboardEmbeddingOptions>>()
                 .Value;
 
             // Trailing slash: without it a relative request path replaces the last segment rather
@@ -45,6 +55,58 @@ public static class EmbeddingServiceCollectionExtensions
             // list *un-redacts* everything not named. So the obvious hardening here would widen the
             // exposure it looks like it closes. Query strings are redacted by default too, which is
             // what keeps external_viewer_id and external_value out of the logs.
+        });
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers <see cref="IOpsTokenBroker"/> and <see cref="IDashboardCatalog"/>, bound to the
+    /// <c>DashboardOps</c> configuration section.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Distinct from <see cref="AddLakeWrightDashboardEmbedding"/> on purpose (ADR 0019). A product
+    /// that only embeds dashboards does not register the ops side and never carries an ops secret
+    /// in its configuration. A product that needs the catalog (or any future ops path) registers
+    /// both methods; the two <see cref="HttpClient"/> registrations are independent.
+    /// </para>
+    /// <para>
+    /// Validation on start means a half-filled ops section fails at boot rather than on the first
+    /// catalog request. The same trade-off as the embed side (ADR 0009).
+    /// </para>
+    /// </remarks>
+    public static IServiceCollection AddLakeWrightDashboardOps(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services.AddOptions<DashboardOpsOptions>()
+            .Bind(configuration.GetSection("DashboardOps"))
+            .Validate(o => !string.IsNullOrWhiteSpace(o.WorkspaceUrl), "DashboardOps:WorkspaceUrl is required.")
+            .Validate(o => !string.IsNullOrWhiteSpace(o.ClientId), "DashboardOps:ClientId is required.")
+            .Validate(o => !string.IsNullOrWhiteSpace(o.ClientSecret), "DashboardOps:ClientSecret is required.")
+            .ValidateOnStart();
+
+        // TimeProvider is registered by AddLakeWrightDashboardEmbedding; the ops module does
+        // not depend on the embed module being called. Re-registering is a no-op when the
+        // embed side has already added it, and supplies it when the ops side is registered
+        // alone.
+        services.AddSingleton(TimeProvider.System);
+
+        services.AddHttpClient<IOpsTokenBroker, OpsTokenBroker>((provider, client) =>
+        {
+            var options = provider
+                .GetRequiredService<IOptions<DashboardOpsOptions>>()
+                .Value;
+            client.BaseAddress = new Uri(options.WorkspaceUrl.TrimEnd('/') + "/");
+        });
+
+        services.AddHttpClient<IDashboardCatalog, DashboardCatalog>((provider, client) =>
+        {
+            var options = provider
+                .GetRequiredService<IOptions<DashboardOpsOptions>>()
+                .Value;
+            client.BaseAddress = new Uri(options.WorkspaceUrl.TrimEnd('/') + "/");
         });
 
         return services;
