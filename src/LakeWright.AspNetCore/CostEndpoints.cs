@@ -76,7 +76,25 @@ public static class CostEndpoints
             });
         }
 
-        var summary = await cost.ResolveAsync(tenant, effectiveFrom, effectiveUntil, cancellationToken);
-        return Results.Ok(summary);
+        try
+        {
+            var summary = await cost.ResolveAsync(
+                tenant,
+                effectiveFrom,
+                effectiveUntil,
+                cancellationToken);
+            return Results.Ok(summary);
+        }
+        catch (BillingUsageException exception)
+        {
+            return Results.Problem(
+                statusCode: StatusCodes.Status502BadGateway,
+                title: "Billing usage is unavailable.",
+                extensions: new Dictionary<string, object?>
+                {
+                    ["code"] = exception.Code,
+                    ["transient"] = exception.IsTransient
+                });
+        }
     }
 }

@@ -15,9 +15,8 @@ public enum CostSource
     Proxy = 0,
 
     /// <summary>
-    /// A direct read of <c>system.billing.usage</c> joined to <c>operations.ExternalId</c>.
-    /// Requires the grant this library does not hold, and is an extension point an adopter
-    /// implements against their own workspace.
+    /// A read of <c>system.billing.usage</c> for tenant-owned job run ids selected from
+    /// <c>operations.ExternalId</c>, correlated in application code.
     /// </summary>
     Billing = 1
 }
@@ -42,7 +41,20 @@ public sealed record TenantCostSummary(
     CostSource Source,
     string? WarehouseSku,
     decimal DbusConsumed,
-    IReadOnlyList<CostByKind> ByKind);
+    IReadOnlyList<CostByKind> ByKind)
+{
+    /// <summary>
+    /// Cost at Databricks' effective list price, grouped by the currency in
+    /// <c>system.billing.list_prices</c>. Empty for proxy attribution.
+    /// </summary>
+    /// <remarks>
+    /// This is deliberately a collection rather than one amount: billing data can span price
+    /// rows in different currencies, and adding unlike currencies would produce a plausible but
+    /// meaningless number. It is an init-only property so the original positional constructor
+    /// remains source-compatible.
+    /// </remarks>
+    public IReadOnlyList<CurrencyAmount> EstimatedListCost { get; init; } = [];
+}
 
 /// <summary>
 /// One row of a <see cref="TenantCostSummary"/>.
@@ -50,15 +62,25 @@ public sealed record TenantCostSummary(
 /// <param name="Kind">The operation's <c>Kind</c> string.</param>
 /// <param name="Operations">Number of operations of this kind in the window.</param>
 /// <param name="ElapsedSeconds">
-/// Total wall-clock seconds these operations held compute, summed across the window. A proxy
-/// number when <see cref="CostSource.Proxy"/>; the Databricks-reported duration otherwise.
+/// Total wall-clock seconds these operations held compute, summed across the window. Populated by
+/// <see cref="CostSource.Proxy"/> and zero for a billing read, whose usage records do not report
+/// the operation wall-clock duration.
 /// </param>
 /// <param name="DbusConsumed">DBU attributed to this kind.</param>
 public sealed record CostByKind(
     string Kind,
     int Operations,
     double ElapsedSeconds,
-    decimal DbusConsumed);
+    decimal DbusConsumed)
+{
+    /// <summary>Effective list-price cost for this operation kind, grouped by currency.</summary>
+    public IReadOnlyList<CurrencyAmount> EstimatedListCost { get; init; } = [];
+}
+
+/// <summary>A monetary amount whose currency must travel with the value.</summary>
+/// <param name="CurrencyCode">The ISO-style code reported by the Databricks price table.</param>
+/// <param name="Amount">The amount in <paramref name="CurrencyCode"/>.</param>
+public sealed record CurrencyAmount(string CurrencyCode, decimal Amount);
 
 /// <summary>
 /// Reports a tenant's Databricks compute consumption.
@@ -71,10 +93,9 @@ public sealed record CostByKind(
 /// The shipped implementation in <c>LakeWright.Multitenancy.Cost</c>
 /// (<c>OperationCostAttribution</c>) weights <c>operations.ClaimedAt</c> to <c>CompletedAt</c>
 /// by the warehouse SKU's DBU/hour rate, which is what the threat model calls available without
-/// a grant. <see cref="CostSource.Billing"/> reads <c>system.billing.usage</c> directly, which
-/// is what a chargeback system wants but requires a metastore-admin grant this library does
-/// not hold. An adopter wires whichever they have; the seam is the same interface so the rest
-/// of the codebase does not know which one ran.
+/// a grant. <see cref="CostSource.Billing"/> reads <c>system.billing.usage</c> and
+/// <c>system.billing.list_prices</c> for tenant-owned job runs. It requires system-table grants,
+/// so the proxy remains the default and an adopter opts into billing registration explicitly.
 /// </remarks>
 public interface ICostAttribution
 {

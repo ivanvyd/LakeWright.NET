@@ -84,12 +84,11 @@ caps how many operations one tenant can have running at once, across every worke
 ceiling on the compute a runaway loop can buy before anyone notices. Warehouse auto-stop bounds
 the idle half. Evidence: `OperationClaimTests.A_tenant_at_its_ceiling_is_skipped_rather_than_failed`.
 
-The reporting half is `ICostAttribution` (ADR 0012), with the elapsed-time proxy as its first
-implementation. The proxy sums `EXTRACT(EPOCH FROM (CompletedAt - ClaimedAt))` per kind and
-weights it by the configured warehouse SKU's DBU/hour. The result is `CostSource.Proxy` and
-is documented as a proxy rather than a currency read. The interface exists so a real
-billing-table read replaces this implementation without changing the call sites; the
-`CostSource` discriminator tells the caller which one ran.
+The reporting half is `ICostAttribution` (ADR 0012). The default elapsed-time proxy sums
+`EXTRACT(EPOCH FROM (CompletedAt - ClaimedAt))` per kind and weights it by the configured
+warehouse SKU's DBU/hour. The opt-in billing implementation instead returns DBUs and effective
+list-price currency amounts from the Databricks system tables; the `CostSource` discriminator
+tells the caller which one ran.
 
 Nothing here caps the *cost of one query*. A single operation against a large warehouse is bounded
 only by the run timeout — which cancels the run rather than merely abandoning it, so the timeout
@@ -102,16 +101,19 @@ The tenant does not reach the compute in a form billing can see. `TenantScopedJo
 `lakewright_tenant_id` as a *job parameter*, and Databricks attributes usage in
 `system.billing.usage` by `custom_tags`, which come from the job or cluster definition, not from
 per-run parameters. Tagging per run is not available on `RunNow`, and a job per tenant does not
-scale. So attribution has to go the other way: join `system.billing.usage` to a run id, and join
-that run id to `operations.ExternalId`, which this project already stores. The tenant identity
-lives in our database, not in theirs, and that is the correct place for it.
+scale. So attribution goes the other way. PostgreSQL first selects `operations.ExternalId` for the
+resolved tenant. The Databricks query receives only those job run ids as bound parameters and
+also filters the configured `workspace_id`; application code joins the returned rows to operation
+kinds. PostgreSQL is never named in Databricks SQL. A provider response containing any run id not
+in the tenant-owned set fails the report instead of being attributed.
 
-Reading those tables needs a grant this project does not have. Querying `system.billing.usage` as
+Reading those tables needs a grant the default development identity does not have. Querying `system.billing.usage` as
 the workspace identity returns `INSUFFICIENT_PERMISSIONS: User does not have USE SCHEMA on Schema
-'system.billing'`. It is a metastore-admin grant, so the prerequisite for cost attribution in
-currency is an administrative decision rather than a feature. The proxy is the alternative until
-that grant is made; a product with the grant registers its own `ICostAttribution`, returns
-`CostSource.Billing`, and the rest of the system reads it the same way.
+'system.billing'`. It is an administrative decision, so the proxy remains the default. A product
+with access to both `system.billing.usage` and `system.billing.list_prices` opts in with
+`AddLakeWrightBillingCostAttribution`. The code path is covered locally with fixed-query,
+malformed-row, correction, ownership, polling and cancellation tests; the system-table grants and
+live response shape remain workspace verification steps.
 
 ### T6. Denial of service against the operation queue
 

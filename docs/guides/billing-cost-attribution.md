@@ -1,0 +1,66 @@
+# Billing cost attribution
+
+The default `OperationCostAttribution` is deliberately a DBU proxy. Use the billing reader only
+when the application identity can read the Databricks billing system tables and the product needs
+currency-denominated effective list cost.
+
+## Prerequisites
+
+- The Databricks identity registered by `AddLakeWrightDatabricks` can use
+  `system.billing` and select from `system.billing.usage` and
+  `system.billing.list_prices`.
+- `DatabricksBilling:WorkspaceId` is the workspace whose Lakeflow run ids are stored in this
+  application's `operations.ExternalId` column.
+- Operation processing uses the LakeWright worker, so `ExternalId` is the Lakeflow
+  `job_run_id`. Statement ids and job ids are different identifiers and are not accepted.
+
+System billing rows are account-wide and typically arrive after the workload finishes. The reader
+always filters `workspace_id`, job run id, timestamp and `usage_date`; a report can therefore be
+empty while recent records are still being delivered.
+
+## Registration
+
+```csharp
+builder.Services.AddLakeWright(builder.Configuration);
+builder.Services.AddLakeWrightDatabricks(builder.Configuration);
+builder.Services.AddLakeWrightBillingCostAttribution(builder.Configuration);
+```
+
+```json
+{
+  "Databricks": {
+    "WorkspaceUrl": "https://adb-....azuredatabricks.net",
+    "WarehouseId": "..."
+  },
+  "DatabricksBilling": {
+    "WorkspaceId": "...",
+    "PollIntervalMilliseconds": 250
+  }
+}
+```
+
+`AddLakeWrightBillingCostAttribution` replaces the proxy registration. Keep
+`AddLakeWrightCostAttribution` instead in environments without the grants.
+
+The response retains the existing DBU fields. `EstimatedListCost` is a collection of
+`CurrencyAmount` values on both the summary and each operation-kind row. The amount uses
+`pricing.effective_list.default`; it does not include a private negotiated discount and must not be
+presented as an invoice total. `ElapsedSeconds` is zero for billing rows because the billing table
+reports quantities and usage intervals, not the operation wall-clock value used by the proxy.
+
+## Live verification
+
+Run this only in the non-production workspace whose id is configured above.
+
+1. Start one known LakeWright operation and wait for its `ExternalId` job run to finish.
+2. Wait for the corresponding `system.billing.usage` record to arrive. Databricks documents a
+   typical delay of up to 12 hours for original records.
+3. Query the cost endpoint for a window that contains the run. Confirm `Source` is `Billing`, the
+   run contributes once to `Operations`, and `EstimatedListCost` carries the expected currency.
+4. Compare the returned DBUs and effective list cost with a direct, read-only query over the same
+   workspace id, job run id and window.
+5. Remove the system-table grants from a disposable verification principal and confirm the endpoint
+   returns HTTP 502 with `PERMISSION_DENIED`; restore the grant afterwards.
+
+No test data needs to be written to the system tables. Do not use a production workspace merely to
+obtain a billing row.

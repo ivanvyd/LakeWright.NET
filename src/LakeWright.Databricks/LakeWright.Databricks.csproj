@@ -11,4 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\LakeWright.Core\LakeWright.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="LakeWright.TenantIsolation.Tests" />
+  </ItemGroup>
 </Project>

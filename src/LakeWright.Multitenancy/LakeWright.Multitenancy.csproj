@@ -12,10 +12,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\LakeWright.Core\LakeWright.Core.csproj" />
-    <!-- BillingApiCostAttribution talks to DatabricksClient directly (it has to escape the
-         tenant-scoped catalog/schema IStatementExecutor enforces to read system.billing.usage).
-         The reference is one-way: LakeWright.Databricks does not depend on Multitenancy. -->
-    <ProjectReference Include="..\LakeWright.Databricks\LakeWright.Databricks.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- RunOnceAsync is internal so nothing outside the worker drives a single iteration in
