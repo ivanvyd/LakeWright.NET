@@ -119,6 +119,10 @@ public sealed class LakeWrightDbContext(DbContextOptions<LakeWrightDbContext> op
         modelBuilder.Entity<AuditEvent>(e =>
         {
             e.ToTable("audit_events");
+            // The public identity remains Id. PostgreSQL cannot put a global unique index on a
+            // range-partitioned table unless the partition key is part of it, so the partition
+            // migration enforces this key through its non-partitioned audit_event_ids registry.
+            // Keeping the model key unchanged prevents partitioning from leaking into callers.
             e.HasKey(x => x.Id);
             // Nullable both ways. AuditEvent.OrganizationId documents null as valid — "events
             // outside a tenant, such as an organization being created" — and the forgiving

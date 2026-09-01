@@ -8,6 +8,14 @@ note.
 
 ## [Unreleased]
 
+### Added
+
+- Safe monthly partitioning for `audit_events`, with atomic populated-table migration,
+  row-for-row validation, rollback/finalization, global `AuditEvent.Id` uniqueness, preserved
+  grants and row-security policies, and configurable retention defaulting to seven years. The
+  migration and recurring maintenance executable requires a distinct table-owning connection;
+  the application role receives no DDL. ADR 0020.
+
 ## [1.0.1] — 2026-09-01
 
 ### Changed
