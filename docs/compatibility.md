@@ -6,11 +6,11 @@ Anything not listed as **Verified** should be treated as unverified regardless o
 surrounding prose sounds.
 
 Last updated 2026-09-01 for the 1.1.1 release. The complete local suite, package consumer and load
-harness were rerun. Docker and browser verification are intentionally pending the reviewed merge
-so they exercise the exact commit proposed for the signed tag. Databricks CLI 1.14.1 authenticated
-to the active development workspace; bundle validation and the non-mutating plan passed. The
-currency path is implemented and locally verified, but its system-table read remains blocked
-because the verification identity lacks `USE SCHEMA` on `system.billing`.
+harness were rerun. Docker, HTTP and browser verification then passed against the reviewed merge.
+Databricks CLI authenticated to the active development workspace; bundle validation and the
+non-mutating plan passed. CI independently validated the bundle with setup-cli 1.14.1. The currency
+path is implemented and locally verified, but its system-table read remains blocked because the
+verification identity lacks `USE SCHEMA` on `system.billing`.
 A `Documented` row is not promoted to `Verified` by a stable version number; the matrix
 records the work that has been done, not a claim about future work.
 
