@@ -144,7 +144,7 @@ internal static partial class DatabasePartitioning
                      AND trigger_row.tgname = 'lakewright_register_audit_event_id'
                      AND trigger_row.tgfoid = pg_catalog.to_regprocedure('public.lakewright_register_audit_event_id()')
                      AND trigger_row.tgtype = 7
-                     AND trigger_row.tgenabled <> 'D'
+                     AND trigger_row.tgenabled IN ('O', 'A')
                      AND NOT trigger_row.tgisinternal)
                AND EXISTS (
                    SELECT 1
