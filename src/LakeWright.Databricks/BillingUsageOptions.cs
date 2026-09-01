@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations;
 namespace LakeWright.Databricks;
 
 /// <summary>Configuration for privileged reads of Databricks billing system tables.</summary>
-public sealed class BillingUsageOptions
+public sealed class BillingUsageOptions : IValidatableObject
 {
     public const string SectionName = "DatabricksBilling";
 
@@ -20,4 +20,32 @@ public sealed class BillingUsageOptions
     /// <summary>Overall deadline for a billing statement, including all polls.</summary>
     [Range(1, 900)]
     public int PollingTimeoutSeconds { get; set; } = 120;
+
+    /// <summary>
+    /// Server-side wait before Databricks cancels a billing statement that has not completed.
+    /// </summary>
+    [Range(5, 50)]
+    public int SubmissionWaitTimeoutSeconds { get; set; } = 30;
+
+    /// <summary>Maximum billing statements this process may execute concurrently.</summary>
+    [Range(1, 64)]
+    public int MaxConcurrentStatements { get; set; } = 4;
+
+    /// <summary>
+    /// Maximum active and queued billing statements in this process. Requests beyond the bound
+    /// fail with the transient code <c>BILLING_BUSY</c> instead of growing an unbounded queue.
+    /// </summary>
+    [Range(1, 1_024)]
+    public int MaxOutstandingStatements { get; set; } = 32;
+
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (SubmissionWaitTimeoutSeconds > PollingTimeoutSeconds)
+        {
+            yield return new ValidationResult(
+                $"{nameof(SubmissionWaitTimeoutSeconds)} cannot exceed "
+                + $"{nameof(PollingTimeoutSeconds)}.",
+                [nameof(SubmissionWaitTimeoutSeconds), nameof(PollingTimeoutSeconds)]);
+        }
+    }
 }

@@ -10,8 +10,11 @@ namespace LakeWright.Multitenancy.Cost;
 /// </summary>
 public sealed class BillingCostAttribution(
     LakeWrightDbContext db,
-    IBillingUsageReader billing) : ICostAttribution
+    IBillingUsageReader billing,
+    TimeProvider? timeProvider = null) : ICostAttribution
 {
+    private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
+
     public async Task<TenantCostSummary> ResolveAsync(
         TenantContext tenant,
         DateTimeOffset from,
@@ -19,10 +22,7 @@ public sealed class BillingCostAttribution(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(tenant);
-        if (from >= until)
-        {
-            throw new ArgumentException("from must be earlier than until.", nameof(from));
-        }
+        BillingUsageLimits.ValidateReportWindow(from, until, _timeProvider.GetUtcNow());
 
         var candidates = await db.Operations
             .AsNoTracking()

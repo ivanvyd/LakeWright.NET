@@ -99,7 +99,41 @@ public sealed class OptionalDatabricksTests
 
         cost.ImplementationType.ShouldBe(typeof(BillingCostAttribution));
         reader.ImplementationType.ShouldBe(typeof(DatabricksBillingUsageReader));
+        reader.Lifetime.ShouldBe(ServiceLifetime.Singleton);
         Validator(services).ShouldNotThrow();
+    }
+
+    [Fact]
+    public void Billing_cost_rejects_invalid_statement_bounds()
+    {
+        var services = new ServiceCollection();
+        services.AddLakeWrightBillingCostAttribution(Configuration(new()
+        {
+            ["DatabricksBilling:WorkspaceId"] = "workspace-123",
+            ["DatabricksBilling:SubmissionWaitTimeoutSeconds"] = "0",
+            ["DatabricksBilling:MaxConcurrentStatements"] = "0",
+            ["DatabricksBilling:MaxOutstandingStatements"] = "0"
+        }));
+
+        var message = Validator(services).ShouldThrow<OptionsValidationException>().Message;
+        message.ShouldContain(nameof(BillingUsageOptions.SubmissionWaitTimeoutSeconds));
+        message.ShouldContain(nameof(BillingUsageOptions.MaxConcurrentStatements));
+    }
+
+    [Fact]
+    public void Billing_cost_rejects_a_submission_timeout_beyond_the_overall_deadline()
+    {
+        var services = new ServiceCollection();
+        services.AddLakeWrightBillingCostAttribution(Configuration(new()
+        {
+            ["DatabricksBilling:WorkspaceId"] = "workspace-123",
+            ["DatabricksBilling:PollingTimeoutSeconds"] = "5",
+            ["DatabricksBilling:SubmissionWaitTimeoutSeconds"] = "50"
+        }));
+
+        var message = Validator(services).ShouldThrow<OptionsValidationException>().Message;
+        message.ShouldContain(nameof(BillingUsageOptions.SubmissionWaitTimeoutSeconds));
+        message.ShouldContain(nameof(BillingUsageOptions.PollingTimeoutSeconds));
     }
 
     private static Action Validator(IServiceCollection services)

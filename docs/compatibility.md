@@ -5,16 +5,18 @@ What has been run against a real system, what has only been read in documentatio
 Anything not listed as **Verified** should be treated as unverified regardless of how confident the
 surrounding prose sounds.
 
-Last updated 2026-09-01 for the 1.1.0 release. The complete local suite, package consumer, load
-harness, Docker sample and browser smoke were rerun. Databricks CLI 1.14.1 authenticated to the
-active development workspace; bundle validation and the non-mutating plan passed. The currency
-path is implemented and locally verified, but its system-table read remains blocked because the
-verification identity lacks `USE SCHEMA` on `system.billing`.
+Last updated 2026-09-01 for the 1.1.1 release. The complete local suite, package consumer and load
+harness were rerun. Docker and browser verification are intentionally pending the reviewed merge
+so they exercise the exact commit proposed for the signed tag. Databricks CLI 1.14.1 authenticated
+to the active development workspace; bundle validation and the non-mutating plan passed. The
+currency path is implemented and locally verified, but its system-table read remains blocked
+because the verification identity lacks `USE SCHEMA` on `system.billing`.
 A `Documented` row is not promoted to `Verified` by a stable version number; the matrix
 records the work that has been done, not a claim about future work.
 
 The commands, results and cleanup evidence are in the
-[1.1.0 release evidence](release-evidence/v1.1.0.md).
+[1.1.1 release evidence](release-evidence/v1.1.1.md), with the completed 1.1.0 publication record in
+[the prior release evidence](release-evidence/v1.1.0.md).
 
 ## Legend
 
