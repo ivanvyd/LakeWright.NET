@@ -409,6 +409,21 @@ public class AuditPartitionTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task Lifecycle_validation_rejects_a_replica_only_identity_trigger()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        await DatabasePartitioning.MigrateAsync(db, FixedNow, cancellationToken: ct);
+        await db.Database.ExecuteSqlRawAsync(
+            "ALTER TABLE audit_events ENABLE REPLICA TRIGGER lakewright_register_audit_event_id", ct);
+
+        var error = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await DatabasePartitioning.ValidateAsync(db, ct));
+
+        error.Message.ShouldContain("does not match the database topology");
+    }
+
+    [Fact]
     public async Task Lifecycle_validation_requires_a_security_definer_identity_function()
     {
         var ct = TestContext.Current.CancellationToken;
