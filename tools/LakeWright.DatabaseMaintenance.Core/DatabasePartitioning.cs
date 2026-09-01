@@ -167,13 +167,18 @@ internal static partial class DatabasePartitioning
             await AssertMigrationSizeAsync(connection, transaction, options, exactRows: false, cancellationToken);
             await ReadAndValidateMigrationRangeAsync(
                 connection, transaction, options, exactRows: false, cancellationToken);
-            var sourceRls = await ReadRlsSettingsAsync(
-                connection, transaction, AuditRelation.Canonical, cancellationToken);
 
             await ExecuteAsync(
                 connection,
                 transaction,
-                "LOCK TABLE audit_events IN ACCESS EXCLUSIVE MODE; ALTER TABLE audit_events RENAME TO audit_events_unpartitioned_backup;",
+                "LOCK TABLE audit_events IN ACCESS EXCLUSIVE MODE;",
+                cancellationToken);
+            var sourceRls = await ReadRlsSettingsAsync(
+                connection, transaction, AuditRelation.Canonical, cancellationToken);
+            await ExecuteAsync(
+                connection,
+                transaction,
+                "ALTER TABLE audit_events RENAME TO audit_events_unpartitioned_backup;",
                 cancellationToken);
             await DisableForceRlsAsync(
                 connection, transaction, AuditRelation.Backup, sourceRls, cancellationToken);

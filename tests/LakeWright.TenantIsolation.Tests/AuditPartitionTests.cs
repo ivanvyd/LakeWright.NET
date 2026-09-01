@@ -379,6 +379,51 @@ public class AuditPartitionTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task Lifecycle_validation_requires_the_registry_primary_key()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        await DatabasePartitioning.MigrateAsync(db, FixedNow, cancellationToken: ct);
+        await db.Database.ExecuteSqlRawAsync(
+            "ALTER TABLE audit_event_ids DROP CONSTRAINT audit_event_ids_pkey", ct);
+
+        var error = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await DatabasePartitioning.ValidateAsync(db, ct));
+
+        error.Message.ShouldContain("does not match the database topology");
+    }
+
+    [Fact]
+    public async Task Lifecycle_validation_requires_an_enabled_identity_trigger()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        await DatabasePartitioning.MigrateAsync(db, FixedNow, cancellationToken: ct);
+        await db.Database.ExecuteSqlRawAsync(
+            "ALTER TABLE audit_events DISABLE TRIGGER lakewright_register_audit_event_id", ct);
+
+        var error = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await DatabasePartitioning.ValidateAsync(db, ct));
+
+        error.Message.ShouldContain("does not match the database topology");
+    }
+
+    [Fact]
+    public async Task Lifecycle_validation_requires_a_security_definer_identity_function()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        await DatabasePartitioning.MigrateAsync(db, FixedNow, cancellationToken: ct);
+        await db.Database.ExecuteSqlRawAsync(
+            "ALTER FUNCTION lakewright_register_audit_event_id() SECURITY INVOKER", ct);
+
+        var error = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await DatabasePartitioning.ValidateAsync(db, ct));
+
+        error.Message.ShouldContain("does not match the database topology");
+    }
+
+    [Fact]
     public async Task Non_superuser_owner_preserves_hidden_rows_through_forced_rls_lifecycle()
     {
         const string role = "lakewright_partition_migrator";
