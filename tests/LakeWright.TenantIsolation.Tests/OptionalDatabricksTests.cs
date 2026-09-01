@@ -110,12 +110,14 @@ public sealed class OptionalDatabricksTests
         services.AddLakeWrightBillingCostAttribution(Configuration(new()
         {
             ["DatabricksBilling:WorkspaceId"] = "workspace-123",
+            ["DatabricksBilling:SubmissionWaitTimeoutSeconds"] = "0",
             ["DatabricksBilling:MaxConcurrentStatements"] = "0",
             ["DatabricksBilling:MaxOutstandingStatements"] = "0"
         }));
 
-        Validator(services).ShouldThrow<OptionsValidationException>()
-            .Message.ShouldContain(nameof(BillingUsageOptions.MaxConcurrentStatements));
+        var message = Validator(services).ShouldThrow<OptionsValidationException>().Message;
+        message.ShouldContain(nameof(BillingUsageOptions.SubmissionWaitTimeoutSeconds));
+        message.ShouldContain(nameof(BillingUsageOptions.MaxConcurrentStatements));
     }
 
     private static Action Validator(IServiceCollection services)

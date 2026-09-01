@@ -37,6 +37,8 @@ public class DatabricksBillingUsageReaderTests
         request.Catalog.ShouldBe("system");
         request.Schema.ShouldBe("billing");
         request.Disposition.ShouldBe(SqlStatementDisposition.INLINE);
+        request.WaitTimeout.ShouldBe("30s");
+        request.OnWaitTimeout.ShouldBe(SqlStatementOnWaitTimeout.CANCEL);
         request.Statement.ShouldContain("u.workspace_id = :workspace_id");
         request.Statement.ShouldContain("u.usage_metadata.job_run_id");
         request.Statement.ShouldContain("p.pricing.effective_list.default");
@@ -167,6 +169,29 @@ public class DatabricksBillingUsageReaderTests
 
         session.CancelledStatementIds.ShouldBe(["statement-accepted"]);
         session.MaxActiveRequests.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ReadAsync_holds_admission_until_server_cancellation_after_an_uncertain_create()
+    {
+        var time = new FakeTimeProvider(Until);
+        var session = new ThrowingCreateStatementSession();
+        var reader = Reader(session, time, submissionWaitTimeoutSeconds: 5);
+
+        var read = reader.ReadAsync(
+            Acme(),
+            From,
+            Until,
+            [11],
+            TestContext.Current.CancellationToken);
+        await Task.Yield();
+
+        read.IsCompleted.ShouldBeFalse();
+        time.Advance(TimeSpan.FromSeconds(5));
+        var exception = await Should.ThrowAsync<BillingUsageException>(async () => await read);
+
+        exception.Code.ShouldBe("STATEMENT_CREATE_UNCERTAIN");
+        exception.IsTransient.ShouldBeTrue();
     }
 
     [Fact]
@@ -356,7 +381,8 @@ public class DatabricksBillingUsageReaderTests
         TimeProvider? timeProvider = null,
         int pollingTimeoutSeconds = 120,
         int maxConcurrentStatements = 4,
-        int maxOutstandingStatements = 32) => new(
+        int maxOutstandingStatements = 32,
+        int submissionWaitTimeoutSeconds = 30) => new(
         session,
         new DatabricksOptions { WarehouseId = "warehouse-1", WorkspaceUrl = "https://example" },
         new BillingUsageOptions
@@ -364,6 +390,7 @@ public class DatabricksBillingUsageReaderTests
             WorkspaceId = "workspace-123",
             PollIntervalMilliseconds = 50,
             PollingTimeoutSeconds = pollingTimeoutSeconds,
+            SubmissionWaitTimeoutSeconds = submissionWaitTimeoutSeconds,
             MaxConcurrentStatements = maxConcurrentStatements,
             MaxOutstandingStatements = maxOutstandingStatements
         },
@@ -494,6 +521,24 @@ public class DatabricksBillingUsageReaderTests
                 observed = replaced;
             }
         }
+    }
+
+    private sealed class ThrowingCreateStatementSession : IDatabricksStatementSession
+    {
+        public Task<StatementOutcome> ExecuteAsync(
+            SqlStatement request,
+            TenantId tenantId,
+            CancellationToken cancellationToken) =>
+            throw new HttpRequestException("response lost after submission");
+
+        public Task<StatementOutcome> GetAsync(
+            TenantId tenantId,
+            string statementId,
+            CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("No statement id was returned.");
+
+        public Task CancelAsync(string statementId, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("No statement id was returned.");
     }
 }
 

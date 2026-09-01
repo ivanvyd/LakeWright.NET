@@ -140,7 +140,10 @@ public sealed class DatabricksBillingUsageReader : IBillingUsageReader, IDisposa
             try
             {
                 var request = CreateRequest(from, until, uniqueRunIds);
-                var deadline = _timeProvider.GetUtcNow().AddSeconds(_billing.PollingTimeoutSeconds);
+                var startedAt = _timeProvider.GetUtcNow();
+                var deadline = startedAt.AddSeconds(_billing.PollingTimeoutSeconds);
+                var serverCancellationDeadline = startedAt.AddSeconds(
+                    _billing.SubmissionWaitTimeoutSeconds);
                 using var executeTimeout = new CancellationTokenSource(
                     TimeSpan.FromSeconds(_billing.PollingTimeoutSeconds),
                     _timeProvider);
@@ -156,7 +159,13 @@ public sealed class DatabricksBillingUsageReader : IBillingUsageReader, IDisposa
                 }
                 catch (OperationCanceledException) when (executeTimeout.IsCancellationRequested)
                 {
+                    await HoldAdmissionUntilAsync(serverCancellationDeadline);
                     throw new BillingUsageException("POLL_TIMEOUT", isTransient: true);
+                }
+                catch (Exception exception) when (exception is not OutOfMemoryException)
+                {
+                    await HoldAdmissionUntilAsync(serverCancellationDeadline);
+                    throw new BillingUsageException("STATEMENT_CREATE_UNCERTAIN", isTransient: true);
                 }
 
                 if (cancellationToken.IsCancellationRequested)
@@ -208,9 +217,18 @@ public sealed class DatabricksBillingUsageReader : IBillingUsageReader, IDisposa
             Disposition = SqlStatementDisposition.INLINE,
             Format = StatementFormat.JSON_ARRAY,
             RowLimit = 10_000,
-            WaitTimeout = _databricks.WaitTimeout,
-            OnWaitTimeout = SqlStatementOnWaitTimeout.CONTINUE
+            WaitTimeout = $"{_billing.SubmissionWaitTimeoutSeconds}s",
+            OnWaitTimeout = SqlStatementOnWaitTimeout.CANCEL
         };
+
+    private async Task HoldAdmissionUntilAsync(DateTimeOffset serverCancellationDeadline)
+    {
+        var remaining = serverCancellationDeadline - _timeProvider.GetUtcNow();
+        if (remaining > TimeSpan.Zero)
+        {
+            await Task.Delay(remaining, _timeProvider, CancellationToken.None);
+        }
+    }
 
     private async Task<StatementOutcome> WaitForCompletionAsync(
         TenantContext tenant,

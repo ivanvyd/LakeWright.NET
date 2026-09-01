@@ -36,6 +36,7 @@ builder.Services.AddLakeWrightBillingCostAttribution(builder.Configuration);
     "WorkspaceId": "...",
     "PollIntervalMilliseconds": 250,
     "PollingTimeoutSeconds": 120,
+    "SubmissionWaitTimeoutSeconds": 30,
     "MaxConcurrentStatements": 4,
     "MaxOutstandingStatements": 32
   }
@@ -71,7 +72,10 @@ Additional requests fail with transient code `BILLING_BUSY`; the HTTP endpoint m
 Choose bounds that fit the configured warehouse and apply normal edge rate limiting as well.
 After statement creation begins, caller cancellation holds its slot until Databricks answers; if
 the returned statement is still active, the reader cancels it before surfacing cancellation. The
-same overall timeout bounds both initial submission and polling.
+same overall timeout bounds both initial submission and polling. Billing submissions use
+server-side `on_wait_timeout=CANCEL`. If the create response is lost and no statement id is
+available, local admission remains held until that server cancellation deadline before the safe
+transient code `STATEMENT_CREATE_UNCERTAIN` is returned.
 
 ## Live verification
 

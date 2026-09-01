@@ -21,6 +21,12 @@ public sealed class BillingUsageOptions
     [Range(1, 900)]
     public int PollingTimeoutSeconds { get; set; } = 120;
 
+    /// <summary>
+    /// Server-side wait before Databricks cancels a billing statement that has not completed.
+    /// </summary>
+    [Range(5, 50)]
+    public int SubmissionWaitTimeoutSeconds { get; set; } = 30;
+
     /// <summary>Maximum billing statements this process may execute concurrently.</summary>
     [Range(1, 64)]
     public int MaxConcurrentStatements { get; set; } = 4;
