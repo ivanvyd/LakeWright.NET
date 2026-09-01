@@ -268,6 +268,13 @@ public sealed class DatabricksBillingUsageReader : IBillingUsageReader, IDisposa
                         : remaining,
                     _timeProvider,
                     cancellationToken);
+
+                remaining = deadline - _timeProvider.GetUtcNow();
+                if (remaining <= TimeSpan.Zero)
+                {
+                    throw new BillingUsageException("POLL_TIMEOUT", isTransient: true);
+                }
+
                 using var pollTimeout = new CancellationTokenSource(remaining, _timeProvider);
                 using var pollCancellation = CancellationTokenSource.CreateLinkedTokenSource(
                     cancellationToken,
