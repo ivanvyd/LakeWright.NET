@@ -268,10 +268,23 @@ public sealed class DatabricksBillingUsageReader : IBillingUsageReader, IDisposa
                         : remaining,
                     _timeProvider,
                     cancellationToken);
-                outcome = await _session.GetAsync(
-                    tenant.TenantId,
-                    pending.StatementId,
-                    cancellationToken);
+                using var pollTimeout = new CancellationTokenSource(remaining, _timeProvider);
+                using var pollCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken,
+                    pollTimeout.Token);
+                try
+                {
+                    outcome = await _session.GetAsync(
+                        tenant.TenantId,
+                        pending.StatementId,
+                        pollCancellation.Token);
+                }
+                catch (OperationCanceledException) when (
+                    pollTimeout.IsCancellationRequested
+                    && !cancellationToken.IsCancellationRequested)
+                {
+                    throw new BillingUsageException("POLL_TIMEOUT", isTransient: true);
+                }
             }
 
             return outcome;

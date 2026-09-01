@@ -416,6 +416,26 @@ public class DatabricksBillingUsageReaderTests
     }
 
     [Fact]
+    public async Task ReadAsync_deadline_cancels_a_blocked_poll_request()
+    {
+        var session = new StubStatementSession(new StatementOutcome.Pending("statement-1"))
+        {
+            BlockPollUntilCancelled = true
+        };
+        var read = Reader(
+                session,
+                pollingTimeoutSeconds: 1,
+                submissionWaitTimeoutSeconds: 1)
+            .ReadAsync(Acme(), From, Until, [11], TestContext.Current.CancellationToken);
+        await session.FirstPollStarted.WaitAsync(TestContext.Current.CancellationToken);
+
+        var exception = await Should.ThrowAsync<BillingUsageException>(async () => await read);
+        exception.Code.ShouldBe("POLL_TIMEOUT");
+        exception.IsTransient.ShouldBeTrue();
+        session.CancelledStatementIds.ShouldBe(["statement-1"]);
+    }
+
+    [Fact]
     public async Task ReadAsync_cancels_a_pending_statement_when_poll_transport_fails()
     {
         var session = new StubStatementSession(new StatementOutcome.Pending("statement-1"))
@@ -467,12 +487,16 @@ public class DatabricksBillingUsageReaderTests
         : IDatabricksStatementSession
     {
         private readonly Queue<StatementOutcome> _outcomes = new(outcomes);
+        private readonly TaskCompletionSource _firstPollStarted = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
 
         public List<SqlStatement> Requests { get; } = [];
         public List<string> PolledStatementIds { get; } = [];
         public List<string> CancelledStatementIds { get; } = [];
         public Exception? GetException { get; init; }
         public Exception? CancelException { get; init; }
+        public bool BlockPollUntilCancelled { get; init; }
+        public Task FirstPollStarted => _firstPollStarted.Task;
 
         public Task<StatementOutcome> ExecuteAsync(
             SqlStatement request,
@@ -483,17 +507,24 @@ public class DatabricksBillingUsageReaderTests
             return Task.FromResult(_outcomes.Dequeue());
         }
 
-        public Task<StatementOutcome> GetAsync(
+        public async Task<StatementOutcome> GetAsync(
             TenantId tenantId,
             string statementId,
             CancellationToken cancellationToken)
         {
             PolledStatementIds.Add(statementId);
+            _firstPollStarted.TrySetResult();
             if (GetException is not null)
             {
                 throw GetException;
             }
-            return Task.FromResult(_outcomes.Dequeue());
+
+            if (BlockPollUntilCancelled)
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+
+            return _outcomes.Dequeue();
         }
 
         public Task CancelAsync(string statementId, CancellationToken cancellationToken)
