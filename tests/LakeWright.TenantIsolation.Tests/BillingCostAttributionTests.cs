@@ -150,6 +150,26 @@ public class DatabricksBillingUsageReaderTests
     }
 
     [Fact]
+    public async Task ReadAsync_cancels_an_accepted_statement_when_the_caller_cancels_during_creation()
+    {
+        var session = new BlockingStatementSession(
+            new StatementOutcome.Pending("statement-accepted"));
+        var reader = Reader(session, maxConcurrentStatements: 1);
+        using var cancellation = new CancellationTokenSource();
+
+        var read = reader.ReadAsync(Acme(), From, Until, [11], cancellation.Token);
+        await session.FirstRequestStarted;
+        cancellation.Cancel();
+
+        read.IsCompleted.ShouldBeFalse();
+        session.ReleaseRequests();
+        await Should.ThrowAsync<OperationCanceledException>(async () => await read);
+
+        session.CancelledStatementIds.ShouldBe(["statement-accepted"]);
+        session.MaxActiveRequests.ShouldBe(1);
+    }
+
+    [Fact]
     public async Task ReadAsync_prorates_the_same_quantity_at_report_and_price_boundaries()
     {
         var session = new StubStatementSession(Success([]));
@@ -414,10 +434,17 @@ public class DatabricksBillingUsageReaderTests
         private int _activeRequests;
         private int _maxActiveRequests;
         private int _requestCount;
+        private readonly StatementOutcome _outcome;
+
+        public BlockingStatementSession(StatementOutcome? outcome = null)
+        {
+            _outcome = outcome ?? Success([]);
+        }
 
         public Task FirstRequestStarted => _firstRequestStarted.Task;
         public int RequestCount => Volatile.Read(ref _requestCount);
         public int MaxActiveRequests => Volatile.Read(ref _maxActiveRequests);
+        public List<string> CancelledStatementIds { get; } = [];
 
         public async Task<StatementOutcome> ExecuteAsync(
             SqlStatement request,
@@ -431,7 +458,7 @@ public class DatabricksBillingUsageReaderTests
             try
             {
                 await _releaseRequests.Task.WaitAsync(cancellationToken);
-                return Success([]);
+                return _outcome;
             }
             finally
             {
@@ -445,8 +472,11 @@ public class DatabricksBillingUsageReaderTests
             CancellationToken cancellationToken) =>
             throw new InvalidOperationException("No statement should require polling.");
 
-        public Task CancelAsync(string statementId, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
+        public Task CancelAsync(string statementId, CancellationToken cancellationToken)
+        {
+            CancelledStatementIds.Add(statementId);
+            return Task.CompletedTask;
+        }
 
         public void ReleaseRequests() => _releaseRequests.TrySetResult();
 

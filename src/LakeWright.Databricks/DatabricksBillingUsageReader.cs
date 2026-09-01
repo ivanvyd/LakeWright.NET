@@ -140,8 +140,36 @@ public sealed class DatabricksBillingUsageReader : IBillingUsageReader, IDisposa
             try
             {
                 var request = CreateRequest(from, until, uniqueRunIds);
-                var outcome = await _session.ExecuteAsync(request, tenant.TenantId, cancellationToken);
-                outcome = await WaitForCompletionAsync(tenant, outcome, cancellationToken);
+                var deadline = _timeProvider.GetUtcNow().AddSeconds(_billing.PollingTimeoutSeconds);
+                using var executeTimeout = new CancellationTokenSource(
+                    TimeSpan.FromSeconds(_billing.PollingTimeoutSeconds),
+                    _timeProvider);
+                StatementOutcome outcome;
+                try
+                {
+                    // Once creation starts, keep the local slot until Databricks returns a
+                    // statement id. Caller cancellation can then cancel accepted remote work.
+                    outcome = await _session.ExecuteAsync(
+                        request,
+                        tenant.TenantId,
+                        executeTimeout.Token);
+                }
+                catch (OperationCanceledException) when (executeTimeout.IsCancellationRequested)
+                {
+                    throw new BillingUsageException("POLL_TIMEOUT", isTransient: true);
+                }
+
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    await CancelBestEffortAsync((outcome as StatementOutcome.Pending)?.StatementId);
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+
+                outcome = await WaitForCompletionAsync(
+                    tenant,
+                    outcome,
+                    deadline,
+                    cancellationToken);
                 return Parse(outcome);
             }
             finally
@@ -187,10 +215,10 @@ public sealed class DatabricksBillingUsageReader : IBillingUsageReader, IDisposa
     private async Task<StatementOutcome> WaitForCompletionAsync(
         TenantContext tenant,
         StatementOutcome outcome,
+        DateTimeOffset deadline,
         CancellationToken cancellationToken)
     {
         string? activeStatementId = null;
-        var deadline = _timeProvider.GetUtcNow().AddSeconds(_billing.PollingTimeoutSeconds);
         try
         {
             while (outcome is StatementOutcome.Pending pending)

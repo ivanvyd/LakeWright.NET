@@ -69,6 +69,9 @@ The billing reader is shared across request scopes. At most `MaxConcurrentStatem
 lifecycles run at once, and active plus queued work cannot exceed `MaxOutstandingStatements`.
 Additional requests fail with transient code `BILLING_BUSY`; the HTTP endpoint maps it to 503.
 Choose bounds that fit the configured warehouse and apply normal edge rate limiting as well.
+After statement creation begins, caller cancellation holds its slot until Databricks answers; if
+the returned statement is still active, the reader cancels it before surfacing cancellation. The
+same overall timeout bounds both initial submission and polling.
 
 ## Live verification
 

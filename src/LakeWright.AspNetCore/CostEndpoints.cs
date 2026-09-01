@@ -5,7 +5,6 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace LakeWright.AspNetCore;
 
@@ -36,43 +35,22 @@ public static class CostEndpoints
     /// 7 days, which is what a customer-facing usage page tends to render.
     /// </remarks>
     private static async Task<IResult> GetCostAsync(
-        HttpContext http,
         [FromServices] ITenantContextAccessor tenants,
         [FromServices] ICostAttribution cost,
+        [FromServices] TimeProvider timeProvider,
         [FromQuery] DateTimeOffset? from,
         [FromQuery] DateTimeOffset? until,
         CancellationToken cancellationToken)
     {
         var tenant = tenants.Required();
-        var now = http.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow();
+        var now = timeProvider.GetUtcNow();
         var effectiveUntil = until ?? now;
         var effectiveFrom = from ?? effectiveUntil.AddDays(-7);
 
-        if (effectiveFrom >= effectiveUntil)
+        var validationError = ValidateWindow(effectiveFrom, effectiveUntil, now);
+        if (validationError is not null)
         {
-            return Results.ValidationProblem(new Dictionary<string, string[]>
-            {
-                ["from"] = ["from must be earlier than until."]
-            });
-        }
-
-        // Reject windows that end in the distant future, so a caller cannot ask for a 30-day
-        // window anchored at year 9999 and have the implementation scan a multi-millennium range.
-        var maxUntil = now.AddDays(BillingUsageLimits.MaxFutureWindowDays);
-        if (effectiveUntil > maxUntil)
-        {
-            return Results.ValidationProblem(new Dictionary<string, string[]>
-            {
-                ["until"] = ["until cannot be more than one day in the future."]
-            });
-        }
-
-        if (effectiveUntil - effectiveFrom > TimeSpan.FromDays(BillingUsageLimits.MaxReportWindowDays))
-        {
-            return Results.ValidationProblem(new Dictionary<string, string[]>
-            {
-                ["from"] = [$"Window cannot exceed {BillingUsageLimits.MaxReportWindowDays} days."]
-            });
+            return validationError;
         }
 
         try
@@ -120,6 +98,42 @@ public static class CostEndpoints
                     ["code"] = exception.Code,
                     ["transient"] = exception.IsTransient
                 });
+        }
+    }
+
+    private static IResult? ValidateWindow(
+        DateTimeOffset from,
+        DateTimeOffset until,
+        DateTimeOffset now)
+    {
+        try
+        {
+            BillingUsageLimits.ValidateReportWindow(from, until, now);
+            return null;
+        }
+        catch (ArgumentException)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["from"] = ["from must be earlier than until."]
+            });
+        }
+        catch (BillingUsageException exception) when (
+            exception.Code == "REPORT_WINDOW_IN_FUTURE")
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["until"] = ["until cannot be more than one day in the future."]
+            });
+        }
+        catch (BillingUsageException exception) when (
+            exception.Code == "REPORT_WINDOW_TOO_LARGE")
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["from"] =
+                [$"Window cannot exceed {BillingUsageLimits.MaxReportWindowDays} days."]
+            });
         }
     }
 }
