@@ -185,16 +185,22 @@ public class AuditPartitionTests(PostgresFixture postgres)
         await using var db = await postgres.NewDatabaseAsync();
         await db.Database.OpenConnectionAsync(ct);
         await db.Database.ExecuteSqlRawAsync("SET TIME ZONE 'America/Los_Angeles'", ct);
-        db.AuditEvents.Add(NewEvent(
-            new DateTimeOffset(2030, 6, 1, 0, 0, 0, TimeSpan.Zero),
-            "utc-boundary"));
+        db.AuditEvents.AddRange(
+            NewEvent(new DateTimeOffset(2030, 3, 1, 0, 0, 0, TimeSpan.Zero), "dst-boundary"),
+            NewEvent(new DateTimeOffset(2030, 6, 1, 0, 0, 0, TimeSpan.Zero), "utc-boundary"));
         await db.SaveChangesAsync(ct);
 
         await DatabasePartitioning.MigrateAsync(db, FixedNow, cancellationToken: ct);
 
         var partitions = await ListPartitionsAsync(db, ct);
         partitions.ShouldContain("audit_events_2030_06");
-        partitions.ShouldNotContain("audit_events_2030_05");
+        var marchEnd = await db.Database.SqlQueryRaw<DateTimeOffset>(
+            """
+            SELECT "EndsAt" AS "Value"
+            FROM audit_event_partitions
+            WHERE "PartitionName" = 'audit_events_2030_03'
+            """).SingleAsync(ct);
+        marchEnd.ShouldBe(new DateTimeOffset(2030, 4, 1, 0, 0, 0, TimeSpan.Zero));
     }
 
     [Fact]
@@ -341,6 +347,79 @@ public class AuditPartitionTests(PostgresFixture postgres)
         (await DatabasePartitioning.IsPartitionedAsync(db, ct)).ShouldBeFalse();
     }
 
+    [Fact]
+    public async Task Migration_rejects_sparse_history_that_requires_too_many_partitions()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        db.AuditEvents.AddRange(
+            NewEvent(new DateTimeOffset(1, 1, 1, 0, 0, 0, TimeSpan.Zero), "ancient"),
+            NewEvent(FixedNow, "current"));
+        await db.SaveChangesAsync(ct);
+
+        var error = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await DatabasePartitioning.MigrateAsync(db, FixedNow, cancellationToken: ct));
+
+        error.Message.ShouldContain("monthly partitions, exceeding the supported migration limit 120");
+        (await DatabasePartitioning.IsPartitionedAsync(db, ct)).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task Lifecycle_validation_requires_the_registry_range_index()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        await DatabasePartitioning.MigrateAsync(db, FixedNow, cancellationToken: ct);
+        await db.Database.ExecuteSqlRawAsync("DROP INDEX audit_event_ids_occurred_at", ct);
+
+        var error = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await DatabasePartitioning.ValidateAsync(db, ct));
+
+        error.Message.ShouldContain("does not match the database topology");
+    }
+
+    [Fact]
+    public async Task Non_superuser_owner_preserves_hidden_rows_through_forced_rls_lifecycle()
+    {
+        const string role = "lakewright_partition_migrator";
+        const string password = "partition-migrator-password";
+        var ct = TestContext.Current.CancellationToken;
+        await using var superuser = await postgres.NewDatabaseAsync();
+        superuser.AuditEvents.AddRange(
+            NewEvent(FixedNow, role),
+            NewEvent(FixedNow.AddDays(1), "hidden-from-migrator"));
+        await superuser.SaveChangesAsync(ct);
+        await superuser.Database.ExecuteSqlRawAsync(
+            $"""
+            CREATE ROLE {role} LOGIN PASSWORD '{password}';
+            GRANT USAGE, CREATE ON SCHEMA public TO {role};
+            ALTER TABLE audit_events OWNER TO {role};
+            ALTER TABLE audit_events ENABLE ROW LEVEL SECURITY;
+            ALTER TABLE audit_events FORCE ROW LEVEL SECURITY;
+            CREATE POLICY migrator_only ON audit_events
+                USING ("PrincipalId" = current_user)
+                WITH CHECK ("PrincipalId" = current_user);
+            """,
+            ct);
+        await using var migrator = PostgresFixture.AsApplicationRole(superuser, role, password);
+
+        await DatabasePartitioning.MigrateAsync(migrator, FixedNow, cancellationToken: ct);
+        await DatabasePartitioning.ValidateAsync(migrator, ct);
+        (await superuser.AuditEvents.CountAsync(ct)).ShouldBe(2);
+
+        await DatabasePartitioning.RollbackMigrationAsync(migrator, ct);
+        (await superuser.AuditEvents.CountAsync(ct)).ShouldBe(2);
+        (await ForcedRlsRelationCountAsync(superuser, ct)).ShouldBe(2);
+
+        await DatabasePartitioning.FinalizeMigrationAsync(migrator, ct);
+        await DatabasePartitioning.MigrateAsync(migrator, FixedNow, cancellationToken: ct);
+        await DatabasePartitioning.FinalizeMigrationAsync(migrator, ct);
+
+        (await superuser.AuditEvents.CountAsync(ct)).ShouldBe(2);
+        (await ForcedRlsRelationCountAsync(superuser, ct)).ShouldBe(1);
+        (await migrator.AuditEvents.CountAsync(ct)).ShouldBe(1);
+    }
+
     private static AuditEvent NewEvent(DateTimeOffset occurredAt, string principal, Guid? id = null) => new()
     {
         Id = id ?? Guid.CreateVersion7(),
@@ -373,4 +452,18 @@ public class AuditPartitionTests(PostgresFixture postgres)
         db.Database.SqlQueryRaw<bool>(
             "SELECT pg_catalog.to_regclass('public.' || {0}) IS NOT NULL AS \"Value\"",
             relation).SingleAsync(cancellationToken);
+
+    private static Task<int> ForcedRlsRelationCountAsync(
+        LakeWrightDbContext db,
+        CancellationToken cancellationToken) =>
+        db.Database.SqlQueryRaw<int>(
+            """
+            SELECT count(*)::integer AS "Value"
+            FROM pg_catalog.pg_class relation
+            JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+            WHERE namespace.nspname = 'public'
+              AND relation.relname IN ('audit_events', 'audit_events_partitioned_rollback')
+              AND relation.relrowsecurity
+              AND relation.relforcerowsecurity
+            """).SingleAsync(cancellationToken);
 }

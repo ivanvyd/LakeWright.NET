@@ -23,6 +23,8 @@ internal sealed class AuditPartitionOptions
 
     public long MaxMigrationBytes { get; init; } = 2L * 1024 * 1024 * 1024;
 
+    public int MaxHistoricalPartitions { get; init; } = 120;
+
     internal void Validate()
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(RetentionYears, 1);
@@ -41,6 +43,8 @@ internal sealed class AuditPartitionOptions
         ArgumentOutOfRangeException.ThrowIfGreaterThan(MaxMigrationRows, 100_000_000);
         ArgumentOutOfRangeException.ThrowIfLessThan(MaxMigrationBytes, 1024 * 1024);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(MaxMigrationBytes, 1024L * 1024 * 1024 * 1024);
+        ArgumentOutOfRangeException.ThrowIfLessThan(MaxHistoricalPartitions, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(MaxHistoricalPartitions, 1_200);
     }
 }
 
@@ -59,7 +63,7 @@ internal sealed record AuditPartitionMaintenanceResult(int CreatedPartitions, in
 /// inside the installed PostgreSQL helpers, where they are generated from a timestamp and quoted
 /// with <c>format('%I', ...)</c>.
 /// </remarks>
-internal static class DatabasePartitioning
+internal static partial class DatabasePartitioning
 {
     private const long MaintenanceLockKey = 4_817_191_033_702_026_091L;
     private const int LifecycleSchemaVersion = 1;
@@ -161,27 +165,30 @@ internal static class DatabasePartitioning
 
             await AssertAppendOnlyAclAsync(connection, transaction, cancellationToken);
             await AssertMigrationSizeAsync(connection, transaction, options, exactRows: false, cancellationToken);
+            await ReadAndValidateMigrationRangeAsync(
+                connection, transaction, options, exactRows: false, cancellationToken);
+            var sourceRls = await ReadRlsSettingsAsync(
+                connection, transaction, AuditRelation.Canonical, cancellationToken);
 
             await ExecuteAsync(
                 connection,
                 transaction,
                 "LOCK TABLE audit_events IN ACCESS EXCLUSIVE MODE; ALTER TABLE audit_events RENAME TO audit_events_unpartitioned_backup;",
                 cancellationToken);
+            await DisableForceRlsAsync(
+                connection, transaction, AuditRelation.Backup, sourceRls, cancellationToken);
             await AssertMigrationSizeAsync(connection, transaction, options, exactRows: true, cancellationToken);
             await ExecuteAsync(connection, transaction, AuditPartitionSql.CreateParent, cancellationToken);
 
-            var oldest = await ScalarAsync<DateTime?>(
-                connection, transaction, "SELECT min(\"OccurredAt\") FROM audit_events_unpartitioned_backup", cancellationToken);
-            var newest = await ScalarAsync<DateTime?>(
-                connection, transaction, "SELECT max(\"OccurredAt\") FROM audit_events_unpartitioned_backup", cancellationToken);
-
-            if (oldest.HasValue && newest.HasValue)
+            var range = await ReadAndValidateMigrationRangeAsync(
+                connection, transaction, options, exactRows: true, cancellationToken);
+            if (range is not null)
             {
                 await EnsureRangeAsync(
                     connection,
                     transaction,
-                    AsUtc(oldest.Value),
-                    AsUtc(newest.Value),
+                    range.Oldest,
+                    range.Newest,
                     cancellationToken);
             }
             await EnsureWindowAsync(connection, transaction, now, options.FutureMonths, cancellationToken);
@@ -190,6 +197,10 @@ internal static class DatabasePartitioning
             await AssertExactCopyAsync(connection, transaction, cancellationToken);
             await ExecuteAsync(connection, transaction, AuditPartitionSql.InstallIdentityTrigger, cancellationToken);
             await ExecuteAsync(connection, transaction, AuditPartitionSql.CopySecurity, cancellationToken);
+            await ApplyRlsSettingsAsync(
+                connection, transaction, AuditRelation.Canonical, sourceRls, cancellationToken);
+            await ApplyRlsSettingsAsync(
+                connection, transaction, AuditRelation.Backup, sourceRls, cancellationToken);
             await WriteStateAsync(
                 connection, transaction, AuditPartitionPhase.Migrated, cancellationToken);
         }, cancellationToken, options);
@@ -257,12 +268,23 @@ internal static class DatabasePartitioning
             var state = await ReadRequiredStateAsync(connection, transaction, cancellationToken);
             RequirePhase(state, AuditPartitionPhase.Migrated, AuditPartitionPhase.Finalized);
             await RequireManagedParentAsync(connection, transaction, cancellationToken);
-            if (await RelationExistsAsync(
-                    connection, transaction, "audit_events_unpartitioned_backup", cancellationToken))
+            var canonicalRls = await ReadRlsSettingsAsync(
+                connection, transaction, AuditRelation.Canonical, cancellationToken);
+            await DisableForceRlsAsync(
+                connection, transaction, AuditRelation.Canonical, canonicalRls, cancellationToken);
+            if (state.Phase == AuditPartitionPhase.Migrated)
             {
+                var backupRls = await ReadRlsSettingsAsync(
+                    connection, transaction, AuditRelation.Backup, cancellationToken);
+                await DisableForceRlsAsync(
+                    connection, transaction, AuditRelation.Backup, backupRls, cancellationToken);
                 await AssertBackupContainedAsync(connection, transaction, cancellationToken);
+                await ApplyRlsSettingsAsync(
+                    connection, transaction, AuditRelation.Backup, backupRls, cancellationToken);
             }
             await AssertIdentityRegistryAsync(connection, transaction, cancellationToken);
+            await ApplyRlsSettingsAsync(
+                connection, transaction, AuditRelation.Canonical, canonicalRls, cancellationToken);
         }, cancellationToken);
     }
 
@@ -292,9 +314,19 @@ internal static class DatabasePartitioning
             {
                 throw new InvalidOperationException("Migrated lifecycle state requires the rollback copy.");
             }
+            var canonicalRls = await ReadRlsSettingsAsync(
+                connection, transaction, AuditRelation.Canonical, cancellationToken);
+            var backupRls = await ReadRlsSettingsAsync(
+                connection, transaction, AuditRelation.Backup, cancellationToken);
+            await DisableForceRlsAsync(
+                connection, transaction, AuditRelation.Canonical, canonicalRls, cancellationToken);
+            await DisableForceRlsAsync(
+                connection, transaction, AuditRelation.Backup, backupRls, cancellationToken);
             await AssertBackupContainedAsync(connection, transaction, cancellationToken);
             await AssertIdentityRegistryAsync(connection, transaction, cancellationToken);
             await ExecuteAsync(connection, transaction, "DROP TABLE audit_events_unpartitioned_backup", cancellationToken);
+            await ApplyRlsSettingsAsync(
+                connection, transaction, AuditRelation.Canonical, canonicalRls, cancellationToken);
             await WriteStateAsync(connection, transaction, AuditPartitionPhase.Finalized, cancellationToken);
         }, cancellationToken);
     }
@@ -319,6 +351,15 @@ internal static class DatabasePartitioning
             {
                 throw new InvalidOperationException("The rollback copy has been finalized; rollback is no longer available.");
             }
+
+            var partitionedRls = await ReadRlsSettingsAsync(
+                connection, transaction, AuditRelation.Canonical, cancellationToken);
+            var backupRls = await ReadRlsSettingsAsync(
+                connection, transaction, AuditRelation.Backup, cancellationToken);
+            await DisableForceRlsAsync(
+                connection, transaction, AuditRelation.Canonical, partitionedRls, cancellationToken);
+            await DisableForceRlsAsync(
+                connection, transaction, AuditRelation.Backup, backupRls, cancellationToken);
 
             await ExecuteAsync(
                 connection,
@@ -363,6 +404,10 @@ internal static class DatabasePartitioning
             {
                 throw new InvalidOperationException("Rollback validation failed; no schema change was committed.");
             }
+            await ApplyRlsSettingsAsync(
+                connection, transaction, AuditRelation.Canonical, backupRls, cancellationToken);
+            await ApplyRlsSettingsAsync(
+                connection, transaction, AuditRelation.Rollback, partitionedRls, cancellationToken);
             await WriteStateAsync(connection, transaction, AuditPartitionPhase.RolledBack, cancellationToken);
         }, cancellationToken);
     }
@@ -529,121 +574,33 @@ internal static class DatabasePartitioning
         }
     }
 
-    private static async Task<AuditPartitionState?> ReadStateAsync(
+    private static async Task<AuditMigrationRange?> ReadAndValidateMigrationRangeAsync(
         DbConnection connection,
         DbTransaction transaction,
+        AuditPartitionOptions options,
+        bool exactRows,
         CancellationToken cancellationToken)
     {
-        await using var command = CreateCommand(
-            connection,
-            transaction,
-            "SELECT \"SchemaVersion\", \"Phase\" FROM lakewright_audit_partition_state WHERE \"StateKey\" = true");
+        var sql = exactRows
+            ? "SELECT min(\"OccurredAt\"), max(\"OccurredAt\") FROM audit_events_unpartitioned_backup"
+            : "SELECT min(\"OccurredAt\"), max(\"OccurredAt\") FROM audit_events";
+        await using var command = CreateCommand(connection, transaction, sql);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken))
+        await reader.ReadAsync(cancellationToken);
+        if (reader.IsDBNull(0))
         {
             return null;
         }
 
-        var version = reader.GetInt32(0);
-        var phaseValue = reader.GetString(1);
-        if (await reader.ReadAsync(cancellationToken))
-        {
-            throw new InvalidOperationException("Audit partition lifecycle has more than one authoritative row.");
-        }
-        if (version != LifecycleSchemaVersion
-            || !Enum.TryParse<AuditPartitionPhase>(phaseValue, ignoreCase: false, out var phase))
+        var oldest = AsUtc(reader.GetDateTime(0));
+        var newest = AsUtc(reader.GetDateTime(1));
+        var partitionCount = ((newest.Year - oldest.Year) * 12) + newest.Month - oldest.Month + 1;
+        if (partitionCount > options.MaxHistoricalPartitions)
         {
             throw new InvalidOperationException(
-                $"Unsupported audit partition lifecycle state version={version}, phase='{phaseValue}'.");
+                $"Audit history requires {partitionCount} monthly partitions, exceeding the supported migration limit {options.MaxHistoricalPartitions}.");
         }
-        return new AuditPartitionState(phase);
-    }
-
-    private static async Task<AuditPartitionState> ReadRequiredStateAsync(
-        DbConnection connection,
-        DbTransaction transaction,
-        CancellationToken cancellationToken)
-    {
-        var state = await ReadStateAsync(connection, transaction, cancellationToken)
-            ?? throw new InvalidOperationException("Audit partition lifecycle state is missing.");
-        await AssertLifecycleTopologyAsync(connection, transaction, state, cancellationToken);
-        return state;
-    }
-
-    private static void RequirePhase(AuditPartitionState? state, params AuditPartitionPhase[] expected)
-    {
-        if (state is null || !expected.Contains(state.Phase))
-        {
-            var actual = state?.Phase.ToString() ?? "missing";
-            throw new InvalidOperationException(
-                $"Audit partition lifecycle is '{actual}', expected {string.Join(" or ", expected)}.");
-        }
-    }
-
-    private static Task WriteStateAsync(
-        DbConnection connection,
-        DbTransaction transaction,
-        AuditPartitionPhase phase,
-        CancellationToken cancellationToken) =>
-        ExecuteAsync(
-            connection,
-            transaction,
-            """
-            INSERT INTO lakewright_audit_partition_state
-                ("StateKey", "SchemaVersion", "Phase", "UpdatedAt")
-            VALUES (true, @version, @phase, now())
-            ON CONFLICT ("StateKey") DO UPDATE
-            SET "SchemaVersion" = EXCLUDED."SchemaVersion",
-                "Phase" = EXCLUDED."Phase",
-                "UpdatedAt" = EXCLUDED."UpdatedAt"
-            """,
-            cancellationToken,
-            ("version", LifecycleSchemaVersion),
-            ("phase", phase.ToString()));
-
-    private static async Task AssertLifecycleTopologyAsync(
-        DbConnection connection,
-        DbTransaction transaction,
-        AuditPartitionState state,
-        CancellationToken cancellationToken)
-    {
-        var canonicalKind = await RelationKindAsync(connection, transaction, "audit_events", cancellationToken);
-        var hasBackup = await RelationExistsAsync(
-            connection, transaction, "audit_events_unpartitioned_backup", cancellationToken);
-        var hasRollback = await RelationExistsAsync(
-            connection, transaction, "audit_events_partitioned_rollback", cancellationToken);
-        var valid = state.Phase switch
-        {
-            AuditPartitionPhase.Migrated => canonicalKind == "p" && hasBackup && !hasRollback,
-            AuditPartitionPhase.Finalized => canonicalKind == "p" && !hasBackup && !hasRollback,
-            AuditPartitionPhase.RolledBack => canonicalKind == "r" && !hasBackup && hasRollback,
-            _ => false
-        };
-        if (!valid)
-        {
-            throw new InvalidOperationException(
-                $"Audit partition lifecycle '{state.Phase}' does not match the database topology.");
-        }
-    }
-
-    private static async Task CleanupRollbackAsync(
-        DbConnection connection,
-        DbTransaction transaction,
-        CancellationToken cancellationToken)
-    {
-        await ExecuteAsync(
-            connection,
-            transaction,
-            """
-            DROP TABLE audit_events_partitioned_rollback CASCADE;
-            DROP TABLE audit_event_ids;
-            DROP TABLE audit_event_partitions;
-            DROP FUNCTION lakewright_register_audit_event_id();
-            DROP FUNCTION lakewright_create_audit_partition(timestamptz);
-            DROP FUNCTION lakewright_drop_audit_partition(text, timestamptz, timestamptz);
-            DELETE FROM lakewright_audit_partition_state WHERE "StateKey" = true;
-            """,
-            cancellationToken);
+        return new AuditMigrationRange(oldest, newest);
     }
 
     private static async Task<int> EnsureWindowAsync(
@@ -911,14 +868,7 @@ internal static class DatabasePartitioning
         }
     }
 
-    private enum AuditPartitionPhase
-    {
-        Migrated,
-        Finalized,
-        RolledBack
-    }
-
-    private sealed record AuditPartitionState(AuditPartitionPhase Phase);
+    private sealed record AuditMigrationRange(DateTimeOffset Oldest, DateTimeOffset Newest);
 
     private sealed record PartitionRange(string Name, DateTimeOffset Start, DateTimeOffset End);
 }

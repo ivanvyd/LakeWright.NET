@@ -25,7 +25,8 @@ internal static class AuditPartitionSql
         AS $function$
         DECLARE
             partition_start timestamptz := date_trunc('month', p_start AT TIME ZONE 'UTC') AT TIME ZONE 'UTC';
-            partition_end timestamptz := partition_start + interval '1 month';
+            partition_end timestamptz :=
+                (partition_start AT TIME ZONE 'UTC' + interval '1 month') AT TIME ZONE 'UTC';
             partition_name text := 'audit_events_' || to_char(partition_start AT TIME ZONE 'UTC', 'YYYY_MM');
             index_name text := partition_name || '_org_occurred';
             already_present boolean;
@@ -81,7 +82,7 @@ internal static class AuditPartitionSql
         BEGIN
             IF p_name <> 'audit_events_' || to_char(p_start AT TIME ZONE 'UTC', 'YYYY_MM')
                OR p_start <> date_trunc('month', p_start AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'
-               OR p_end <> p_start + interval '1 month' THEN
+               OR p_end <> (p_start AT TIME ZONE 'UTC' + interval '1 month') AT TIME ZONE 'UTC' THEN
                 RAISE EXCEPTION 'refusing non-canonical audit partition %', p_name;
             END IF;
 
@@ -235,12 +236,6 @@ internal static class AuditPartitionSql
                          ELSE ' WITH CHECK (' || policy_row.check_expression || ')' END);
             END LOOP;
 
-            IF (SELECT relrowsecurity FROM pg_catalog.pg_class WHERE oid = source_table) THEN
-                ALTER TABLE audit_events ENABLE ROW LEVEL SECURITY;
-            END IF;
-            IF (SELECT relforcerowsecurity FROM pg_catalog.pg_class WHERE oid = source_table) THEN
-                ALTER TABLE audit_events FORCE ROW LEVEL SECURITY;
-            END IF;
         END;
         $block$;
         """;

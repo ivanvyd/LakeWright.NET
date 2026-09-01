@@ -23,7 +23,8 @@ if (!int.TryParse(Environment.GetEnvironmentVariable("LAKEWRIGHT_AUDIT_RETENTION
     || !int.TryParse(Environment.GetEnvironmentVariable("LAKEWRIGHT_AUDIT_LOCK_TIMEOUT_SECONDS") ?? "15", out var lockTimeoutSeconds)
     || !int.TryParse(Environment.GetEnvironmentVariable("LAKEWRIGHT_AUDIT_STATEMENT_TIMEOUT_SECONDS") ?? "300", out var statementTimeoutSeconds)
     || !long.TryParse(Environment.GetEnvironmentVariable("LAKEWRIGHT_AUDIT_MAX_MIGRATION_ROWS") ?? "1000000", out var maxMigrationRows)
-    || !long.TryParse(Environment.GetEnvironmentVariable("LAKEWRIGHT_AUDIT_MAX_MIGRATION_BYTES") ?? "2147483648", out var maxMigrationBytes))
+    || !long.TryParse(Environment.GetEnvironmentVariable("LAKEWRIGHT_AUDIT_MAX_MIGRATION_BYTES") ?? "2147483648", out var maxMigrationBytes)
+    || !int.TryParse(Environment.GetEnvironmentVariable("LAKEWRIGHT_AUDIT_MAX_HISTORICAL_PARTITIONS") ?? "120", out var maxHistoricalPartitions))
 {
     Console.Error.WriteLine("Audit maintenance settings must be whole numbers.");
     return 2;
@@ -36,7 +37,8 @@ var options = new AuditPartitionOptions
     LockTimeout = TimeSpan.FromSeconds(lockTimeoutSeconds),
     StatementTimeout = TimeSpan.FromSeconds(statementTimeoutSeconds),
     MaxMigrationRows = maxMigrationRows,
-    MaxMigrationBytes = maxMigrationBytes
+    MaxMigrationBytes = maxMigrationBytes,
+    MaxHistoricalPartitions = maxHistoricalPartitions
 };
 var dbOptions = new DbContextOptionsBuilder<LakeWrightDbContext>()
     .UseNpgsql(connectionString)
