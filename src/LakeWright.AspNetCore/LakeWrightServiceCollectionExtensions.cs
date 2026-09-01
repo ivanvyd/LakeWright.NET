@@ -184,7 +184,9 @@ public static class LakeWrightServiceCollectionExtensions
             .ValidateOnStart();
 
         services.TryAddSingletonTimeProvider();
-        services.AddScoped<IBillingUsageReader, DatabricksBillingUsageReader>();
+        // The shared reader owns the process-wide statement concurrency gate. Its dependencies are
+        // singletons and it keeps no tenant state between calls.
+        services.AddSingleton<IBillingUsageReader, DatabricksBillingUsageReader>();
         services.AddScoped<ICostAttribution, BillingCostAttribution>();
         return services;
     }

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using LakeWright.Core.Cost;
 using LakeWright.Core.Tenancy;
 using Microsoft.Azure.Databricks.Client;
@@ -17,7 +18,7 @@ namespace LakeWright.Databricks;
 /// Databricks SQL. The system table is account-wide, so <c>workspace_id</c> is an additional
 /// mandatory bound filter rather than an assumption that run ids are globally unique.
 /// </remarks>
-public sealed class DatabricksBillingUsageReader : IBillingUsageReader
+public sealed class DatabricksBillingUsageReader : IBillingUsageReader, IDisposable
 {
     private const NumberStyles DecimalStyles =
         NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint | NumberStyles.AllowExponent;
@@ -68,6 +69,9 @@ public sealed class DatabricksBillingUsageReader : IBillingUsageReader
     private readonly DatabricksOptions _databricks;
     private readonly BillingUsageOptions _billing;
     private readonly TimeProvider _timeProvider;
+    private readonly SemaphoreSlim _statementSlots;
+    private readonly int _maxOutstandingStatements;
+    private int _outstandingStatements;
 
     public DatabricksBillingUsageReader(
         DatabricksClient client,
@@ -93,6 +97,8 @@ public sealed class DatabricksBillingUsageReader : IBillingUsageReader
         _databricks = databricks;
         _billing = billing;
         _timeProvider = timeProvider;
+        _statementSlots = new SemaphoreSlim(billing.MaxConcurrentStatements);
+        _maxOutstandingStatements = billing.MaxOutstandingStatements;
     }
 
     public async Task<IReadOnlyList<BillingRunUsage>> ReadAsync(
@@ -104,10 +110,7 @@ public sealed class DatabricksBillingUsageReader : IBillingUsageReader
     {
         ArgumentNullException.ThrowIfNull(tenant);
         ArgumentNullException.ThrowIfNull(jobRunIds);
-        if (from >= until)
-        {
-            throw new ArgumentException("from must be earlier than until.", nameof(from));
-        }
+        BillingUsageLimits.ValidateReportWindow(from, until, _timeProvider.GetUtcNow());
 
         if (jobRunIds.Count == 0)
         {
@@ -125,11 +128,79 @@ public sealed class DatabricksBillingUsageReader : IBillingUsageReader
             throw new BillingUsageException("REPORT_TOO_LARGE", isTransient: false);
         }
 
-        var request = CreateRequest(from, until, uniqueRunIds);
-        var outcome = await _session.ExecuteAsync(request, tenant.TenantId, cancellationToken);
-        outcome = await WaitForCompletionAsync(tenant, outcome, cancellationToken);
-        return Parse(outcome);
+        var outstanding = Interlocked.Increment(ref _outstandingStatements);
+        if (outstanding > _maxOutstandingStatements)
+        {
+            Interlocked.Decrement(ref _outstandingStatements);
+            throw new BillingUsageException("BILLING_BUSY", isTransient: true);
+        }
+
+        try
+        {
+            await _statementSlots.WaitAsync(cancellationToken);
+            try
+            {
+                var request = CreateRequest(from, until, uniqueRunIds);
+                var startedAt = _timeProvider.GetUtcNow();
+                var deadline = startedAt.AddSeconds(_billing.PollingTimeoutSeconds);
+                var serverCancellationDeadline = startedAt.AddSeconds(
+                    _billing.SubmissionWaitTimeoutSeconds);
+                using var executeTimeout = new CancellationTokenSource(
+                    TimeSpan.FromSeconds(_billing.PollingTimeoutSeconds),
+                    _timeProvider);
+                StatementOutcome outcome;
+                try
+                {
+                    // Once creation starts, keep the local slot until Databricks returns a
+                    // statement id. Caller cancellation can then cancel accepted remote work.
+                    outcome = await _session.ExecuteAsync(
+                        request,
+                        tenant.TenantId,
+                        executeTimeout.Token);
+                }
+                catch (OperationCanceledException) when (executeTimeout.IsCancellationRequested)
+                {
+                    await HoldAdmissionUntilAsync(serverCancellationDeadline);
+                    throw new BillingUsageException("POLL_TIMEOUT", isTransient: true);
+                }
+                catch (Exception exception) when (exception is not OutOfMemoryException)
+                {
+                    await HoldAdmissionUntilAsync(serverCancellationDeadline);
+                    throw new BillingUsageException("STATEMENT_CREATE_UNCERTAIN", isTransient: true);
+                }
+
+                if (outcome is StatementOutcome.Failure { StatementId: null } failure
+                    && !IsDefinitiveRequestRejection(failure.StatusCode))
+                {
+                    await HoldAdmissionUntilAsync(serverCancellationDeadline);
+                    throw new BillingUsageException("STATEMENT_CREATE_UNCERTAIN", isTransient: true);
+                }
+
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    await CancelBestEffortAsync((outcome as StatementOutcome.Pending)?.StatementId);
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+
+                outcome = await WaitForCompletionAsync(
+                    tenant,
+                    outcome,
+                    deadline,
+                    cancellationToken);
+                return Parse(outcome);
+            }
+            finally
+            {
+                _statementSlots.Release();
+            }
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _outstandingStatements);
+        }
     }
+
+    public void Dispose() => _statementSlots.Dispose();
 
     private SqlStatement CreateRequest(
         DateTimeOffset from,
@@ -154,17 +225,32 @@ public sealed class DatabricksBillingUsageReader : IBillingUsageReader
             Disposition = SqlStatementDisposition.INLINE,
             Format = StatementFormat.JSON_ARRAY,
             RowLimit = 10_000,
-            WaitTimeout = _databricks.WaitTimeout,
-            OnWaitTimeout = SqlStatementOnWaitTimeout.CONTINUE
+            WaitTimeout = $"{_billing.SubmissionWaitTimeoutSeconds}s",
+            OnWaitTimeout = SqlStatementOnWaitTimeout.CANCEL
         };
+
+    private async Task HoldAdmissionUntilAsync(DateTimeOffset serverCancellationDeadline)
+    {
+        var remaining = serverCancellationDeadline - _timeProvider.GetUtcNow();
+        if (remaining > TimeSpan.Zero)
+        {
+            await Task.Delay(remaining, _timeProvider, CancellationToken.None);
+        }
+    }
+
+    private static bool IsDefinitiveRequestRejection(HttpStatusCode? statusCode) =>
+        statusCode is not null
+        && (int)statusCode >= 400
+        && (int)statusCode < 500
+        && statusCode != HttpStatusCode.RequestTimeout;
 
     private async Task<StatementOutcome> WaitForCompletionAsync(
         TenantContext tenant,
         StatementOutcome outcome,
+        DateTimeOffset deadline,
         CancellationToken cancellationToken)
     {
         string? activeStatementId = null;
-        var deadline = _timeProvider.GetUtcNow().AddSeconds(_billing.PollingTimeoutSeconds);
         try
         {
             while (outcome is StatementOutcome.Pending pending)
@@ -182,10 +268,30 @@ public sealed class DatabricksBillingUsageReader : IBillingUsageReader
                         : remaining,
                     _timeProvider,
                     cancellationToken);
-                outcome = await _session.GetAsync(
-                    tenant.TenantId,
-                    pending.StatementId,
-                    cancellationToken);
+
+                remaining = deadline - _timeProvider.GetUtcNow();
+                if (remaining <= TimeSpan.Zero)
+                {
+                    throw new BillingUsageException("POLL_TIMEOUT", isTransient: true);
+                }
+
+                using var pollTimeout = new CancellationTokenSource(remaining, _timeProvider);
+                using var pollCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken,
+                    pollTimeout.Token);
+                try
+                {
+                    outcome = await _session.GetAsync(
+                        tenant.TenantId,
+                        pending.StatementId,
+                        pollCancellation.Token);
+                }
+                catch (OperationCanceledException) when (
+                    pollTimeout.IsCancellationRequested
+                    && !cancellationToken.IsCancellationRequested)
+                {
+                    throw new BillingUsageException("POLL_TIMEOUT", isTransient: true);
+                }
             }
 
             return outcome;
