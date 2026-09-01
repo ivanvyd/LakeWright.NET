@@ -12,7 +12,12 @@ set -uo pipefail
 missing=0
 checked=0
 
-for file in $(find . -name '*.md' -not -path './.git/*'); do
+if ! git rev-parse --is-inside-work-tree >/dev/null; then
+  echo "ERROR: documentation links must be checked from a Git worktree."
+  exit 1
+fi
+
+while IFS= read -r -d '' file; do
   dir=$(dirname "$file")
 
   # grep exits 1 on no matches, which is normal for a file with no links.
@@ -30,7 +35,7 @@ for file in $(find . -name '*.md' -not -path './.git/*'); do
       missing=$((missing + 1))
     fi
   done <<< "$targets"
-done
+done < <(git ls-files -z --cached --others --exclude-standard -- '*.md')
 
 if [ "$missing" -ne 0 ]; then
   echo "$missing broken documentation link(s)."

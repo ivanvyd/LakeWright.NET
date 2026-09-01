@@ -60,4 +60,6 @@ proxy data.
 
 **A test pins the property that the library's own instruments never carry a tenant id.** Per-tenant totals come from `operations` and `audit_events` rather than from the metrics, which is the property the cardinality-bomb rule was written to protect. A future change that adds a `tenant` or `tenantid` tag to a metric call site fails the build with the offending line.
 
-**`CostAttribution` joins the v0.2 milestone rather than v0.1.** v0.1 was the eight-week milestone whose definition of done did not name this. The published version is `0.1.2-preview.1`; the next published version with cost attribution is `0.2.0-preview.1`, which carries a breaking-change note for the `Operation` rows the implementation reads (none, today, but documented for the next maintainer).
+**Billing attribution ships as an additive 1.1 feature.** Existing applications retain the proxy
+registration and response constructors. Enabling the billing reader is explicit, and the added
+currency collections are init-only, so the 1.x compatibility promise is preserved.
