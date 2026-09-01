@@ -32,6 +32,7 @@ public class DashboardPublishGateTests
 
         verdict.Passed.ShouldBeTrue();
         verdict.Hits.Count.ShouldBe(1);
+        verdict.Hits[0].DatasetIndex.ShouldBe(0);
         verdict.Hits[0].Offset.ShouldBeGreaterThan(0);
     }
 
@@ -192,6 +193,8 @@ public class DashboardPublishGateTests
 
         verdict.Passed.ShouldBeTrue();
         verdict.Hits.Count.ShouldBe(2);
+        verdict.Hits[0].DatasetIndex.ShouldBe(0);
+        verdict.Hits[1].DatasetIndex.ShouldBe(1);
     }
 
     [Fact]
