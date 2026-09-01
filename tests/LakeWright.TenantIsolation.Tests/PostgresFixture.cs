@@ -32,7 +32,8 @@ public sealed class PostgresFixture : IAsyncLifetime
 
         var builder = new Npgsql.NpgsqlConnectionStringBuilder(_container.GetConnectionString())
         {
-            Database = name
+            Database = name,
+            Pooling = false
         };
 
         var options = new DbContextOptionsBuilder<LakeWrightDbContext>()
