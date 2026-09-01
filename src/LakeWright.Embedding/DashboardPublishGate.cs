@@ -38,14 +38,17 @@ public static class DashboardPublishGate
     /// A verdict carrying the count of out-of-string-literal references and the byte offsets
     /// at which they were found. An empty <paramref name="datasetSql"/> fails closed.
     /// </returns>
-    public static PublishGateVerdict Inspect(string? datasetSql)
+    public static PublishGateVerdict Inspect(string? datasetSql) =>
+        InspectDataset(datasetSql, datasetIndex: 0);
+
+    private static PublishGateVerdict InspectDataset(string? datasetSql, int datasetIndex)
     {
         if (string.IsNullOrWhiteSpace(datasetSql))
         {
             return PublishGateVerdict.Fail("Dataset SQL is empty.");
         }
 
-        var marker = new MarkerScanner(datasetSql);
+        var marker = new MarkerScanner(datasetSql, datasetIndex);
         var hits = marker.Scan();
 
         return hits.Count == 0
@@ -67,7 +70,7 @@ public static class DashboardPublishGate
         var allHits = new List<MarkerHit>();
         for (var i = 0; i < datasetSqls.Count; i++)
         {
-            var result = Inspect(datasetSqls[i]);
+            var result = InspectDataset(datasetSqls[i], datasetIndex: i);
             if (!result.Passed)
             {
                 return PublishGateVerdict.Fail(
@@ -120,8 +123,13 @@ public sealed record MarkerHit(int DatasetIndex, int Offset);
 internal sealed class MarkerScanner
 {
     private readonly string _sql;
+    private readonly int _datasetIndex;
 
-    internal MarkerScanner(string sql) => _sql = sql;
+    internal MarkerScanner(string sql, int datasetIndex)
+    {
+        _sql = sql;
+        _datasetIndex = datasetIndex;
+    }
 
     internal IReadOnlyList<MarkerHit> Scan()
     {
@@ -217,7 +225,7 @@ internal sealed class MarkerScanner
                         StringComparison.OrdinalIgnoreCase)
                     && EndsMarkerAt(i + DashboardPublishGate.ExternalValueColumn.Length - 1))
                 {
-                    hits.Add(new MarkerHit(0, i));
+                    hits.Add(new MarkerHit(_datasetIndex, i));
                 }
             }
             i++;
