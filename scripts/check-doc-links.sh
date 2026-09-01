@@ -20,9 +20,16 @@ fi
 while IFS= read -r -d '' file; do
   dir=$(dirname "$file")
 
-  # grep exits 1 on no matches, which is normal for a file with no links.
-  targets=$(grep -oE '\]\([^)#]+\.(md|png|jpg|jpeg|svg|gif)[^)]*\)' "$file" 2>/dev/null \
-    | sed -E 's/^\]\(//; s/\)$//; s/#.*$//') || true
+  # grep exits 1 on no matches, which is normal for a file with no links. Any larger status is a
+  # real read or pattern failure; treating that as an empty document would make the gate green on
+  # evidence it never inspected.
+  targets=$(grep -oE '\]\([^)#]+\.(md|png|jpg|jpeg|svg|gif)[^)]*\)' "$file" \
+    | sed -E 's/^\]\(//; s/\)$//; s/#.*$//')
+  status=$?
+  if [ "$status" -gt 1 ]; then
+    echo "ERROR: failed to read Markdown links from $file (exit $status)."
+    exit 1
+  fi
   [ -z "$targets" ] && continue
 
   while IFS= read -r target; do
