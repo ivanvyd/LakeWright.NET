@@ -8,6 +8,20 @@ note.
 
 ## [Unreleased]
 
+## [1.0.1] — 2026-09-01
+
+### Changed
+
+- Consolidated the two internal in-memory token-cache implementations behind one canonical cache.
+  This removes duplicate expiry and concurrency logic without changing the public API or token
+  lifetime behavior (#100).
+
+### Fixed
+
+- `DashboardPublishGate.InspectAll` now reports each `MarkerHit.DatasetIndex` as the zero-based
+  index of the dataset that produced it. `Inspect` retains its existing public signature and
+  continues to report index `0` (#101).
+
 ## [1.0.0] — 2026-08-30
 
 The first stable release. The compat promise is the one the project has been holding:
