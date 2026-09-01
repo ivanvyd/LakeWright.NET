@@ -1,4 +1,5 @@
 using LakeWright.Core.Tenancy;
+using LakeWright.DatabaseMaintenance;
 using LakeWright.Multitenancy;
 using LakeWright.Multitenancy.Model;
 using Microsoft.EntityFrameworkCore;
@@ -177,6 +178,169 @@ public class AuditPartitionTests(PostgresFixture postgres)
         refused.SqlState.ShouldBe(PostgresErrorCodes.InsufficientPrivilege);
     }
 
+    [Fact]
+    public async Task Partition_months_are_UTC_even_when_the_database_session_is_not()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        await db.Database.OpenConnectionAsync(ct);
+        await db.Database.ExecuteSqlRawAsync("SET TIME ZONE 'America/Los_Angeles'", ct);
+        db.AuditEvents.Add(NewEvent(
+            new DateTimeOffset(2030, 6, 1, 0, 0, 0, TimeSpan.Zero),
+            "utc-boundary"));
+        await db.SaveChangesAsync(ct);
+
+        await DatabasePartitioning.MigrateAsync(db, FixedNow, cancellationToken: ct);
+
+        var partitions = await ListPartitionsAsync(db, ct);
+        partitions.ShouldContain("audit_events_2030_06");
+        partitions.ShouldNotContain("audit_events_2030_05");
+    }
+
+    [Fact]
+    public async Task Rollback_restores_application_acl_and_revokes_rollback_artifact_access()
+    {
+        const string role = "lakewright_partition_rollback_app";
+        const string password = "partition-rollback-password";
+        var ct = TestContext.Current.CancellationToken;
+        await using var owner = await postgres.NewDatabaseAsync();
+        await DatabaseHardening.ApplyAsync(owner, role, password, ct);
+        owner.AuditEvents.Add(NewEvent(FixedNow, role));
+        await owner.SaveChangesAsync(ct);
+        await DatabasePartitioning.MigrateAsync(owner, FixedNow, cancellationToken: ct);
+
+        await DatabasePartitioning.RollbackMigrationAsync(owner, ct);
+
+        await using var app = PostgresFixture.AsApplicationRole(owner, role, password);
+        (await app.AuditEvents.CountAsync(ct)).ShouldBe(1);
+        app.AuditEvents.Add(NewEvent(FixedNow.AddDays(1), role));
+        await app.SaveChangesAsync(ct);
+
+        var retainedCopyRead = await Should.ThrowAsync<PostgresException>(
+            async () => await app.Database.ExecuteSqlRawAsync(
+                "SELECT 1 FROM audit_events_partitioned_rollback LIMIT 1", ct));
+        retainedCopyRead.SqlState.ShouldBe(PostgresErrorCodes.InsufficientPrivilege);
+        var registryRead = await Should.ThrowAsync<PostgresException>(
+            async () => await app.Database.ExecuteSqlRawAsync(
+                "SELECT 1 FROM audit_event_ids LIMIT 1", ct));
+        registryRead.SqlState.ShouldBe(PostgresErrorCodes.InsufficientPrivilege);
+    }
+
+    [Fact]
+    public async Task Rollback_cleanup_allows_a_deterministic_remigration()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        db.AuditEvents.Add(NewEvent(FixedNow, "before"));
+        await db.SaveChangesAsync(ct);
+
+        await DatabasePartitioning.MigrateAsync(db, FixedNow, cancellationToken: ct);
+        await DatabasePartitioning.RollbackMigrationAsync(db, ct);
+        await DatabasePartitioning.FinalizeMigrationAsync(db, ct);
+        await DatabasePartitioning.MigrateAsync(db, FixedNow.AddMonths(1), cancellationToken: ct);
+        await DatabasePartitioning.ValidateAsync(db, ct);
+
+        (await DatabasePartitioning.IsPartitionedAsync(db, ct)).ShouldBeTrue();
+        (await RelationExistsAsync(db, "audit_events_partitioned_rollback", ct)).ShouldBeFalse();
+        (await db.AuditEvents.Select(row => row.PrincipalId).ToListAsync(ct)).ShouldBe(["before"]);
+    }
+
+    [Fact]
+    public async Task Maintenance_refuses_corrupt_lifecycle_state()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        await DatabasePartitioning.MigrateAsync(db, FixedNow, cancellationToken: ct);
+        await db.Database.ExecuteSqlRawAsync(
+            "UPDATE lakewright_audit_partition_state SET \"SchemaVersion\" = 999", ct);
+
+        var error = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await DatabasePartitioning.ValidateAsync(db, ct));
+
+        error.Message.ShouldContain("Unsupported audit partition lifecycle state version=999");
+
+        await db.Database.ExecuteSqlRawAsync(
+            "UPDATE lakewright_audit_partition_state SET \"SchemaVersion\" = 1, \"Phase\" = 'Finalized'", ct);
+        var topologyError = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await DatabasePartitioning.ValidateAsync(db, ct));
+        topologyError.Message.ShouldContain("does not match the database topology");
+    }
+
+    [Fact]
+    public async Task Identity_registry_has_the_retention_range_index()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        await DatabasePartitioning.MigrateAsync(db, FixedNow, cancellationToken: ct);
+
+        var definition = await db.Database.SqlQueryRaw<string>(
+            """
+            SELECT indexdef AS "Value"
+            FROM pg_catalog.pg_indexes
+            WHERE schemaname = 'public' AND indexname = 'audit_event_ids_occurred_at'
+            """).SingleAsync(ct);
+
+        definition.ShouldContain("(\"OccurredAt\")");
+    }
+
+    [Fact]
+    public async Task Migration_refuses_tables_above_the_configured_row_limit()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        db.AuditEvents.AddRange(NewEvent(FixedNow, "one"), NewEvent(FixedNow, "two"));
+        await db.SaveChangesAsync(ct);
+
+        var error = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await DatabasePartitioning.MigrateAsync(
+                db,
+                FixedNow,
+                new AuditPartitionOptions { MaxMigrationRows = 1 },
+                ct));
+
+        error.Message.ShouldContain("row count 2 exceeds");
+        (await DatabasePartitioning.IsPartitionedAsync(db, ct)).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task Migration_lock_wait_is_bounded_by_the_configured_timeout()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        await using var blocker = new NpgsqlConnection(db.Database.GetConnectionString());
+        await blocker.OpenAsync(ct);
+        await using var blockerTransaction = await blocker.BeginTransactionAsync(ct);
+        await using (var command = new NpgsqlCommand("LOCK TABLE audit_events IN ACCESS SHARE MODE", blocker, blockerTransaction))
+        {
+            await command.ExecuteNonQueryAsync(ct);
+        }
+
+        var error = await Should.ThrowAsync<PostgresException>(
+            async () => await DatabasePartitioning.MigrateAsync(
+                db,
+                FixedNow,
+                new AuditPartitionOptions { LockTimeout = TimeSpan.FromMilliseconds(100) },
+                ct));
+
+        error.SqlState.ShouldBe(PostgresErrorCodes.LockNotAvailable);
+    }
+
+    [Fact]
+    public async Task Migration_rejects_mutable_application_grants()
+    {
+        const string role = "lakewright_partition_mutable_acl";
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        await db.Database.ExecuteSqlRawAsync(
+            $"CREATE ROLE {role}; GRANT UPDATE ON audit_events TO {role};", ct);
+
+        var error = await Should.ThrowAsync<InvalidOperationException>(
+            async () => await DatabasePartitioning.MigrateAsync(db, FixedNow, cancellationToken: ct));
+
+        error.Message.ShouldContain($"{role}:UPDATE");
+        (await DatabasePartitioning.IsPartitionedAsync(db, ct)).ShouldBeFalse();
+    }
+
     private static AuditEvent NewEvent(DateTimeOffset occurredAt, string principal, Guid? id = null) => new()
     {
         Id = id ?? Guid.CreateVersion7(),
@@ -201,4 +365,12 @@ public class AuditPartitionTests(PostgresFixture postgres)
             WHERE parent.relname = 'audit_events'
             ORDER BY child.relname
             """).ToListAsync(cancellationToken);
+
+    private static Task<bool> RelationExistsAsync(
+        LakeWrightDbContext db,
+        string relation,
+        CancellationToken cancellationToken) =>
+        db.Database.SqlQueryRaw<bool>(
+            "SELECT pg_catalog.to_regclass('public.' || {0}) IS NOT NULL AS \"Value\"",
+            relation).SingleAsync(cancellationToken);
 }

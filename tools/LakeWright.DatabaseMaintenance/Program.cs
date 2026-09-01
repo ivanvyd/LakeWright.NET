@@ -1,3 +1,4 @@
+using LakeWright.DatabaseMaintenance;
 using LakeWright.Multitenancy;
 using Microsoft.EntityFrameworkCore;
 
@@ -18,16 +19,24 @@ if (string.IsNullOrWhiteSpace(connectionString))
 }
 
 if (!int.TryParse(Environment.GetEnvironmentVariable("LAKEWRIGHT_AUDIT_RETENTION_YEARS") ?? "7", out var retentionYears)
-    || !int.TryParse(Environment.GetEnvironmentVariable("LAKEWRIGHT_AUDIT_FUTURE_MONTHS") ?? "2", out var futureMonths))
+    || !int.TryParse(Environment.GetEnvironmentVariable("LAKEWRIGHT_AUDIT_FUTURE_MONTHS") ?? "2", out var futureMonths)
+    || !int.TryParse(Environment.GetEnvironmentVariable("LAKEWRIGHT_AUDIT_LOCK_TIMEOUT_SECONDS") ?? "15", out var lockTimeoutSeconds)
+    || !int.TryParse(Environment.GetEnvironmentVariable("LAKEWRIGHT_AUDIT_STATEMENT_TIMEOUT_SECONDS") ?? "300", out var statementTimeoutSeconds)
+    || !long.TryParse(Environment.GetEnvironmentVariable("LAKEWRIGHT_AUDIT_MAX_MIGRATION_ROWS") ?? "1000000", out var maxMigrationRows)
+    || !long.TryParse(Environment.GetEnvironmentVariable("LAKEWRIGHT_AUDIT_MAX_MIGRATION_BYTES") ?? "2147483648", out var maxMigrationBytes))
 {
-    Console.Error.WriteLine("Audit retention and future-month settings must be whole numbers.");
+    Console.Error.WriteLine("Audit maintenance settings must be whole numbers.");
     return 2;
 }
 
 var options = new AuditPartitionOptions
 {
     RetentionYears = retentionYears,
-    FutureMonths = futureMonths
+    FutureMonths = futureMonths,
+    LockTimeout = TimeSpan.FromSeconds(lockTimeoutSeconds),
+    StatementTimeout = TimeSpan.FromSeconds(statementTimeoutSeconds),
+    MaxMigrationRows = maxMigrationRows,
+    MaxMigrationBytes = maxMigrationBytes
 };
 var dbOptions = new DbContextOptionsBuilder<LakeWrightDbContext>()
     .UseNpgsql(connectionString)
@@ -48,11 +57,11 @@ switch (args[0])
         break;
     case "finalize":
         await DatabasePartitioning.FinalizeMigrationAsync(db);
-        Console.WriteLine("Audit partition rollback copy finalized.");
+        Console.WriteLine("Audit partition lifecycle finalized.");
         break;
     case "rollback":
         await DatabasePartitioning.RollbackMigrationAsync(db);
-        Console.WriteLine("Audit partition migration rolled back; the partitioned copy remains for inspection.");
+        Console.WriteLine("Audit partition migration rolled back. Inspect it, then run finalize before remigrating.");
         break;
     case "maintain":
         var result = await DatabasePartitioning.MaintainAsync(db, now, options);

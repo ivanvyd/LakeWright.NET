@@ -15,6 +15,7 @@
     <Project Path="tests/LakeWright.TenantIsolation.Tests/LakeWright.TenantIsolation.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">
+    <Project Path="tools/LakeWright.DatabaseMaintenance.Core/LakeWright.DatabaseMaintenance.Core.csproj" />
     <Project Path="tools/LakeWright.DatabaseMaintenance/LakeWright.DatabaseMaintenance.csproj" />
   </Folder>
 </Solution>
