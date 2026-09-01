@@ -53,10 +53,8 @@
     <PackageTags>databricks;multi-tenancy;saas;unity-catalog;lakehouse;aspnetcore</PackageTags>
 
     <!-- The release workflow overrides this from the tag, so a package can never claim a
-         version the tag does not; this value is what a local `dotnet pack` produces. Bumped
-         to 1.0.0 with ADR 0019. The prerelease guard in release.yml was removed at the same
-         commit. -->
-    <VersionPrefix>1.0.0</VersionPrefix>
+         version the tag does not; this value is what a local `dotnet pack` produces. -->
+    <VersionPrefix>1.0.1</VersionPrefix>
     <Copyright>Copyright (c) LakeWright.NET contributors</Copyright>
   </PropertyGroup>
 
