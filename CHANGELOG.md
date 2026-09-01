@@ -8,6 +8,8 @@ note.
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-09-01
+
 ### Added
 
 - Safe monthly partitioning for `audit_events`, with atomic populated-table migration,
@@ -15,6 +17,24 @@ note.
   grants and row-security policies, and configurable retention defaulting to seven years. The
   migration and recurring maintenance executable requires a distinct table-owning connection;
   the application role receives no DDL. ADR 0020.
+- Opt-in billing cost attribution backed by Databricks `system.billing.usage` and
+  `system.billing.list_prices`. Tenant-owned job runs are selected in PostgreSQL before one bounded
+  warehouse query; fixed SQL, bound parameters, report and price-window proration, corrections,
+  explicit currencies, a 500-run limit, polling deadlines and redacted upstream errors preserve
+  the existing tenant and HTTP boundaries. ADR 0012.
+
+### Changed
+
+- Updated `Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore` to 10.0.11; the
+  xUnit/VSTest packages to 4.0.0; Testcontainers.PostgreSql to 4.14.0; WireMock.Net to 2.15.0;
+  Databricks setup-cli to 1.14.1; CodeQL actions to 4.37.9; and the pinned .NET 10 SDK container
+  digest. All generated lock files were refreshed and the full local and hosted gates passed.
+
+### Fixed
+
+- Documentation checks now examine tracked and non-ignored new Markdown files instead of scanning
+  ignored personal notes. This keeps local verification reproducible without omitting new release
+  documentation.
 
 ## [1.0.1] — 2026-09-01
 

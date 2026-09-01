@@ -12,12 +12,24 @@ set -uo pipefail
 missing=0
 checked=0
 
-for file in $(find . -name '*.md' -not -path './.git/*'); do
+if ! git rev-parse --is-inside-work-tree >/dev/null; then
+  echo "ERROR: documentation links must be checked from a Git worktree."
+  exit 1
+fi
+
+while IFS= read -r -d '' file; do
   dir=$(dirname "$file")
 
-  # grep exits 1 on no matches, which is normal for a file with no links.
-  targets=$(grep -oE '\]\([^)#]+\.(md|png|jpg|jpeg|svg|gif)[^)]*\)' "$file" 2>/dev/null \
-    | sed -E 's/^\]\(//; s/\)$//; s/#.*$//') || true
+  # grep exits 1 on no matches, which is normal for a file with no links. Any larger status is a
+  # real read or pattern failure; treating that as an empty document would make the gate green on
+  # evidence it never inspected.
+  targets=$(grep -oE '\]\([^)#]+\.(md|png|jpg|jpeg|svg|gif)[^)]*\)' "$file" \
+    | sed -E 's/^\]\(//; s/\)$//; s/#.*$//')
+  status=$?
+  if [ "$status" -gt 1 ]; then
+    echo "ERROR: failed to read Markdown links from $file (exit $status)."
+    exit 1
+  fi
   [ -z "$targets" ] && continue
 
   while IFS= read -r target; do
@@ -30,7 +42,7 @@ for file in $(find . -name '*.md' -not -path './.git/*'); do
       missing=$((missing + 1))
     fi
   done <<< "$targets"
-done
+done < <(git ls-files -z --cached --others --exclude-standard -- '*.md')
 
 if [ "$missing" -ne 0 ]; then
   echo "$missing broken documentation link(s)."
