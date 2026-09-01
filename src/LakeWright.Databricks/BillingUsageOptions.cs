@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations;
 namespace LakeWright.Databricks;
 
 /// <summary>Configuration for privileged reads of Databricks billing system tables.</summary>
-public sealed class BillingUsageOptions
+public sealed class BillingUsageOptions : IValidatableObject
 {
     public const string SectionName = "DatabricksBilling";
 
@@ -37,4 +37,15 @@ public sealed class BillingUsageOptions
     /// </summary>
     [Range(1, 1_024)]
     public int MaxOutstandingStatements { get; set; } = 32;
+
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (SubmissionWaitTimeoutSeconds > PollingTimeoutSeconds)
+        {
+            yield return new ValidationResult(
+                $"{nameof(SubmissionWaitTimeoutSeconds)} cannot exceed "
+                + $"{nameof(PollingTimeoutSeconds)}.",
+                [nameof(SubmissionWaitTimeoutSeconds), nameof(PollingTimeoutSeconds)]);
+        }
+    }
 }

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using LakeWright.Core.Cost;
 using LakeWright.Core.Tenancy;
 using Microsoft.Azure.Databricks.Client;
@@ -168,6 +169,13 @@ public sealed class DatabricksBillingUsageReader : IBillingUsageReader, IDisposa
                     throw new BillingUsageException("STATEMENT_CREATE_UNCERTAIN", isTransient: true);
                 }
 
+                if (outcome is StatementOutcome.Failure { StatementId: null } failure
+                    && !IsDefinitiveRequestRejection(failure.StatusCode))
+                {
+                    await HoldAdmissionUntilAsync(serverCancellationDeadline);
+                    throw new BillingUsageException("STATEMENT_CREATE_UNCERTAIN", isTransient: true);
+                }
+
                 if (cancellationToken.IsCancellationRequested)
                 {
                     await CancelBestEffortAsync((outcome as StatementOutcome.Pending)?.StatementId);
@@ -229,6 +237,12 @@ public sealed class DatabricksBillingUsageReader : IBillingUsageReader, IDisposa
             await Task.Delay(remaining, _timeProvider, CancellationToken.None);
         }
     }
+
+    private static bool IsDefinitiveRequestRejection(HttpStatusCode? statusCode) =>
+        statusCode is not null
+        && (int)statusCode >= 400
+        && (int)statusCode < 500
+        && statusCode != HttpStatusCode.RequestTimeout;
 
     private async Task<StatementOutcome> WaitForCompletionAsync(
         TenantContext tenant,

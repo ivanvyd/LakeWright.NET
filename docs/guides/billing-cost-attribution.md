@@ -76,6 +76,8 @@ same overall timeout bounds both initial submission and polling. Billing submiss
 server-side `on_wait_timeout=CANCEL`. If the create response is lost and no statement id is
 available, local admission remains held until that server cancellation deadline before the safe
 transient code `STATEMENT_CREATE_UNCERTAIN` is returned.
+`SubmissionWaitTimeoutSeconds` must not exceed `PollingTimeoutSeconds`; invalid combinations fail
+startup validation so the server deadline cannot outlive the configured overall deadline.
 
 ## Live verification
 

@@ -1,3 +1,4 @@
+using System.Net;
 using LakeWright.Core.Cost;
 using LakeWright.Core.Tenancy;
 using LakeWright.Databricks;
@@ -192,6 +193,60 @@ public class DatabricksBillingUsageReaderTests
 
         exception.Code.ShouldBe("STATEMENT_CREATE_UNCERTAIN");
         exception.IsTransient.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ReadAsync_holds_admission_for_an_uncertain_request_failure_outcome()
+    {
+        var time = new FakeTimeProvider(Until);
+        var session = new StubStatementSession(new StatementOutcome.Failure(
+            "REQUEST_REJECTED",
+            "ambiguous server failure",
+            StatementId: null,
+            IsTransient: true)
+        {
+            StatusCode = HttpStatusCode.InternalServerError
+        });
+        var reader = Reader(session, time, submissionWaitTimeoutSeconds: 5);
+
+        var read = reader.ReadAsync(
+            Acme(),
+            From,
+            Until,
+            [11],
+            TestContext.Current.CancellationToken);
+        await Task.Yield();
+
+        read.IsCompleted.ShouldBeFalse();
+        time.Advance(TimeSpan.FromSeconds(5));
+        var exception = await Should.ThrowAsync<BillingUsageException>(async () => await read);
+
+        exception.Code.ShouldBe("STATEMENT_CREATE_UNCERTAIN");
+        exception.IsTransient.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ReadAsync_does_not_hold_admission_for_a_definitive_request_rejection()
+    {
+        var time = new FakeTimeProvider(Until);
+        var session = new StubStatementSession(new StatementOutcome.Failure(
+            "REQUEST_REJECTED",
+            "permission denied",
+            StatementId: null,
+            IsTransient: false)
+        {
+            StatusCode = HttpStatusCode.Forbidden
+        });
+
+        var read = Reader(session, time, submissionWaitTimeoutSeconds: 5).ReadAsync(
+            Acme(),
+            From,
+            Until,
+            [11],
+            TestContext.Current.CancellationToken);
+        var exception = await Should.ThrowAsync<BillingUsageException>(async () => await read);
+
+        exception.Code.ShouldBe("REQUEST_REJECTED");
     }
 
     [Fact]
