@@ -386,6 +386,21 @@ class ConfidentialIdentifierScannerTests(unittest.TestCase):
         self.assertIn("v3-flatcontainer", release)
         self.assertIn("refusing to create an incomplete release", release)
         self.assertIn("NuGet accepted the upload", release)
+        self.assertIn("set -o pipefail", release)
+        self.assertIn('dotnet nuget push "$primary"', release)
+        self.assertIn('dotnet nuget push "$symbols"', release)
+        self.assertNotIn('dotnet nuget push "artifacts/*.nupkg"', release)
+        publish_order = [
+            "LakeWright.Core",
+            "LakeWright.Conversations",
+            "LakeWright.Databricks",
+            "LakeWright.Embedding",
+            "LakeWright.Multitenancy",
+            "LakeWright.AI",
+            "LakeWright.AspNetCore",
+        ]
+        for before, after in zip(publish_order, publish_order[1:]):
+            self.assertLess(release.index(before), release.index(after))
         self.assertLess(
             release.index("Verify NuGet public availability"),
             release.index("Create GitHub release"),

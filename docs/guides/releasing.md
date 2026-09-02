@@ -86,8 +86,9 @@ Add the public key at <https://github.com/settings/keys> under **GPG keys**.
    checks out and scans that commit, derives the version, builds, tests, packs, generates a CycloneDX
    SBOM, and extracts the release notes in a read-only job. A separate publication job downloads
    only that immutable same-run artifact, attests build provenance, rechecks that the tag did not
-   move, publishes to nuget.org, and waits until every package appears in NuGet's public
-   flat-container index. Only then does it create the GitHub release. A timeout is a failed release:
+   move, publishes the internal package dependencies before their consumers to nuget.org, and waits
+   until every package appears in NuGet's public flat-container index. Only then does it create the
+   GitHub release. A timeout is a failed release:
    re-run the same immutable publication after NuGet becomes available; do not create a release that
    claims a version consumers cannot restore. Tagged build hooks never execute with release or OIDC
    permissions.
