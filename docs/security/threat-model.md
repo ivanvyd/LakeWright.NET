@@ -157,7 +157,9 @@ that GitHub handles only with the default-branch workflow. That workflow verifie
 annotated tag object and commit before fetching or executing the tagged tree, then rejects a tag
 that moves before either publication boundary. Tag-derived values are passed to shell steps as
 environment variables rather than interpolated into script text, closing the tag-name injection
-path inside the job.
+path inside the job. Tagged code executes only in a read-only build job; the separate privileged
+publication job consumes the immutable same-run artifact and never checks out or executes tagged
+source.
 
 ## What is out of scope
 

@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  release:
+  build-release-candidate:
     # Creating a repository_dispatch event requires write access. Release authority is narrower:
     # only the repository owner's event is allowed to acquire write and OIDC permissions.
     if: github.actor == github.repository_owner
@@ -21,9 +21,12 @@ jobs:
     # A release that hangs holds a runner for six hours without publishing.
     timeout-minutes: 30
     permissions:
-      contents: write      # create the GitHub release
-      id-token: write      # OIDC for provenance attestation
-      attestations: write
+      contents: read
+    outputs:
+      commit_sha: ${{ steps.tag.outputs.commit_sha }}
+      kind: ${{ steps.kind.outputs.value }}
+      tag_object_sha: ${{ steps.tag.outputs.tag_object_sha }}
+      version: ${{ steps.version.outputs.value }}
     steps:
       - name: Check out the trusted release gate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -80,13 +83,16 @@ jobs:
       # Only after GitHub authenticates the annotated tag do we fetch its tree.
       # The scanner still comes from the default branch; tagged code is data until
       # the private confidentiality gate has passed.
-      - name: Check out the verified release candidate
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ steps.tag.outputs.commit_sha }}
-          fetch-depth: 0   # SourceLink and version derivation need history
-          path: candidate
-          persist-credentials: false
+      - name: Fetch the verified release candidate as data
+        working-directory: ${{ github.workspace }}
+        env:
+          COMMIT_SHA: ${{ steps.tag.outputs.commit_sha }}
+        run: |
+          mkdir candidate
+          git -C candidate init --quiet
+          git -C candidate remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
+          git -C candidate fetch --no-tags origin "$COMMIT_SHA"
+          git -C candidate checkout --detach --quiet "$COMMIT_SHA"
 
       - name: Test the trusted confidentiality scanner
         working-directory: trusted
@@ -196,21 +202,50 @@ jobs:
           OSS_CONFIDENTIAL_TERMS_B64: ${{ secrets.OSS_CONFIDENTIAL_TERMS_B64 }}
         run: python3 ../trusted/scripts/check-confidential-identifiers.py artifacts release-notes.md
 
-      # Provenance is only meaningful because Directory.Build.props sets
-      # Deterministic and ContinuousIntegrationBuild: the artifact can be rebuilt
-      # and compared. Nothing is attested or uploaded until the confidentiality scan passes.
+      # This immutable same-run artifact is the only input to the privileged publication job.
+      # Candidate code never executes in that job.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: verified-release-candidate
+          path: |
+            candidate/artifacts/
+            candidate/release-notes.md
+
+  publish:
+    needs: build-release-candidate
+    if: github.actor == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: candidate
+    permissions:
+      contents: write      # create the GitHub release
+      id-token: write      # OIDC for provenance attestation and NuGet trusted publishing
+      attestations: write
+    steps:
+      - name: Download the verified same-run release candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: verified-release-candidate
+          path: candidate
+
+      - name: Confirm the publication input is complete
+        run: |
+          test -s release-notes.md
+          test -s artifacts/sbom.cyclonedx.json
+          count=$(find artifacts -name '*.nupkg' | wc -l)
+          echo "publishing $count package(s)"
+          test "$count" -gt 0
+
+      # Provenance is meaningful because Directory.Build.props makes the packages deterministic.
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-path: 'candidate/artifacts/*.nupkg'
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: release-artifacts
-          path: candidate/artifacts/
-
       - name: Confirm the verified tag has not moved before release creation
         env:
-          EXPECTED_TAG_OBJECT: ${{ steps.tag.outputs.tag_object_sha }}
+          EXPECTED_TAG_OBJECT: ${{ needs.build-release-candidate.outputs.tag_object_sha }}
           GH_TOKEN: ${{ github.token }}
           REF_NAME: ${{ github.event.client_payload.tag }}
         run: |
@@ -223,9 +258,9 @@ jobs:
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.value }}
+          VERSION: ${{ needs.build-release-candidate.outputs.version }}
           REF_NAME: ${{ github.event.client_payload.tag }}
-          KIND: ${{ steps.kind.outputs.value }}
+          KIND: ${{ needs.build-release-candidate.outputs.kind }}
         run: |
           # A prerelease label means a pre-release under SemVer. gh does not infer that, so a
           # tag like 1.0.0-rc.1 would otherwise publish as an ordinary release. The
@@ -268,7 +303,7 @@ jobs:
 
       - name: Publish to nuget.org
         env:
-          EXPECTED_TAG_OBJECT: ${{ steps.tag.outputs.tag_object_sha }}
+          EXPECTED_TAG_OBJECT: ${{ needs.build-release-candidate.outputs.tag_object_sha }}
           GH_TOKEN: ${{ github.token }}
           NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
           REF_NAME: ${{ github.event.client_payload.tag }}
