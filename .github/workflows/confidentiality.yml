@@ -1,0 +1,256 @@
+name: Confidentiality
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to audit
+        required: true
+        type: number
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, edited, labeled, unlabeled]
+  issues:
+    types: [opened, edited, reopened, labeled, unlabeled]
+  label:
+    types: [created, edited]
+  issue_comment:
+    types: [created, edited]
+  pull_request_review:
+    types: [submitted, edited]
+  pull_request_review_comment:
+    types: [created, edited]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  confidential-identifiers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Identify the public item being audited
+        id: context
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_NUMBER: ${{ inputs.pr_number }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          PULL_NUMBER: ${{ github.event.pull_request.number }}
+          ISSUE_IS_PULL_REQUEST: ${{ github.event.issue.pull_request != null }}
+        run: |
+          set -euo pipefail
+          case "$EVENT_NAME" in
+            workflow_dispatch)
+              echo "kind=pull" >> "$GITHUB_OUTPUT"
+              echo "number=$INPUT_NUMBER" >> "$GITHUB_OUTPUT"
+              ;;
+            issues)
+              echo "kind=issue" >> "$GITHUB_OUTPUT"
+              echo "number=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
+              ;;
+            label)
+              echo "kind=event" >> "$GITHUB_OUTPUT"
+              echo "number=0" >> "$GITHUB_OUTPUT"
+              ;;
+            issue_comment)
+              if [ "$ISSUE_IS_PULL_REQUEST" = "true" ]; then
+                echo "kind=pull" >> "$GITHUB_OUTPUT"
+              else
+                echo "kind=issue" >> "$GITHUB_OUTPUT"
+              fi
+              echo "number=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "kind=pull" >> "$GITHUB_OUTPUT"
+              echo "number=$PULL_NUMBER" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      # Any public content change invalidates a prior pixel review. Reapplying
+      # the label after this event binds the approval to the current PR/issue
+      # state and reruns both trusted and ordinary preflight checks.
+      - name: Invalidate stale image review
+        if: github.event_name != 'workflow_dispatch' && github.event_name != 'label' && github.event.action != 'labeled' && github.event.action != 'unlabeled' && !(github.event_name == 'pull_request_target' && github.actor == 'dependabot[bot]') && (contains(github.event.pull_request.labels.*.name, 'confidentiality-image-reviewed') || contains(github.event.issue.labels.*.name, 'confidentiality-image-reviewed'))
+        env:
+          BASE_REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          ITEM_NUMBER: ${{ steps.context.outputs.number }}
+        run: gh api --method DELETE "repos/$BASE_REPOSITORY/issues/$ITEM_NUMBER/labels/confidentiality-image-reviewed" --silent
+
+      - name: Invalidate stale confidentiality-control review
+        if: github.event_name != 'workflow_dispatch' && github.event_name != 'label' && github.event.action != 'labeled' && github.event.action != 'unlabeled' && !(github.event_name == 'pull_request_target' && github.actor == 'dependabot[bot]') && (contains(github.event.pull_request.labels.*.name, 'confidentiality-control-reviewed') || contains(github.event.issue.labels.*.name, 'confidentiality-control-reviewed'))
+        env:
+          BASE_REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          ITEM_NUMBER: ${{ steps.context.outputs.number }}
+        run: gh api --method DELETE "repos/$BASE_REPOSITORY/issues/$ITEM_NUMBER/labels/confidentiality-control-reviewed" --silent
+
+      # GitHub withholds both Actions and Dependabot secrets from Dependabot's
+      # pull_request_target event. The ordinary pull_request CI job receives the
+      # Dependabot copy and is independently required.
+      - name: Defer Dependabot source scan to ordinary CI
+        if: github.event_name == 'pull_request_target' && github.actor == 'dependabot[bot]'
+        run: echo "The required confidentiality-preflight check performs this scan."
+
+      - name: Check out the trusted scanner
+        if: github.event_name != 'pull_request_target' || github.actor != 'dependabot[bot]'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: trusted
+          persist-credentials: false
+
+      # The candidate checkout is data only. No script, package restore, build hook,
+      # or executable from it runs with the private denylist in the environment.
+      - name: Fetch pull request source and bounded public metadata as data
+        id: pull-data
+        if: steps.context.outputs.kind == 'pull' && (github.event_name != 'pull_request_target' || github.actor != 'dependabot[bot]')
+        env:
+          BASE_REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.context.outputs.number }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          mkdir candidate metadata
+
+          fetch_bounded_array() {
+            local endpoint=$1 output=$2 label=$3
+            gh api --method GET "$endpoint" -f per_page=100 -f page=1 > "$output"
+            local count
+            count=$(jq 'length' "$output")
+            if [ "$count" -eq 100 ]; then
+              gh api --method GET "$endpoint" -f per_page=100 -f page=2 > "$output.page-2"
+              if [ "$(jq 'length' "$output.page-2")" -ne 0 ]; then
+                echo "::error title=Metadata budget exceeded::$label has more than 100 records. Audit and reduce or archive the public metadata before retrying."
+                exit 1
+              fi
+            fi
+          }
+
+          gh api "repos/$BASE_REPOSITORY/pulls/$PR_NUMBER" > metadata/pull.json
+          fetch_bounded_array "repos/$BASE_REPOSITORY/pulls/$PR_NUMBER/commits" metadata/commits.json commits
+          fetch_bounded_array "repos/$BASE_REPOSITORY/issues/$PR_NUMBER/comments" metadata/issue-comments.json issue-comments
+          fetch_bounded_array "repos/$BASE_REPOSITORY/pulls/$PR_NUMBER/reviews" metadata/reviews.json reviews
+          fetch_bounded_array "repos/$BASE_REPOSITORY/pulls/$PR_NUMBER/comments" metadata/review-comments.json review-comments
+          fetch_bounded_array "repos/$BASE_REPOSITORY/issues/$PR_NUMBER/timeline" metadata/timeline.json timeline-events
+
+          head_repository=$(jq -r '.head.repo.full_name' metadata/pull.json)
+          base_repository=$(jq -r '.base.repo.full_name' metadata/pull.json)
+          head_sha=$(jq -r '.head.sha' metadata/pull.json)
+          base_sha=$(jq -r '.base.sha' metadata/pull.json)
+          test -n "$head_repository" && test "$head_repository" != "null"
+          [[ "$head_sha" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$base_sha" =~ ^[0-9a-f]{40}$ ]]
+
+          # Raster bytes are a durable approval unit. Only the repository owner
+          # may apply the review label that permits a new hash in this change.
+          if jq -e --arg label confidentiality-image-reviewed '.labels | any(.name == $label)' metadata/pull.json >/dev/null; then
+            jq -e --arg label confidentiality-image-reviewed --arg owner "$REPOSITORY_OWNER" '
+              [.[] | select((.event == "labeled" or .event == "unlabeled") and .label.name == $label)]
+              | last
+              | select(.event == "labeled" and .actor.login == $owner)
+            ' metadata/timeline.json >/dev/null || {
+              echo "::error title=Invalid image-review approval::Only the repository owner may apply the image-review approval label."
+              exit 1
+            }
+            echo "allow_unreviewed_images=1" >> "$GITHUB_OUTPUT"
+          fi
+
+          git -C candidate init --quiet
+          git -C candidate remote add head "https://github.com/${head_repository}.git"
+          git -C candidate remote add base "https://github.com/${base_repository}.git"
+          git -C candidate fetch --no-tags head "$head_sha"
+          git -C candidate fetch --no-tags base "$base_sha"
+          git -C candidate checkout --detach --quiet "$head_sha"
+          echo "revision_range=$base_sha..$head_sha" >> "$GITHUB_OUTPUT"
+
+          control_changes=$(git -C candidate diff --name-only "$base_sha..$head_sha" -- \
+            .github/workflows/ci.yml \
+            .github/workflows/confidentiality.yml \
+            .github/workflows/release.yml \
+            scripts/approved-public-images.sha256 \
+            scripts/check-confidential-identifiers.py \
+            scripts/check-confidential-identifiers.sh \
+            scripts/test-confidential-identifiers.py)
+          if [ -n "$control_changes" ]; then
+            jq -e --arg label confidentiality-control-reviewed '.labels | any(.name == $label)' metadata/pull.json >/dev/null || {
+              echo "::error title=Confidentiality control approval required::The repository owner must approve changes to confidentiality enforcement."
+              exit 1
+            }
+            jq -e --arg label confidentiality-control-reviewed --arg owner "$REPOSITORY_OWNER" '
+              [.[] | select((.event == "labeled" or .event == "unlabeled") and .label.name == $label)]
+              | last
+              | select(.event == "labeled" and .actor.login == $owner)
+            ' metadata/timeline.json >/dev/null || {
+              echo "::error title=Invalid confidentiality control approval::Only the repository owner may approve changes to confidentiality enforcement."
+              exit 1
+            }
+          fi
+
+      - name: Fetch bounded issue metadata as data
+        id: issue-data
+        if: steps.context.outputs.kind == 'issue'
+        env:
+          BASE_REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ steps.context.outputs.number }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          mkdir metadata
+          gh api "repos/$BASE_REPOSITORY/issues/$ISSUE_NUMBER" > metadata/issue.json
+          gh api --method GET "repos/$BASE_REPOSITORY/issues/$ISSUE_NUMBER/comments" -f per_page=100 -f page=1 > metadata/issue-comments.json
+          count=$(jq 'length' metadata/issue-comments.json)
+          if [ "$count" -eq 100 ]; then
+            gh api --method GET "repos/$BASE_REPOSITORY/issues/$ISSUE_NUMBER/comments" -f per_page=100 -f page=2 > metadata/issue-comments.page-2.json
+            if [ "$(jq 'length' metadata/issue-comments.page-2.json)" -ne 0 ]; then
+              echo "::error title=Metadata budget exceeded::The issue has more than 100 comments. Audit and reduce or archive the public metadata before retrying."
+              exit 1
+            fi
+          fi
+          gh api --method GET "repos/$BASE_REPOSITORY/issues/$ISSUE_NUMBER/timeline" -f per_page=100 -f page=1 > metadata/timeline.json
+          timeline_count=$(jq 'length' metadata/timeline.json)
+          if [ "$timeline_count" -eq 100 ]; then
+            gh api --method GET "repos/$BASE_REPOSITORY/issues/$ISSUE_NUMBER/timeline" -f per_page=100 -f page=2 > metadata/timeline.page-2.json
+            if [ "$(jq 'length' metadata/timeline.page-2.json)" -ne 0 ]; then
+              echo "::error title=Metadata budget exceeded::The issue has more than 100 timeline events."
+              exit 1
+            fi
+          fi
+          if jq -e --arg label confidentiality-image-reviewed '.labels | any(.name == $label)' metadata/issue.json >/dev/null; then
+            jq -e --arg label confidentiality-image-reviewed --arg owner "$REPOSITORY_OWNER" '
+              [.[] | select((.event == "labeled" or .event == "unlabeled") and .label.name == $label)]
+              | last
+              | select(.event == "labeled" and .actor.login == $owner)
+            ' metadata/timeline.json >/dev/null || {
+              echo "::error title=Invalid image-review approval::Only the repository owner may apply the image-review approval label."
+              exit 1
+            }
+            echo "allow_unreviewed_images=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Scan pull request source, history, and metadata
+        if: steps.context.outputs.kind == 'pull' && (github.event_name != 'pull_request_target' || github.actor != 'dependabot[bot]')
+        working-directory: candidate
+        env:
+          CONFIDENTIAL_ALLOW_UNREVIEWED_IMAGES: ${{ steps.pull-data.outputs.allow_unreviewed_images }}
+          CONFIDENTIAL_GIT_RANGE: ${{ steps.pull-data.outputs.revision_range }}
+          OSS_CONFIDENTIAL_TERMS_B64: ${{ secrets.OSS_CONFIDENTIAL_TERMS_B64 }}
+        run: python3 ../trusted/scripts/check-confidential-identifiers.py ../metadata
+
+      - name: Scan issue metadata
+        if: steps.context.outputs.kind == 'issue'
+        working-directory: trusted
+        env:
+          CONFIDENTIAL_ALLOW_UNREVIEWED_IMAGES: ${{ steps.issue-data.outputs.allow_unreviewed_images }}
+          OSS_CONFIDENTIAL_TERMS_B64: ${{ secrets.OSS_CONFIDENTIAL_TERMS_B64 }}
+        run: python3 scripts/check-confidential-identifiers.py ../metadata
+
+      - name: Scan repository label metadata
+        if: steps.context.outputs.kind == 'event'
+        working-directory: trusted
+        env:
+          OSS_CONFIDENTIAL_TERMS_B64: ${{ secrets.OSS_CONFIDENTIAL_TERMS_B64 }}
+        run: python3 scripts/check-confidential-identifiers.py "$GITHUB_EVENT_PATH"
