@@ -173,7 +173,8 @@ jobs:
             scripts/approved-public-images.sha256 \
             scripts/check-confidential-identifiers.py \
             scripts/check-confidential-identifiers.sh \
-            scripts/test-confidential-identifiers.py)
+            scripts/test-confidential-identifiers.py \
+            scripts/validate-release-tag.py)
           if [ -n "$control_changes" ]; then
             jq -e --arg label confidentiality-control-reviewed '.labels | any(.name == $label)' metadata/pull.json >/dev/null || {
               echo "::error title=Confidentiality control approval required::The repository owner must approve changes to confidentiality enforcement."
