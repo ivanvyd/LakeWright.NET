@@ -54,4 +54,7 @@ public sealed class DatabricksOptions
     /// a bounded answer.
     /// </remarks>
     public long InlineRowLimit { get; set; } = 10_000;
+
+    /// <summary>Default execution lifecycle; a statement can supply a narrower per-call value.</summary>
+    public StatementOptions? Statement { get; set; }
 }

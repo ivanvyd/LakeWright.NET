@@ -20,11 +20,13 @@ public readonly struct TenantScopedStatement
     private TenantScopedStatement(
         TenantContext tenant,
         string sql,
-        IReadOnlyList<StatementParameter> parameters)
+        IReadOnlyList<StatementParameter> parameters,
+        StatementOptions? options)
     {
         Tenant = tenant;
         Sql = sql;
         Parameters = parameters;
+        Options = options;
     }
 
     public TenantContext Tenant { get; }
@@ -32,6 +34,9 @@ public readonly struct TenantScopedStatement
     public string Sql { get; }
 
     public IReadOnlyList<StatementParameter> Parameters { get; }
+
+    /// <summary>Optional per-call lifecycle settings, supplied by trusted application code.</summary>
+    public StatementOptions? Options { get; }
 
     internal IReadOnlyList<StatementParameter> ParametersForExecution()
     {
@@ -93,7 +98,19 @@ public readonly struct TenantScopedStatement
         ArgumentNullException.ThrowIfNull(tenant);
         ArgumentException.ThrowIfNullOrWhiteSpace(sql);
 
-        return new TenantScopedStatement(tenant, sql, parameters);
+        return new TenantScopedStatement(tenant, sql, parameters, options: null);
+    }
+
+    /// <summary>Builds a statement with explicit local polling and result settings.</summary>
+    public static TenantScopedStatement Create(
+        TenantContext tenant,
+        string sql,
+        StatementOptions options,
+        params StatementParameter[] parameters)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        options.Validate();
+        return new TenantScopedStatement(tenant, sql, parameters, options);
     }
 
     /// <summary>

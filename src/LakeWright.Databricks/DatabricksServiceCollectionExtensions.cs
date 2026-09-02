@@ -70,7 +70,8 @@ public static class DatabricksServiceCollectionExtensions
                 provider.GetRequiredService<Microsoft.Azure.Databricks.Client.DatabricksClient>(),
                 provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DatabricksStatementExecutor>>()),
             provider.GetRequiredService<IOptions<DatabricksOptions>>().Value,
-            provider.GetRequiredService<ITenantScopeStrategyResolver>()));
+            provider.GetRequiredService<ITenantScopeStrategyResolver>(),
+            provider.GetRequiredService<TimeProvider>()));
         services.AddHttpClient("LakeWright.Databricks.Export");
         services.AddScoped<ITenantScopedExport>(provider => new DatabricksTenantScopedExport(
             new DatabricksStatementSession(
