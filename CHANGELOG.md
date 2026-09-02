@@ -41,6 +41,10 @@ note.
   workspace and viewer token caches. Keys are hashed, entries have token-derived absolute expiry
   with jitter, and tenant eviction advances a shared generation marker.
 
+- Dashboard token minting now emits a duration histogram and cache lookup counter, plus one
+  Information log with dashboard id, cache states, elapsed time, and a truncated SHA-256 viewer
+  hash. Raw viewer identifiers and tenant identifiers are never telemetry or log fields.
+
 ## [1.2.1] — 2026-09-02
 
 ### Security

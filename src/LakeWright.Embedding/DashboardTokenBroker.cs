@@ -3,8 +3,13 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Diagnostics;
+using System.Diagnostics.Metrics;
+using System.Security.Cryptography;
 using LakeWright.Core.Tenancy;
 using LakeWright.Core.Features;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace LakeWright.Embedding;
@@ -31,7 +36,7 @@ namespace LakeWright.Embedding;
 /// produce a token that is valid and wrongly scoped.
 /// </para>
 /// </remarks>
-public sealed class DashboardTokenBroker : IDashboardTokenBroker
+public sealed partial class DashboardTokenBroker : IDashboardTokenBroker
 {
     /// <summary>
     /// Databricks documents this ceiling on the two values combined. Exceeding it fails the
@@ -45,6 +50,7 @@ public sealed class DashboardTokenBroker : IDashboardTokenBroker
     private readonly IWorkspaceTokenCache? _workspaceCache;
     private readonly IEmbedTokenCache? _embedCache;
     private readonly ILakeWrightFeatureGate _features;
+    private readonly ILogger<DashboardTokenBroker> _logger;
 
     public DashboardTokenBroker(
         HttpClient http,
@@ -52,7 +58,8 @@ public sealed class DashboardTokenBroker : IDashboardTokenBroker
         TimeProvider time,
         IWorkspaceTokenCache? workspaceCache = null,
         IEmbedTokenCache? embedCache = null,
-        ILakeWrightFeatureGate? features = null)
+        ILakeWrightFeatureGate? features = null,
+        ILogger<DashboardTokenBroker>? logger = null)
     {
         _http = http;
         _options = options.Value;
@@ -60,6 +67,7 @@ public sealed class DashboardTokenBroker : IDashboardTokenBroker
         _workspaceCache = workspaceCache;
         _embedCache = embedCache;
         _features = features ?? new AlwaysOnFeatureGate();
+        _logger = logger ?? NullLogger<DashboardTokenBroker>.Instance;
     }
 
     public async Task<EmbedToken> IssueAsync(
@@ -69,6 +77,8 @@ public sealed class DashboardTokenBroker : IDashboardTokenBroker
         CancellationToken cancellationToken = default)
     {
         _features.EnsureEnabled(LakeWrightFeatures.Embedding);
+        var startedAt = _time.GetTimestamp();
+        var diagnostics = new MintDiagnostics();
         // ScopeVersion changes the external value so a scope change bypasses the vendor's
         // cached filter. See docs/decisions/0017-scope-version.md for the delimiter contract.
         var externalValue = string.IsNullOrEmpty(tenant.ScopeVersion)
@@ -85,13 +95,22 @@ public sealed class DashboardTokenBroker : IDashboardTokenBroker
 
         if (_embedCache is not null)
         {
-            return await _embedCache.GetOrAddAsync(
+            diagnostics.EmbedCacheHit = true;
+            var token = await _embedCache.GetOrAddAsync(
                 new EmbedCacheKey(tenant.TenantId, tenant.ScopeVersion, dashboardId, viewerId),
-                ct => new ValueTask<EmbedToken>(IssueUncachedAsync(tenant, dashboardId, viewerId, externalValue, ct)),
+                ct =>
+                {
+                    diagnostics.EmbedCacheHit = false;
+                    return new ValueTask<EmbedToken>(IssueUncachedAsync(tenant, dashboardId, viewerId, externalValue, diagnostics, ct));
+                },
                 cancellationToken).ConfigureAwait(false);
+            RecordMint(dashboardId, viewerId, diagnostics, _time.GetElapsedTime(startedAt));
+            return token;
         }
 
-        return await IssueUncachedAsync(tenant, dashboardId, viewerId, externalValue, cancellationToken).ConfigureAwait(false);
+        var uncached = await IssueUncachedAsync(tenant, dashboardId, viewerId, externalValue, diagnostics, cancellationToken).ConfigureAwait(false);
+        RecordMint(dashboardId, viewerId, diagnostics, _time.GetElapsedTime(startedAt));
+        return uncached;
     }
 
     private async Task<EmbedToken> IssueUncachedAsync(
@@ -99,6 +118,7 @@ public sealed class DashboardTokenBroker : IDashboardTokenBroker
         string dashboardId,
         string viewerId,
         string externalValue,
+        MintDiagnostics diagnostics,
         CancellationToken cancellationToken)
     {
         var basic = new AuthenticationHeaderValue(
@@ -106,7 +126,7 @@ public sealed class DashboardTokenBroker : IDashboardTokenBroker
             Convert.ToBase64String(
                 Encoding.UTF8.GetBytes($"{_options.ClientId}:{_options.ClientSecret}")));
 
-        var workspaceToken = await AcquireWorkspaceTokenAsync(basic, cancellationToken).ConfigureAwait(false);
+        var workspaceToken = await AcquireWorkspaceTokenAsync(basic, diagnostics, cancellationToken).ConfigureAwait(false);
 
         var tokenInfo = await ReadTokenInfoAsync(
             workspaceToken.AccessToken,
@@ -120,20 +140,26 @@ public sealed class DashboardTokenBroker : IDashboardTokenBroker
 
     private async Task<EmbedToken> AcquireWorkspaceTokenAsync(
         AuthenticationHeaderValue basic,
+        MintDiagnostics diagnostics,
         CancellationToken cancellationToken)
     {
         if (_workspaceCache is not null)
         {
+            diagnostics.WorkspaceCacheHit = true;
             return await _workspaceCache.GetOrAddAsync(
                 _options.ClientId,
-                ct => new ValueTask<EmbedToken>(RequestTokenAsync(
-                    basic,
-                    new Dictionary<string, string>
-                    {
-                        ["grant_type"] = "client_credentials",
-                        ["scope"] = "all-apis",
-                    },
-                    ct)),
+                ct =>
+                {
+                    diagnostics.WorkspaceCacheHit = false;
+                    return new ValueTask<EmbedToken>(RequestTokenAsync(
+                        basic,
+                        new Dictionary<string, string>
+                        {
+                            ["grant_type"] = "client_credentials",
+                            ["scope"] = "all-apis",
+                        },
+                        ct));
+                },
                 cancellationToken).ConfigureAwait(false);
         }
 
@@ -145,6 +171,58 @@ public sealed class DashboardTokenBroker : IDashboardTokenBroker
                 ["scope"] = "all-apis",
             },
             cancellationToken).ConfigureAwait(false);
+    }
+
+    private void RecordMint(string dashboardId, string viewerId, MintDiagnostics diagnostics, TimeSpan elapsed)
+    {
+        LakeWrightEmbeddingTelemetry.MintDuration.Record(elapsed.TotalMilliseconds);
+        RecordCache("embed", diagnostics.EmbedCacheHit);
+        RecordCache("workspace", diagnostics.WorkspaceCacheHit);
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            var viewerHash = HashViewer(viewerId);
+            var embedCacheState = CacheState(diagnostics.EmbedCacheHit);
+            var workspaceCacheState = CacheState(diagnostics.WorkspaceCacheHit);
+            LogMinted(
+                _logger,
+                dashboardId,
+                viewerHash,
+                elapsed.TotalMilliseconds,
+                embedCacheState,
+                workspaceCacheState);
+        }
+    }
+
+    private static void RecordCache(string leg, bool? hit)
+    {
+        if (hit is bool result)
+        {
+            LakeWrightEmbeddingTelemetry.EmbedCacheHits.Add(1, new TagList
+            {
+                { "leg", leg },
+                { "result", result ? "hit" : "miss" },
+            });
+        }
+    }
+
+    private static string CacheState(bool? hit) => hit switch
+    {
+        true => "hit",
+        false => "miss",
+        null => "not_checked",
+    };
+
+    private static string HashViewer(string viewerId) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(viewerId)))[..12].ToLowerInvariant();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Issued dashboard token {DashboardId} for viewer {ViewerHash} in {ElapsedMilliseconds}ms; embed cache {EmbedCacheState}, workspace cache {WorkspaceCacheState}")]
+    private static partial void LogMinted(ILogger logger, string dashboardId, string viewerHash, double elapsedMilliseconds, string embedCacheState, string workspaceCacheState);
+
+    private sealed class MintDiagnostics
+    {
+        public bool? EmbedCacheHit { get; set; }
+
+        public bool? WorkspaceCacheHit { get; set; }
     }
 
     private async Task<EmbedToken> RequestTokenAsync(
