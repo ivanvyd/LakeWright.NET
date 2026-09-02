@@ -46,7 +46,7 @@
     <RepositoryUrl>https://github.com/ivanvyd/LakeWright.NET</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
-    <PackageProjectUrl>https://lakewright.net</PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/ivanvyd/LakeWright.NET</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- nuget.org search reads these. Publishing without them (ADR 0010) would put the packages
          somewhere nobody can find, which was the reason for publishing in the first place. -->

@@ -8,7 +8,7 @@ namespace LakeWright.Embedding;
 /// Distinct from <see cref="IDashboardTokenBroker"/>: the latter mints per-viewer tokens
 /// (downscoped, scoped to a single dashboard) for the browser; this one acquires an
 /// unscoped workspace token for the backend. They authenticate as different service
-/// principals (ADR 0019) and have different blast radii: a viewer token only opens the
+/// principals (ADR 0024) and have different blast radii: a viewer token only opens the
 /// one dashboard it was minted for, while an ops token can list, refresh, and otherwise
 /// interact with anything the ops SP can reach.
 /// </para>

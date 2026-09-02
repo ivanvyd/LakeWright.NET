@@ -6,7 +6,7 @@ namespace LakeWright.Embedding;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Distinct from <see cref="DashboardEmbeddingOptions"/> on purpose (ADR 0019). The embedding
+/// Distinct from <see cref="DashboardEmbeddingOptions"/> on purpose (ADR 0024). The embedding
 /// service principal mints per-viewer tokens and is bound to CAN RUN; the operations principal
 /// runs catalog, refresh, and any other backend read against the workspace, with a different
 /// (broader) permission set. Splitting them is the security baseline: a leaked embed secret

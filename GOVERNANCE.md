@@ -47,11 +47,12 @@ Semantic versioning. Pre-1.0 the minor version may break. Breaking changes are l
 Release tags are signed, and the release workflow refuses an unsigned or lightweight tag before it
 builds anything. [docs/guides/releasing.md](docs/guides/releasing.md) covers the one-time setup.
 
-Packages publish to nuget.org with a prerelease suffix, so `dotnet add package` needs `--prerelease`
-and nobody acquires one by accident. Dropping the suffix commits to the API surface, which needs
-adopters to commit to. A package that exists solely because a folder existed is still a maintenance
-liability — [ADR 0010](docs/decisions/0010-publish-prerelease-packages.md) records why publishing
-nothing turned out to cost more than it saved.
+Stable tags publish stable packages to nuget.org; tags with a SemVer prerelease label publish
+prerelease packages and require `--prerelease` to install. Every breaking change carries a SemVer
+minor version and a migration note. A package that exists solely because a folder existed is still a
+maintenance liability — [ADR 0010](docs/decisions/0010-publish-prerelease-packages.md) records why
+publishing nothing turned out to cost more than it saved, while
+[ADR 0019](docs/decisions/0019-stable-1-0-0.md) records the stable-release policy.
 
 ## Inactivity
 

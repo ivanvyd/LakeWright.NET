@@ -1,4 +1,4 @@
-# 17. A publish gate for `__aibi_external_value`
+# ADR 0025: A publish gate for `__aibi_external_value`
 
 ## Status
 
@@ -21,7 +21,7 @@ treat the contents of a string literal as code.
 ## Decision
 
 `LakeWright.Embedding.DashboardPublishGate` is a small, dependency-free
-static class that exposes two methods:
+static class that exposes three methods:
 
 - `Inspect(string? datasetSql)` — runs against one dataset. Returns a
   `PublishGateVerdict` with `Passed`, a `Reason` on failure, and a list
@@ -29,6 +29,10 @@ static class that exposes two methods:
 - `InspectAll(IReadOnlyList<string> datasetSqls)` — runs against every
   dataset on a board. Fails closed on the first dataset that does not
   reference the marker; otherwise returns the aggregated hits.
+- `InspectDashboard(string serializedDashboard)` — parses a Lakeview
+  dashboard definition, reads each dataset's `queryLines` or `query`, and
+  returns the named per-dataset verdicts. Invalid JSON, no datasets, and
+  empty SQL fail closed.
 
 The implementation is a single-pass byte scanner that tracks three
 string states:

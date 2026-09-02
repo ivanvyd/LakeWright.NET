@@ -39,6 +39,17 @@ The commands, results and cleanup evidence are in the
 | `Microsoft.Azure.Databricks.Client` | 2.9.3 |
 | PostgreSQL | 17 (Testcontainers, `postgres:17-alpine`) |
 
+## Target-framework compatibility
+
+| Package surface | Target frameworks | Evidence |
+|---|---|---|
+| `LakeWright.Core` | net8.0, net10.0 | Local Release builds verified on 2026-09-02. |
+| `LakeWright.Embedding` | net8.0, net10.0 | Local Release builds and the stock net8 `tests/consumer-floor` application verified on 2026-09-02. CI packs the candidate, installs it into that application, and rejects persistence dependencies from its net8 assets. |
+| `LakeWright.Databricks` | net10.0 | The current Azure Core dependency resolves hosting abstractions 10.x, so it cannot satisfy the net8 extensions floor without an incompatible dependency graph. This package is intentionally not represented as net8 compatible. |
+| `LakeWright.Conversations` | net10.0 | Uses the same Azure Core graph and is intentionally not represented as net8 compatible. |
+
+The consumer-floor result is a compatibility boundary, not a claim that every package supports net8.
+
 ### 2026-09-01 release revalidation
 
 The 1.0.1 release was checked with these commands:

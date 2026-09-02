@@ -1,4 +1,4 @@
-# 16. Two service principals, not one
+# ADR 0024: Two service principals, not one
 
 ## Status
 
