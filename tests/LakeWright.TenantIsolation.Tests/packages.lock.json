@@ -954,14 +954,6 @@
         "resolved": "10.9.0",
         "contentHash": "//nASHMCJVxnYfE/WSzfaLOao6/q816kPpgB9rxU0gfSmAny1u3rfQT0D4xAmcIo4yQqJs7rAeBB+M/dIMdZYA=="
       },
-      "Microsoft.Extensions.Caching.Abstractions": {
-        "type": "Transitive",
-        "resolved": "10.0.11",
-        "contentHash": "vUl798SmruTqqlt/xH2gDk3tJlhk6k3HdOXAHirlRfbNKDym4g/kRpUL9S4sl6F6FsOTOMW+ZsDapqlZMOOiEw==",
-        "dependencies": {
-          "Microsoft.Extensions.Primitives": "10.0.11"
-        }
-      },
       "Microsoft.Extensions.Caching.Memory": {
         "type": "Transitive",
         "resolved": "10.0.11",
@@ -1730,6 +1722,15 @@
           "LakeWright.Multitenancy": "[1.2.1, )"
         }
       },
+      "lakewright.caching.distributed": {
+        "type": "Project",
+        "dependencies": {
+          "LakeWright.Core": "[1.2.1, )",
+          "LakeWright.Embedding": "[1.2.1, )",
+          "Microsoft.Extensions.Caching.Abstractions": "[10.0.11, )",
+          "Microsoft.Extensions.DependencyInjection": "[10.0.11, )"
+        }
+      },
       "lakewright.conversations": {
         "type": "Project",
         "dependencies": {
@@ -1853,6 +1854,15 @@
         "dependencies": {
           "Microsoft.Extensions.AI.Abstractions": "10.9.0",
           "OpenAI": "[2.12.0, 2.13.0)"
+        }
+      },
+      "Microsoft.Extensions.Caching.Abstractions": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.11, )",
+        "resolved": "10.0.11",
+        "contentHash": "vUl798SmruTqqlt/xH2gDk3tJlhk6k3HdOXAHirlRfbNKDym4g/kRpUL9S4sl6F6FsOTOMW+ZsDapqlZMOOiEw==",
+        "dependencies": {
+          "Microsoft.Extensions.Primitives": "10.0.11"
         }
       },
       "Microsoft.Extensions.Configuration.Abstractions": {

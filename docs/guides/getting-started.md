@@ -156,6 +156,13 @@ making an external request. It never records the tenant in the exception or tele
 an operational stop, not as authorization—the tenant resolver and per-call ownership checks remain
 the security boundary.
 
+For multiple application replicas, install `LakeWright.Caching.Distributed`, register your host's
+`IDistributedCache`, then call `AddLakeWrightDistributedTokenCaches()`. Its cache keys are hashed
+before reaching the cache provider and `EvictTenant` uses a shared generation marker, so an updated
+scope makes earlier viewer tokens unreachable on every replica. Generic `IDistributedCache` has no
+atomic lock primitive; the package collapses concurrent requests within each process, while a host
+that needs global cold-miss coalescing must supply its cache provider's lease mechanism.
+
 ## Starting work safely from a client
 
 `POST /organizations/{organizationId}/operations` accepts an `Idempotency-Key` header of up to 200

@@ -37,6 +37,10 @@ note.
   ASP.NET Core package binds configuration through `IOptionsMonitor`, so reloads take effect
   without a process restart.
 
+- New opt-in `LakeWright.Caching.Distributed` supplies `IDistributedCache` implementations for
+  workspace and viewer token caches. Keys are hashed, entries have token-derived absolute expiry
+  with jitter, and tenant eviction advances a shared generation marker.
+
 ## [1.2.1] — 2026-09-02
 
 ### Security

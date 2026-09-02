@@ -29,6 +29,7 @@
     <ProjectReference Include="..\..\src\LakeWright.Core\LakeWright.Core.csproj" />
     <ProjectReference Include="..\..\src\LakeWright.Embedding\LakeWright.Embedding.csproj" />
     <ProjectReference Include="..\..\src\LakeWright.Conversations\LakeWright.Conversations.csproj" />
+    <ProjectReference Include="..\..\src\LakeWright.Caching.Distributed\LakeWright.Caching.Distributed.csproj" />
     <ProjectReference Include="..\..\src\LakeWright.Multitenancy\LakeWright.Multitenancy.csproj" />
     <ProjectReference Include="..\..\src\LakeWright.Databricks\LakeWright.Databricks.csproj" />
     <ProjectReference Include="..\..\src\LakeWright.AspNetCore\LakeWright.AspNetCore.csproj" />
