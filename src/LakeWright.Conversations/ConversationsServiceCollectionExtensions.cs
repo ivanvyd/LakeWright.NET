@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -31,6 +32,7 @@ public static class ConversationsServiceCollectionExtensions
             new GenieSharedSpaceOptionsValidator(provider.GetService<ILoggerFactory>()));
 
         services.AddSingleton(TimeProvider.System);
+        services.TryAddSingleton<IConversationOwnership, MemoryConversationOwnership>();
 
         services.AddHttpClient<IGenieConversations, GenieConversations>((provider, client) =>
         {

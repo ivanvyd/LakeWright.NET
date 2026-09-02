@@ -28,44 +28,73 @@ public sealed class GenieConversations : IGenieConversations
     private readonly TokenCredential _credential;
     private readonly GenieOptions _options;
     private readonly TimeProvider _time;
+    private readonly IConversationOwnership _ownership;
 
     public GenieConversations(
         HttpClient http,
         TokenCredential credential,
         IOptions<GenieOptions> options,
-        TimeProvider time)
+        TimeProvider time,
+        IConversationOwnership? ownership = null)
     {
         _http = http;
         _credential = credential;
         _options = options.Value;
         _time = time;
+        _ownership = ownership ?? new MemoryConversationOwnership();
     }
 
-    public Task<GenieAnswer> AskAsync(
+    public async Task<GenieAnswer> AskAsync(
         TenantContext tenant,
+        string ownerKey,
         string question,
         CancellationToken cancellationToken = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownerKey);
         var space = ResolveSpace(tenant);
-        return SendAsync(
+        var answer = await SendAsync(
             space,
             $"api/2.0/genie/spaces/{space}/start-conversation",
             new { content = question },
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
+        await _ownership.RecordAsync(answer.ConversationId, ownerKey, cancellationToken).ConfigureAwait(false);
+        return answer;
     }
 
-    public Task<GenieAnswer> ContinueAsync(
+    public async Task<GenieAnswer> ContinueAsync(
         TenantContext tenant,
+        string ownerKey,
         string conversationId,
         string question,
         CancellationToken cancellationToken = default)
     {
+        await EnsureOwnerAsync(conversationId, ownerKey, cancellationToken).ConfigureAwait(false);
         var space = ResolveSpace(tenant);
-        return SendAsync(
+        return await SendAsync(
             space,
             $"api/2.0/genie/spaces/{space}/conversations/{Uri.EscapeDataString(conversationId)}/messages",
             new { content = question },
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public ValueTask<IReadOnlyList<string>> ListAsync(string ownerKey, CancellationToken cancellationToken = default) =>
+        _ownership.ListAsync(ownerKey, cancellationToken);
+
+    public async Task DeleteAsync(
+        TenantContext tenant,
+        string ownerKey,
+        string conversationId,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureOwnerAsync(conversationId, ownerKey, cancellationToken).ConfigureAwait(false);
+        var space = ResolveSpace(tenant);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Delete,
+            $"api/2.0/genie/spaces/{space}/conversations/{Uri.EscapeDataString(conversationId)}");
+        await AuthenticateAsync(request, cancellationToken).ConfigureAwait(false);
+        using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        await ThrowIfFailedAsync(response, cancellationToken).ConfigureAwait(false);
+        await _ownership.RemoveAsync(conversationId, ownerKey, cancellationToken).ConfigureAwait(false);
     }
 
     private string ResolveSpace(TenantContext tenant)
@@ -79,6 +108,15 @@ public sealed class GenieConversations : IGenieConversations
         }
 
         return space;
+    }
+
+    private async ValueTask EnsureOwnerAsync(string conversationId, string ownerKey, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownerKey);
+        if (!await _ownership.IsOwnerAsync(conversationId, ownerKey, cancellationToken).ConfigureAwait(false))
+        {
+            throw new ConversationOwnershipException(conversationId);
+        }
     }
 
     private async Task<GenieAnswer> SendAsync(

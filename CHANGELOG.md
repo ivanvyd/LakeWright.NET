@@ -8,6 +8,16 @@ note.
 
 ## [Unreleased]
 
+### Changed
+
+- `LakeWright.Conversations` now requires an opaque application owner key for `AskAsync` and
+  `ContinueAsync`. The library records ownership only after a conversation is created, refuses
+  unrecorded or foreign-owner continuation and deletion before any workspace call, and exposes
+  owner-filtered `ListAsync` and `DeleteAsync`. Migrate callers by passing their stable internal
+  principal key; do not use a display name or email address. The built-in ownership store is
+  process-local, so multi-replica applications must replace `IConversationOwnership` with shared
+  durable storage before enabling follow-ups.
+
 ## [1.2.1] — 2026-09-02
 
 ### Security

@@ -8,8 +8,13 @@ namespace LakeWright.Conversations;
 public interface IGenieConversations
 {
     /// <summary>Starts a conversation in the agent <paramref name="tenant"/> is mapped to.</summary>
+    /// <remarks>
+    /// The returned conversation is recorded for <paramref name="ownerKey"/> only after the
+    /// workspace has accepted it. Use an opaque, stable application-principal key.
+    /// </remarks>
     Task<GenieAnswer> AskAsync(
         TenantContext tenant,
+        string ownerKey,
         string question,
         CancellationToken cancellationToken = default);
 
@@ -17,12 +22,25 @@ public interface IGenieConversations
     /// <remarks>
     /// The conversation is addressed inside the tenant's own agent. A conversation belonging to
     /// another tenant is not reachable through this call, because the agent in the path comes from
-    /// <paramref name="tenant"/> rather than from the caller.
+    /// <paramref name="tenant"/> rather than from the caller. Conversations absent from the
+    /// ownership store fail closed before a workspace call.
     /// </remarks>
     Task<GenieAnswer> ContinueAsync(
         TenantContext tenant,
+        string ownerKey,
         string conversationId,
         string question,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Lists only conversation identifiers recorded for <paramref name="ownerKey"/>.</summary>
+    ValueTask<IReadOnlyList<string>> ListAsync(string ownerKey, CancellationToken cancellationToken = default);
+
+    /// <summary>Deletes an owned conversation and removes its local ownership record.</summary>
+    /// <remarks>The local record is retained when the workspace delete fails.</remarks>
+    Task DeleteAsync(
+        TenantContext tenant,
+        string ownerKey,
+        string conversationId,
         CancellationToken cancellationToken = default);
 }
 
