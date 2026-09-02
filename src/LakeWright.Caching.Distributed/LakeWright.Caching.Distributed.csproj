@@ -11,5 +11,6 @@
   <ItemGroup>
     <ProjectReference Include="..\LakeWright.Core\LakeWright.Core.csproj" />
     <ProjectReference Include="..\LakeWright.Embedding\LakeWright.Embedding.csproj" />
+    <ProjectReference Include="..\LakeWright.Embedding.Ops\LakeWright.Embedding.Ops.csproj" />
   </ItemGroup>
 </Project>

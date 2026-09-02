@@ -88,6 +88,18 @@
           "Microsoft.Extensions.Options": "[10.0.11, )"
         }
       },
+      "lakewright.embedding.ops": {
+        "type": "Project",
+        "dependencies": {
+          "LakeWright.Core": "[1.2.1, )",
+          "LakeWright.Embedding": "[1.2.1, )",
+          "Microsoft.Extensions.Configuration.Abstractions": "[10.0.11, )",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.11, )",
+          "Microsoft.Extensions.Http": "[10.0.11, )",
+          "Microsoft.Extensions.Options": "[10.0.11, )",
+          "Microsoft.Extensions.Options.ConfigurationExtensions": "[10.0.11, )"
+        }
+      },
       "Microsoft.Extensions.Configuration.Abstractions": {
         "type": "CentralTransitive",
         "requested": "[10.0.11, )",
@@ -235,6 +247,19 @@
           "Microsoft.Extensions.Http": "[8.0.1, )",
           "Microsoft.Extensions.Logging.Abstractions": "[8.0.3, )",
           "Microsoft.Extensions.Options": "[8.0.2, )"
+        }
+      },
+      "lakewright.embedding.ops": {
+        "type": "Project",
+        "dependencies": {
+          "LakeWright.Core": "[1.2.1, )",
+          "LakeWright.Embedding": "[1.2.1, )",
+          "Microsoft.Bcl.TimeProvider": "[8.0.1, )",
+          "Microsoft.Extensions.Configuration.Abstractions": "[8.0.0, )",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[8.0.2, )",
+          "Microsoft.Extensions.Http": "[8.0.1, )",
+          "Microsoft.Extensions.Options": "[8.0.2, )",
+          "Microsoft.Extensions.Options.ConfigurationExtensions": "[8.0.0, )"
         }
       },
       "Microsoft.Bcl.TimeProvider": {
