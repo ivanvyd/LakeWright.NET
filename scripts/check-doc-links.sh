@@ -18,6 +18,9 @@ if ! git rev-parse --is-inside-work-tree >/dev/null; then
 fi
 
 while IFS= read -r -d '' file; do
+  # Git for Windows may emit backslash-separated paths even under Git Bash. Normalize before
+  # deriving the link base so a valid document-relative link is checked from its real directory.
+  file=${file//\\//}
   dir=$(dirname "$file")
 
   # grep exits 1 on no matches, which is normal for a file with no links. Any larger status is a

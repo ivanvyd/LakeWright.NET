@@ -21,7 +21,7 @@ The stock net8 consumer registers its own resolver, resolves `IStatementExecutor
 schema-per-tenant `TenantScopedStatement` to a loopback workspace. The loopback verifies the
 catalog and membership-resolved schema. It proves the package graph and the isolation request
 shape without an account, secret, or billable workspace. Generic shared-schema SQL is deliberately
-unsupported; see [ADR 0022](0022-tenant-isolation-boundary.md).
+unsupported; see [ADR 0022](0022-shared-schema-tenancy.md).
 
 ## Consequences
 
