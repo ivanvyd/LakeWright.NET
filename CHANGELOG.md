@@ -8,6 +8,27 @@ note.
 
 ## [Unreleased]
 
+## [1.2.1] — 2026-09-02
+
+### Security
+
+- Shared-schema statements and exports now apply a LakeWright-owned outer predicate on the resolved
+  tenant column. A raw occurrence of `:tenant_id` was not sufficient evidence of isolation: an
+  inert expression such as `:tenant_id IS NOT NULL` could return every row. Shared-schema callers
+  must submit a single SELECT or WITH query that projects the configured tenant column; write
+  statements and trailing semicolons are refused before the workspace call.
+- `AddLakeWrightTenancy` no longer registers the concrete resolver type, preventing unrelated
+  application code from resolving a resolver that retains the tenant-context factory. The extension
+  now supports an explicit resolver lifetime while preserving the scoped default.
+
+### Fixed
+
+- The net8 consumer dependency check now uses a runner-provided, fail-closed assertion instead of
+  silently accepting a missing `rg` executable. Dashboard inspection now returns a structured
+  failure for malformed dataset entries; ops-token caching is covered through two catalog pages.
+- Databricks credential ambiguity is checked after DI composition, so a `TokenCredential` registered
+  after service-principal configuration no longer bypasses startup validation.
+
 ## [1.2.0] — 2026-09-02
 
 ### Added
