@@ -177,8 +177,15 @@ before a warehouse call, which a host maps to HTTP 400. Register the scoped serv
 builder.Services.AddLakeWrightRawData(options => options.MaximumPageSize = 250);
 ```
 
-The `Export` request flag is intentionally not accepted by `QueryAsync`; use the raw-data export
-pipeline once it is configured rather than accidentally treating a paged grid query as a file export.
+`QueryAsync` deliberately refuses the `Export` request flag so a paged grid request cannot silently
+become a file download. Use `IRawDataExportService.StartAsync` with the resolved tenant, an opaque
+application owner key, and an application-owned operation id. Results at or below
+`ExportInlineRowCap` are returned as bounded CSV lines. Larger results are recorded without a
+workspace statement id and then retrieved through `StreamCsvAsync`, which checks the same tenant
+and owner before it opens the tenant-scoped external-links stream. Replace
+`IRawDataExportOwnership` with durable shared storage before serving the stream from multiple
+replicas. Both the grid and CSV use the same source projection; text cells beginning with a formula
+prefix are neutralized by default, unless the source opts out after a security review.
 
 ## Configuration
 

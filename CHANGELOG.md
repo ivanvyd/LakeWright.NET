@@ -49,6 +49,12 @@ note.
   value as a typed statement parameter, escapes text search wildcards, and rejects invalid input
   before it can become a warehouse error.
 
+- Raw-data CSV export now returns only a bounded inline result or an opaque, tenant-and-owner
+  authorized operation. Larger results stream through the existing scoped external-links poller;
+  a caller never receives a warehouse statement id. Text formula prefixes are neutralized in the
+  shared source projection so grid and CSV values agree. Multi-replica hosts replace the
+  process-local `IRawDataExportOwnership` store before exposing stream endpoints.
+
 - `GenieAnswerSanitizer` removes model-supplied HTML and neutralizes markdown links by default.
   Hosts may opt in to exact HTTPS allow-list entries when their renderer is prepared to render
   those links.

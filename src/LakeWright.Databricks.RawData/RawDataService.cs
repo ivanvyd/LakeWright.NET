@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using LakeWright.Core.Tenancy;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace LakeWright.Databricks.RawData;
 
@@ -79,7 +80,7 @@ internal sealed class RawDataStatementBuilder
         }
 
         var sort = ResolveSort();
-        var projection = string.Join(", ", _source.Fields.Select(field => field.Column));
+        var projection = string.Join(", ", _source.Fields.Select(Projection));
         var sql = $"SELECT {projection} FROM {_source.BaseView}";
         if (where.Count > 0)
         {
@@ -99,6 +100,49 @@ internal sealed class RawDataStatementBuilder
                 Kind = "raw_data",
                 Disposition = Microsoft.Azure.Databricks.Client.Models.SqlStatementDisposition.INLINE,
                 InlineRowLimit = _request.Take,
+            },
+            [.. _parameters]);
+    }
+
+    public TenantScopedStatement BuildExport(TenantContext tenant, RawDataOptions options, bool inline)
+    {
+        ValidatePagingForExport();
+        var filters = _request.Filters ?? [];
+        if (filters.Count > _options.MaximumFilters)
+        {
+            throw new ValidationException($"At most {_options.MaximumFilters} filters are allowed.");
+        }
+
+        var where = new List<string>(filters.Count);
+        for (var filterIndex = 0; filterIndex < filters.Count; filterIndex++)
+        {
+            where.Add(BuildFilter(filters[filterIndex], filterIndex));
+        }
+
+        var sort = ResolveSort();
+        var sql = $"SELECT {string.Join(", ", _source.Fields.Select(Projection))} FROM {_source.BaseView}";
+        if (where.Count > 0)
+        {
+            sql += " WHERE " + string.Join(" AND ", where);
+        }
+        sql += $" ORDER BY {sort.Field.Column} {(sort.Direction == RawDataSortDirection.Descending ? "DESC" : "ASC")}";
+        if (inline)
+        {
+            _parameters.Add(StatementParameter.Int("raw_export_take", options.ExportInlineRowCap + 1));
+            sql += " LIMIT :raw_export_take";
+        }
+
+        return TenantScopedStatement.Create(
+            tenant,
+            sql,
+            new StatementOptions
+            {
+                Kind = inline ? "raw_data_export_inline" : "raw_data_export_external",
+                Disposition = inline
+                    ? Microsoft.Azure.Databricks.Client.Models.SqlStatementDisposition.INLINE
+                    : Microsoft.Azure.Databricks.Client.Models.SqlStatementDisposition.EXTERNAL_LINKS,
+                InlineRowLimit = options.ExportInlineRowCap + 1,
+                TotalBudget = options.ExportTotalBudget,
             },
             [.. _parameters]);
     }
@@ -185,6 +229,18 @@ internal sealed class RawDataStatementBuilder
         }
     }
 
+    private void ValidatePagingForExport()
+    {
+        if (_request.Skip != 0 || _request.Take != 100)
+        {
+            throw new ValidationException("Export requests do not accept paging; narrow the filters instead.");
+        }
+    }
+
+    private string Projection(RawDataField field) => _source.NeutralizeCsvFormulas && field.Kind == RawDataKind.Text
+        ? $"CASE WHEN {field.Column} RLIKE '^[=+\\-@]' THEN CONCAT(chr(39), {field.Column}) ELSE {field.Column} END AS {field.Column}"
+        : field.Column;
+
     private static bool TryBoolean(string value, out bool result)
     {
         if (bool.TryParse(value, out result)) { return true; }
@@ -212,6 +268,12 @@ public static class RawDataServiceCollectionExtensions
         options.Validate();
         services.AddScoped<IRawDataService>(provider => new RawDataService(
             provider.GetRequiredService<IStatementExecutor>(), options));
+        services.TryAddSingleton<IRawDataExportOwnership, MemoryRawDataExportOwnership>();
+        services.AddScoped<IRawDataExportService>(provider => new RawDataExportService(
+            provider.GetRequiredService<IStatementExecutor>(),
+            provider.GetRequiredService<ITenantScopedExport>(),
+            provider.GetRequiredService<IRawDataExportOwnership>(),
+            options));
         return services;
     }
 }

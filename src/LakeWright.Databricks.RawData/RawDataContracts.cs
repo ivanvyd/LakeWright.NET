@@ -135,9 +135,16 @@ public sealed class RawDataOptions
     /// <summary>Maximum offset accepted before the host must offer a narrower filter or keyset pagination.</summary>
     public int MaximumOffset { get; set; } = 100_000;
 
+    /// <summary>Maximum rows materialized for an immediate CSV response before external streaming is used.</summary>
+    public int ExportInlineRowCap { get; set; } = 10_000;
+
+    /// <summary>Maximum local wait and poll budget for either export path.</summary>
+    public TimeSpan ExportTotalBudget { get; set; } = TimeSpan.FromMinutes(5);
+
     internal void Validate()
     {
-        if (MaximumFilters < 0 || MaximumValuesPerFilter < 1 || MaximumPageSize < 1 || MaximumOffset < 0)
+        if (MaximumFilters < 0 || MaximumValuesPerFilter < 1 || MaximumPageSize < 1 || MaximumOffset < 0
+            || ExportInlineRowCap < 1 || ExportTotalBudget <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(RawDataOptions));
         }
@@ -163,3 +170,58 @@ public sealed record RawDataPage(
 
 /// <summary>One source-defined output column.</summary>
 public sealed record RawDataColumn(string Name, string DisplayName, RawDataKind Kind);
+
+/// <summary>Starts tenant-owned CSV exports without ever exposing a warehouse statement id.</summary>
+public interface IRawDataExportService
+{
+    /// <summary>
+    /// Starts an export for the resolved tenant and opaque application owner. Small results are returned
+    /// immediately; larger results are recorded under the application-owned operation id.
+    /// </summary>
+    Task<RawDataExportStart> StartAsync(
+        Core.Tenancy.TenantContext tenant,
+        string ownerKey,
+        string operationId,
+        RawDataSource source,
+        RawDataRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Streams a previously recorded external export after checking both tenant and owner.</summary>
+    IAsyncEnumerable<string> StreamCsvAsync(
+        Core.Tenancy.TenantContext tenant,
+        string ownerKey,
+        string operationId,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>Whether an export is immediately materialized or must be streamed through external links.</summary>
+public enum RawDataExportMode
+{
+    Inline,
+    ExternalLinks,
+}
+
+/// <summary>The accepted export result. <see cref="InlineCsv"/> is present only for a bounded inline export.</summary>
+public sealed record RawDataExportStart(
+    string OperationId,
+    RawDataExportMode Mode,
+    IReadOnlyList<string>? InlineCsv);
+
+/// <summary>Durable, host-replaceable operation store for exports that use external result links.</summary>
+/// <remarks>
+/// The opaque owner key is never sent to Databricks. A distributed host replaces the in-memory default
+/// before exposing the stream endpoint from more than one replica.
+/// </remarks>
+public interface IRawDataExportOwnership
+{
+    ValueTask RecordAsync(RawDataExportOperation operation, CancellationToken cancellationToken = default);
+    ValueTask<RawDataExportOperation?> GetAsync(string operationId, CancellationToken cancellationToken = default);
+}
+
+/// <summary>A host-owned export operation. It intentionally contains no workspace statement id.</summary>
+public sealed record RawDataExportOperation(
+    string OperationId,
+    Core.Tenancy.TenantId TenantId,
+    string OwnerKey,
+    RawDataSource Source,
+    RawDataRequest Request);

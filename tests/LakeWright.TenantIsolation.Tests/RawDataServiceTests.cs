@@ -27,7 +27,7 @@ public sealed class RawDataServiceTests
 
         executor.Calls.ShouldBe(1);
         executor.Statement.Tenant.ShouldBeSameAs(tenant);
-        executor.Statement.Sql.ShouldBe("SELECT name, amount, created FROM orders_view WHERE name LIKE CONCAT('%', :raw_f0_v0, '%') ESCAPE '\\' ORDER BY amount DESC LIMIT :raw_take OFFSET :raw_skip");
+        executor.Statement.Sql.ShouldBe("SELECT CASE WHEN name RLIKE '^[=+\\-@]' THEN CONCAT(chr(39), name) ELSE name END AS name, amount, created FROM orders_view WHERE name LIKE CONCAT('%', :raw_f0_v0, '%') ESCAPE '\\' ORDER BY amount DESC LIMIT :raw_take OFFSET :raw_skip");
         executor.Statement.Sql.ShouldNotContain("50%_");
         executor.Statement.Parameters.ShouldContain(StatementParameter.String("raw_f0_v0", "50\\%\\_\\\\x"));
         executor.Statement.Parameters.ShouldContain(StatementParameter.Int("raw_take", 25));
