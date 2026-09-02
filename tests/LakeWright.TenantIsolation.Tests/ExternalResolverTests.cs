@@ -1,5 +1,6 @@
 using LakeWright.AspNetCore;
 using LakeWright.Core.Tenancy;
+using LakeWright.Databricks;
 using LakeWright.Multitenancy;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -165,6 +166,7 @@ public class ExternalResolverTests
     {
         typeof(ITenantContextFactory).GetMethod("ForSharedTenant").ShouldBeNull();
         typeof(TenantLocation).GetNestedType("SharedSchema").ShouldBeNull();
+        typeof(IStatementExecutor).Assembly.GetType("LakeWright.Databricks.TenantScopeMissingException").ShouldBeNull();
     }
 
     [Fact]

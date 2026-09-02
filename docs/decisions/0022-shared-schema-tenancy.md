@@ -11,7 +11,7 @@ another tenant's data. Some products need a shared schema for a very large tenan
 cross-tenant aggregates. That shape is safe only when the tenant selected by the resolved context
 constrains every result the warehouse returns.
 
-## Decision
+## Rejected approach
 
 An outer predicate over a caller-projected tenant column is not an isolation boundary. Caller SQL
 can project a matching constant or parameter under that alias while selecting rows from every

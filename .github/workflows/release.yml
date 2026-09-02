@@ -162,6 +162,17 @@ jobs:
           VERSION: ${{ steps.version.outputs.value }}
         run: dotnet pack --no-build -c Release -o artifacts -p:Version="$VERSION"
 
+      - name: Order every packed package for publication
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          python3 ../trusted/scripts/package-publish-order.py artifacts "$VERSION" > artifacts/publish-order.txt
+          packed=$(find artifacts -maxdepth 1 -type f -name "*.$VERSION.nupkg" | wc -l)
+          ordered=$(wc -l < artifacts/publish-order.txt)
+          echo "ordered $ordered of $packed package(s) for publication"
+          test "$packed" -gt 0
+          test "$packed" -eq "$ordered"
+
       # A tag that does not produce a package is a release with nothing in it, and both the
       # attestation and `gh release create` below would fail on an empty glob with a less
       # obvious message.
@@ -289,10 +300,10 @@ jobs:
       # Do it before creating a GitHub release, then make the GitHub release contingent on a
       # public restore endpoint confirming that consumers can actually acquire the packages.
       #
-      # Publish each primary package and its matching symbol package explicitly. A wildcard has
-      # no dependency-aware ordering, so it can enqueue a package before the internal package it
-      # references. The ordered list below publishes the dependency roots first. The V3 source is
-      # explicit rather than inherited from any NuGet.config.
+      # Publish every primary package and its matching symbol package. The trusted build job
+      # derives the artifact list from the packed nuspec dependency graph, so internal package
+      # roots precede their dependents and a new package cannot be packed, indexed, but skipped.
+      # The V3 source is explicit rather than inherited from any NuGet.config.
       #
       # --skip-duplicate so re-running a release that failed after a partial push finishes
       # instead of erroring on the packages that already landed.
@@ -333,21 +344,17 @@ jobs:
             echo "::error::$REF_NAME moved after signature verification."
             exit 1
           }
-          packages=(
-            "LakeWright.Core"
-            "LakeWright.Conversations"
-            "LakeWright.Databricks"
-            "LakeWright.Embedding"
-            "LakeWright.Multitenancy"
-            "LakeWright.AI"
-            "LakeWright.AspNetCore"
-          )
+          test -s artifacts/publish-order.txt
           : > push.log
-          for package in "${packages[@]}"; do
-            primary="artifacts/$package.$VERSION.nupkg"
-            symbols="artifacts/$package.$VERSION.snupkg"
+          while IFS= read -r package_file; do
+            case "$package_file" in
+              LakeWright.*."$VERSION".nupkg) ;;
+              *) echo "::error::Unexpected package name in publication order: $package_file."; exit 1 ;;
+            esac
+            primary="artifacts/$package_file"
+            symbols="${primary%.nupkg}.snupkg"
             test -f "$primary" && test -f "$symbols" || {
-              echo "::error::Missing publication artifact for $package $VERSION."
+              echo "::error::Missing publication artifact for $package_file."
               exit 1
             }
             dotnet nuget push "$primary" \
@@ -358,7 +365,7 @@ jobs:
               --api-key "$NUGET_API_KEY" \
               --source https://api.nuget.org/v3/index.json \
               --skip-duplicate | tee -a push.log
-          done
+          done < artifacts/publish-order.txt
 
           # --skip-duplicate turns a 409 into a warning, which is what makes a resumed release
           # work — and also what would let a re-tagged version look published when nuget.org is

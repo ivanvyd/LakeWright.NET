@@ -107,9 +107,8 @@ optional `IHttpClientBuilder` callback when your host has a resilience policy; t
 to every typed client registered by that call.
 
 Embedding failures are typed for HTTP mapping: `TransportException` usually maps to 502 or 503,
-`WorkspaceRejectedException` to 502, `NotPublishedException` to 404 or 409, and
-`TenantScopeMissingException` to 400. Do not expose the workspace response excerpt directly to a
-viewer; it is for server-side diagnostics.
+`WorkspaceRejectedException` to 502, and `NotPublishedException` to 404 or 409. Do not expose the
+workspace response excerpt directly to a viewer; it is for server-side diagnostics.
 
 When an adopter changes a tenant's effective scope, compute a new `ScopeVersion`, persist it with
 the resolved tenant data, and call `IEmbedTokenCache.EvictTenant(tenantId)`. The changed version
