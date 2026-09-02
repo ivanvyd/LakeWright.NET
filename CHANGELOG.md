@@ -37,6 +37,13 @@ note.
   endpoint does not expose serialized dashboard SQL. `PublishedRevisionEmbedPrecondition` fails
   closed when that proof is unavailable or the published definition fails the publish gate.
 
+- `IDashboardMetadataCatalog` adds short-lived, host-replaceable caching for draft metadata,
+  published metadata, and a complete auto-paged dashboard listing. It is an operations-principal
+  surface for an authorized portal backend, not a browser-facing authorization mechanism.
+
+- `IWarehouseWarmer` provides an explicitly opt-in, rate-limited warehouse-start hint for a
+  dashboard-open signal. It is disabled by default and never executes or reads a statement.
+
 - New `LakeWright.Databricks.RawData` supplies declarative raw-data sources and a scoped query
   service. It renders only allow-listed view and column identifiers, binds every filter and paging
   value as a typed statement parameter, escapes text search wildcards, and rejects invalid input

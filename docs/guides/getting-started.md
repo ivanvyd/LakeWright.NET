@@ -151,6 +151,19 @@ adds an `IPublishedDashboardDefinitionReader` for an authoritative published art
 `PublishedRevisionEmbedPrecondition` with the token broker only when that reader is present; it
 then fails minting closed until `DashboardPublishGate` passes on the proved served definition.
 
+`IDashboardMetadataCatalog` is the operations-only read surface for portal administration. It
+reads draft and published metadata by opaque dashboard id and walks every page for `ListAllAsync`.
+The shipped cache is local and deliberately short-lived; replace `IDashboardMetadataCache` with a
+shared implementation when replicas need to share this read cache. Do not expose this operations
+catalog directly to a browser: authorize the requested dashboard in the host before asking it for
+metadata.
+
+`IWarehouseWarmer` is an optional opening-a-board hint. `WarehouseWarmOptions.Enabled` defaults
+to `false`; when explicitly enabled, the library requests a warehouse start at most once per
+configured interval per warehouse and never reads a statement result. The in-memory limiter is
+appropriate for one process. Replace `IWarehouseWarmLimiter` in a multi-replica application if a
+single cross-replica warm rate is required.
+
 ### Raw-data grids
 
 `LakeWright.Databricks.RawData` turns a trusted `RawDataSource` definition into one

@@ -41,6 +41,12 @@ public static class DashboardRefreshServiceCollectionExtensions
         services.AddOptions<DashboardPublishVerifierOptions>()
             .Validate(options => options.CacheDuration > TimeSpan.Zero, "LakeWright:DashboardPublishVerifier:CacheDuration must be positive.")
             .ValidateOnStart();
+        services.AddOptions<DashboardMetadataCacheOptions>()
+            .Validate(options => options.Duration > TimeSpan.Zero, "LakeWright:DashboardMetadataCache:Duration must be positive.")
+            .ValidateOnStart();
+        services.AddOptions<WarehouseWarmOptions>()
+            .Validate(options => options.MinimumInterval > TimeSpan.Zero, "LakeWright:WarehouseWarm:MinimumInterval must be positive.")
+            .ValidateOnStart();
         var dashboardBuilder = services.AddHttpClient<IDashboardEditorApi, DatabricksDashboardEditorApi>((provider, client) =>
         {
             var options = provider.GetRequiredService<IOptions<DashboardOpsOptions>>().Value;
@@ -53,9 +59,36 @@ public static class DashboardRefreshServiceCollectionExtensions
             client.BaseAddress = new Uri(options.WorkspaceUrl.TrimEnd('/') + "/");
         });
         configureClient?.Invoke(verifierBuilder);
+        var metadataBuilder = services.AddHttpClient<IDashboardMetadataApi, DatabricksDashboardMetadataApi>((provider, client) =>
+        {
+            var options = provider.GetRequiredService<IOptions<DashboardOpsOptions>>().Value;
+            client.BaseAddress = new Uri(options.WorkspaceUrl.TrimEnd('/') + "/");
+        });
+        configureClient?.Invoke(metadataBuilder);
+        var warmerBuilder = services.AddHttpClient<IWarehouseWarmApi, DatabricksWarehouseWarmApi>((provider, client) =>
+        {
+            var options = provider.GetRequiredService<IOptions<DashboardOpsOptions>>().Value;
+            client.BaseAddress = new Uri(options.WorkspaceUrl.TrimEnd('/') + "/");
+        });
+        configureClient?.Invoke(warmerBuilder);
         services.AddSingleton<IDashboardRefresher, DashboardRefresher>();
         services.AddSingleton<IDashboardCacheBuster, DashboardCacheBuster>();
         services.AddSingleton<IDashboardPublishVerifier, DashboardPublishVerifier>();
+        services.TryAddSingleton<IDashboardMetadataCache>(provider => new MemoryDashboardMetadataCache(provider.GetRequiredService<TimeProvider>()));
+        services.TryAddSingleton<IWarehouseWarmLimiter, MemoryWarehouseWarmLimiter>();
+        services.AddSingleton<IDashboardMetadataCatalog>(provider => new DashboardMetadataCatalog(
+            provider.GetRequiredService<IDashboardMetadataApi>(),
+            provider.GetRequiredService<IDashboardCatalog>(),
+            provider.GetRequiredService<IDashboardMetadataCache>(),
+            provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<DashboardMetadataCacheOptions>>().Value,
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetRequiredService<ILakeWrightFeatureGate>()));
+        services.AddSingleton<IWarehouseWarmer>(provider => new WarehouseWarmer(
+            provider.GetRequiredService<IWarehouseWarmApi>(),
+            provider.GetRequiredService<IWarehouseWarmLimiter>(),
+            provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<WarehouseWarmOptions>>().Value,
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetRequiredService<ILakeWrightFeatureGate>()));
         return services;
     }
 }
