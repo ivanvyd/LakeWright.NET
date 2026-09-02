@@ -45,7 +45,7 @@ The current package-publication and consumer evidence is in the
 |---|---|---|
 | `LakeWright.Core` | net8.0, net10.0 | Local Release builds verified on 2026-09-02. |
 | `LakeWright.Embedding` | net8.0, net10.0 | Local Release builds and the stock net8 `tests/consumer-floor` application verified on 2026-09-02. CI packs the candidate, installs it into that application, and rejects persistence dependencies from its net8 assets. |
-| `LakeWright.Databricks` | net8.0, net10.0 | The net8 asset pins Azure.Core 1.44.1, while net10 retains the current Azure.Core line. The stock consumer resolves the public executor and runs a shared-schema tenant-scoped statement against a loopback workspace. |
+| `LakeWright.Databricks` | net8.0, net10.0 | The net8 asset pins Azure.Core 1.44.1, while net10 retains the current Azure.Core line. The stock consumer resolves the public executor and sends a schema-per-tenant statement to a loopback workspace, verifying catalog and membership-resolved schema delivery without a persistence dependency. Generic shared-schema SQL is deliberately unsupported; see [ADR 0022](decisions/0022-tenant-isolation-boundary.md). |
 | `LakeWright.Conversations` | net8.0, net10.0 | Local Release builds verified on 2026-09-02. Its REST path carries no SQL or persistence dependency. |
 
 The consumer-floor result is a compatibility boundary. It covers the public Embedding and
