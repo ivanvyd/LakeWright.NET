@@ -104,14 +104,9 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
         }
         catch (StatementBudgetExceededException)
         {
-            LakeWrightDatabricksTelemetry.StatementDuration.Record(
-                (_time.GetUtcNow() - startedAt).TotalSeconds,
-                new TagList { { "statement.kind", execution.Kind } });
-            LakeWrightDatabricksTelemetry.StatementOutcomes.Add(1, new TagList
-            {
-                { "state", "budget_exceeded" },
-                { "statement.kind", execution.Kind },
-            });
+            LakeWrightDatabricksTelemetry.RecordBudgetExceeded(
+                execution.Kind,
+                _time.GetUtcNow() - startedAt);
             throw;
         }
     }
@@ -135,23 +130,6 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
         return _session.CancelAsync(statementId, cancellationToken);
     }
 
-    private void RecordOutcome(StatementOutcome outcome, string kind, DateTimeOffset startedAt)
-    {
-        LakeWrightDatabricksTelemetry.StatementDuration.Record(
-            (_time.GetUtcNow() - startedAt).TotalSeconds,
-            new TagList { { "statement.kind", kind } });
-        LakeWrightDatabricksTelemetry.StatementOutcomes.Add(1, new TagList
-        {
-            { "state", outcome switch
-                {
-                    StatementOutcome.Success => "succeeded",
-                    StatementOutcome.LargeResult => "succeeded",
-                    StatementOutcome.Failure => "failed",
-                    StatementOutcome.Pending => "pending",
-                    _ => "unknown",
-                }
-            },
-            { "statement.kind", kind },
-        });
-    }
+    private void RecordOutcome(StatementOutcome outcome, string kind, DateTimeOffset startedAt) =>
+        LakeWrightDatabricksTelemetry.RecordStatement(outcome, kind, _time.GetUtcNow() - startedAt);
 }

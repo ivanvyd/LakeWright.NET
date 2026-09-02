@@ -14,6 +14,14 @@ internal sealed class StatementTerminalPoller(
         StatementOptions execution,
         CancellationToken cancellationToken)
     {
+        if (outcome is not StatementOutcome.Pending)
+        {
+            return outcome;
+        }
+
+        var pendingStartedAt = time.GetUtcNow();
+        try
+        {
         while (outcome is StatementOutcome.Pending pending)
         {
             var remaining = execution.TotalBudget - (time.GetUtcNow() - startedAt);
@@ -28,5 +36,12 @@ internal sealed class StatementTerminalPoller(
         }
 
         return outcome;
+        }
+        finally
+        {
+            LakeWrightDatabricksTelemetry.WarehouseWait.Record(
+                (time.GetUtcNow() - pendingStartedAt).TotalSeconds,
+                new System.Diagnostics.TagList { { "statement.kind", execution.Kind } });
+        }
     }
 }

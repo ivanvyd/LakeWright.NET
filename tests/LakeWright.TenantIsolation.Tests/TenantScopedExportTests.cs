@@ -1,3 +1,4 @@
+using System.Diagnostics.Metrics;
 using LakeWright.Core.Tenancy;
 using LakeWright.Databricks;
 using Microsoft.Azure.Databricks.Client.Models;
@@ -274,6 +275,39 @@ public class TenantScopedExportTests : IDisposable
         session.GetCalls.ShouldBe(1);
         session.Request!.OnWaitTimeout.ShouldBe(SqlStatementOnWaitTimeout.CONTINUE);
         rows.Select(row => row.Values.Count == 0 ? null : row.Values[0]).ShouldBe([null, "1"]);
+    }
+
+    [Fact]
+    public async Task Streaming_an_export_emits_row_and_response_byte_metrics()
+    {
+        StubStatementExecution(
+            chunks: [$"{_chunks.Urls[0]}/chunk-0.json"],
+            columns: ["id"]);
+        StubChunk("""{"data_array":[[1],[2]]}""");
+        var measurements = new List<(string Name, long Value)>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, meterListener) =>
+        {
+            if (instrument.Meter.Name == LakeWrightDatabricksTelemetry.MeterName
+                && instrument.Name.StartsWith("lakewright.exports.", StringComparison.Ordinal))
+            {
+                meterListener.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, measurement, _, _) =>
+            measurements.Add((instrument.Name, measurement)));
+        listener.Start();
+
+        await foreach (var _ in NewExport().StreamAsync(SampleStatement(), TestContext.Current.CancellationToken))
+        {
+            // Drain the stream so each row and its source chunk reaches the instrumentation.
+        }
+        listener.Dispose();
+
+        measurements.Where(measurement => measurement.Name == "lakewright.exports.rows")
+            .Sum(measurement => measurement.Value).ShouldBeGreaterThanOrEqualTo(2);
+        measurements.Where(measurement => measurement.Name == "lakewright.exports.bytes")
+            .Sum(measurement => measurement.Value).ShouldBeGreaterThan(0);
     }
 
     private void StubStatementExecution(IReadOnlyList<string> chunks, IReadOnlyList<string> columns)

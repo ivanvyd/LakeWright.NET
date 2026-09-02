@@ -28,6 +28,10 @@ note.
   pending polls through the same bounded terminal-state path as an interactive statement before it
   begins fetching external links.
 
+- `LakeWright.Databricks` now exposes dependency-free statement duration, outcome, pending
+  warehouse-wait, export row, and export-byte metrics. Every tag is a low-cardinality statement
+  kind or outcome; no tenant identifier is emitted.
+
 ## [1.2.1] — 2026-09-02
 
 ### Security

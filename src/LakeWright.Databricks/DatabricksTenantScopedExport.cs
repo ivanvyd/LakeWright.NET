@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -88,6 +89,8 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
         };
         execution.Validate();
         var startedAt = _time.GetUtcNow();
+        using var activity = LakeWrightDatabricksTelemetry.Source.StartActivity("lakewright.statement.export");
+        activity?.SetTag("statement.kind", execution.Kind);
 
         var scoped = statement.Tenant.Location is TenantLocation.SharedSchema
             ? statement.ScopedForExecution(_scopeStrategies.Resolve(statement.Tenant))
@@ -126,6 +129,7 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
 
         if (outcome is StatementOutcome.Failure failure)
         {
+            LakeWrightDatabricksTelemetry.RecordStatement(outcome, execution.Kind, _time.GetUtcNow() - startedAt);
             LogStatementFailed(statement.Tenant.TenantId, failure.StatementId, failure.ErrorCode);
             throw new HttpRequestException(
                 string.Create(
@@ -137,6 +141,7 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
 
         if (outcome is StatementOutcome.Pending)
         {
+            LakeWrightDatabricksTelemetry.RecordStatement(outcome, execution.Kind, _time.GetUtcNow() - startedAt);
             throw new InvalidOperationException(
                 "Databricks returned a still-running statement after export polling was disabled. " +
                 "Use StatementOptions.OnWaitTimeout=CONTINUE, or cancel and retry the export.");
@@ -144,6 +149,7 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
 
         if (outcome is not StatementOutcome.LargeResult result)
         {
+            LakeWrightDatabricksTelemetry.RecordStatement(outcome, execution.Kind, _time.GetUtcNow() - startedAt);
             throw new InvalidOperationException(
                 "Databricks export did not return an external-links result.");
         }
@@ -152,8 +158,11 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
 
         if (columnNames.Length == 0)
         {
+            LakeWrightDatabricksTelemetry.RecordStatement(outcome, execution.Kind, _time.GetUtcNow() - startedAt);
             yield break;
         }
+
+        LakeWrightDatabricksTelemetry.RecordStatement(outcome, execution.Kind, _time.GetUtcNow() - startedAt);
 
         // The header is the first item in the stream. A caller that writes CSV can use
         // the header to write its column-name row, then write the values.
@@ -162,7 +171,7 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
         foreach (var link in result.Links)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await foreach (var row in FetchChunkAsync(link, columnNames, cancellationToken).ConfigureAwait(false))
+            await foreach (var row in FetchChunkAsync(link, columnNames, execution.Kind, cancellationToken).ConfigureAwait(false))
             {
                 yield return row;
             }
@@ -172,6 +181,7 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
     private async IAsyncEnumerable<ExportRow> FetchChunkAsync(
         Uri chunkUrl,
         string[] columnNames,
+        string kind,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         // Presigned SAS URLs do not accept an Authorization header; the chunk is a
@@ -195,7 +205,13 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
         }
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+        using var countingStream = new CountingReadStream(stream);
+        using var doc = await JsonDocument.ParseAsync(
+            countingStream,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        LakeWrightDatabricksTelemetry.ExportBytes.Add(
+            countingStream.BytesRead,
+            new TagList { { "statement.kind", kind } });
 
         if (!doc.RootElement.TryGetProperty("data_array", out var dataArray)
             || dataArray.ValueKind != JsonValueKind.Array)
@@ -229,7 +245,63 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
                     _ => cell.GetRawText(),
                 };
             }
+            LakeWrightDatabricksTelemetry.ExportRows.Add(1, new TagList { { "statement.kind", kind } });
             yield return new ExportRow(null, values);
         }
+    }
+
+    private sealed class CountingReadStream(Stream inner) : Stream
+    {
+        public long BytesRead { get; private set; }
+
+        public override bool CanRead => inner.CanRead;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override void Flush() => throw new NotSupportedException();
+
+        public override Task FlushAsync(CancellationToken cancellationToken) =>
+            Task.FromException(new NotSupportedException());
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            var read = inner.Read(buffer, offset, count);
+            BytesRead += read;
+            return read;
+        }
+
+        public override async ValueTask<int> ReadAsync(
+            Memory<byte> buffer,
+            CancellationToken cancellationToken = default)
+        {
+            var read = await inner.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+            BytesRead += read;
+            return read;
+        }
+
+        public override async Task<int> ReadAsync(
+            byte[] buffer,
+            int offset,
+            int count,
+            CancellationToken cancellationToken)
+        {
+            return await ReadAsync(buffer.AsMemory(offset, count), cancellationToken).ConfigureAwait(false);
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 }
