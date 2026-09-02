@@ -1,0 +1,36 @@
+name: Live net8 validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_genie:
+        description: Run the optional billable Genie conversation validation.
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+      - name: Run the net8 workspace validation
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          LAKEWRIGHT_WAREHOUSE_ID: ${{ secrets.LAKEWRIGHT_WAREHOUSE_ID }}
+          LAKEWRIGHT_CATALOG: ${{ secrets.LAKEWRIGHT_CATALOG }}
+          LAKEWRIGHT_SCHEMA: ${{ secrets.LAKEWRIGHT_SCHEMA }}
+          LAKEWRIGHT_LIVE_TENANT_ID: ${{ secrets.LAKEWRIGHT_LIVE_TENANT_ID }}
+          LAKEWRIGHT_GENIE_SPACE_ID: ${{ inputs.run_genie && secrets.LAKEWRIGHT_GENIE_SPACE_ID || '' }}
+          LAKEWRIGHT_GENIE_PROMPT: ${{ secrets.LAKEWRIGHT_GENIE_PROMPT }}
+        run: dotnet run --project tests/live-net8/LiveNet8.csproj -c Release

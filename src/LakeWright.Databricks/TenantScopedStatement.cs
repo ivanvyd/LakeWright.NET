@@ -1,4 +1,3 @@
-using LakeWright.Core.Sql;
 using LakeWright.Core.Tenancy;
 
 namespace LakeWright.Databricks;
@@ -42,11 +41,6 @@ public readonly struct TenantScopedStatement
         }
 
         var token = ":" + shared.TenantParameter;
-        if (SqlTokenScanner.Find(Sql, token).Count == 0)
-        {
-            throw new TenantScopeMissingException(
-                $"Statement does not reference {token}; in shared-schema mode every statement must filter on the tenant parameter.");
-        }
         if (Parameters.Any(parameter => string.Equals(parameter.Name, shared.TenantParameter, StringComparison.OrdinalIgnoreCase)))
         {
             throw new TenantScopeMissingException(
@@ -56,14 +50,52 @@ public readonly struct TenantScopedStatement
         return [.. Parameters, StatementParameter.Tenant(shared.TenantParameter, Tenant.TenantId)];
     }
 
+    internal string SqlForExecution()
+    {
+        if (Tenant.Location is not TenantLocation.SharedSchema shared)
+        {
+            return Sql;
+        }
+
+        var query = Sql.Trim();
+        if (!StartsWithQuery(query) || query.EndsWith(';'))
+        {
+            throw new TenantScopeMissingException(
+                "Shared-schema statements must be a single SELECT or WITH query so LakeWright can apply its tenant predicate.");
+        }
+
+        // A marker anywhere in caller SQL does not prove it filters rows: `:tenant_id IS NOT
+        // NULL` is true for every tenant. Scope the result ourselves instead, so accidental
+        // omissions and inert references cannot reach the shared schema unfiltered. The query
+        // must expose the configured tenant column; otherwise the warehouse rejects it rather
+        // than returning rows that have not been constrained.
+        return $"SELECT * FROM ({query}) AS lakewright_tenant_scope " +
+            $"WHERE lakewright_tenant_scope.{shared.TenantParameter} = :{shared.TenantParameter}";
+    }
+
+    private static bool StartsWithQuery(string sql)
+    {
+        var firstWhitespace = sql.IndexOfAny([' ', '\t', '\r', '\n']);
+        if (firstWhitespace < 0)
+        {
+            return false;
+        }
+
+        var firstKeyword = sql[..firstWhitespace];
+        return string.Equals(firstKeyword, "SELECT", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(firstKeyword, "WITH", StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>Builds a statement scoped to <paramref name="tenant"/>.</summary>
     /// <param name="tenant">The resolved tenant. Supplies catalog and schema.</param>
     /// <param name="sql">
-    /// A constant SQL string. Values belong in <paramref name="parameters"/>, never in here.
+    /// A constant SQL query. Values belong in <paramref name="parameters"/>, never in here.
     /// The compiler rejects an interpolated literal, but it cannot reject a string built at
     /// runtime by concatenation or <c>string.Format</c>, which is the residual injection surface.
     /// Treat this parameter as "must be a constant" even though the type system only enforces
-    /// "must not be interpolated in place".
+    /// "must not be interpolated in place". A shared-schema context accepts one SELECT or WITH
+    /// query and wraps its results with its own tenant predicate; the query must project the
+    /// configured tenant column.
     /// </param>
     /// <param name="parameters">Values bound by the server, not interpolated.</param>
     public static TenantScopedStatement Create(

@@ -10,10 +10,10 @@ namespace LakeWright.Embedding;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Each call acquires a fresh ops workspace token via <see cref="IOpsTokenBroker"/>, then
-/// issues the list request. That is two HTTP roundtrips per page; an upstream consumer that
-/// wants a single roundtrip can add caching of the ops token (the same shape the embed
-/// broker uses) without changing this class.
+/// Each call obtains an ops workspace token via <see cref="IOpsTokenBroker"/> before issuing
+/// the list request. The default broker caches tokens by ops client ID until shortly before
+/// expiry, so subsequent pages normally need only the list roundtrip. Consumers can replace
+/// <see cref="IOpsTokenCache"/> before registration when they need another backing store.
 /// </para>
 /// <para>
 /// The vendor's response shape is read defensively: fields are optional because the workspace

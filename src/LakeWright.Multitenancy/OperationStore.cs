@@ -25,7 +25,7 @@ public sealed class OperationStore(
     LakeWrightDbContext db,
     AuditLog audit,
     TimeProvider time,
-    EfTenantContextResolver? systemResolver = null)
+    ITenantContextResolver? resolver = null)
 {
     /// <summary>The <c>Idempotency-Key</c> length a caller may send.</summary>
     public const int MaxClientRequestIdLength = 200;
@@ -268,7 +268,7 @@ public sealed class OperationStore(
         string catalog,
         CancellationToken cancellationToken)
     {
-        if (systemResolver is null)
+        if (resolver is not EfTenantContextResolver systemResolver)
         {
             throw new InvalidOperationException(
                 "Resolving a system-owned tenant context requires the resolver registered by AddLakeWright.");

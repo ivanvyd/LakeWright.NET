@@ -12,7 +12,7 @@ public class ExternalResolverTests
     private static readonly TenantId TenantA = TenantId.Parse("0198f000-0000-7000-8000-0000000000a1");
     private static readonly TenantId TenantB = TenantId.Parse("0198f000-0000-7000-8000-0000000000b2");
 
-    private sealed class MapResolver(ITenantContextFactory contexts) : ITenantContextResolver
+    public sealed class MapResolver(ITenantContextFactory contexts) : ITenantContextResolver
     {
         private static readonly Dictionary<string, TenantId> Members = new(StringComparer.Ordinal)
         {
@@ -84,6 +84,35 @@ public class ExternalResolverTests
             .Message.ShouldContain(nameof(ITenantContextFactory));
         scope.ServiceProvider.GetRequiredService<ITenantContextResolver>()
             .ShouldBeOfType<MapResolver>().Contexts.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public void A_service_outside_the_resolver_cannot_resolve_the_concrete_resolver()
+    {
+        using var provider = new ServiceCollection()
+            .AddLakeWrightTenancy<MapResolver>()
+            .BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        scope.ServiceProvider.GetService<MapResolver>().ShouldBeNull();
+        scope.ServiceProvider.GetRequiredService<ITenantContextResolver>().ShouldBeOfType<MapResolver>();
+    }
+
+    [Fact]
+    public void A_resolver_can_use_an_explicit_non_default_lifetime_without_becoming_discoverable()
+    {
+        using var provider = new ServiceCollection()
+            .AddLakeWrightTenancy<MapResolver>(ServiceLifetime.Singleton)
+            .BuildServiceProvider();
+        using var firstScope = provider.CreateScope();
+        using var secondScope = provider.CreateScope();
+
+        var first = firstScope.ServiceProvider.GetRequiredService<ITenantContextResolver>();
+        var second = secondScope.ServiceProvider.GetRequiredService<ITenantContextResolver>();
+
+        first.ShouldBeSameAs(second);
+        first.ShouldBeOfType<MapResolver>();
+        firstScope.ServiceProvider.GetService<MapResolver>().ShouldBeNull();
     }
 
     [Fact]

@@ -21,7 +21,7 @@ namespace LakeWright.Embedding;
 /// close the reproduced string-literal bypass. It is <em>not</em> an AST walk: a board that
 /// reconstructs the marker by concatenation (<c>'__aibi_' || 'external_value'</c>) is
 /// genuinely unscoped and the gate will refuse it. Closing that case is the warehouse's
-/// <c>parsed_query</c> job, not this one's; see ADR 0017.
+/// <c>parsed_query</c> job, not this one's; see ADR 0025.
 /// </para>
 /// </remarks>
 public static class DashboardPublishGate
@@ -114,6 +114,14 @@ public static class DashboardPublishGate
             for (var index = 0; index < datasets.GetArrayLength(); index++)
             {
                 var dataset = datasets[index];
+                if (dataset.ValueKind != JsonValueKind.Object)
+                {
+                    results.Add(new DatasetPublishGateVerdict(
+                        index,
+                        "(unnamed)",
+                        PublishGateVerdict.Fail("Dataset is not an object.")));
+                    continue;
+                }
                 var name = dataset.TryGetProperty("name", out var nameElement) &&
                     nameElement.ValueKind == JsonValueKind.String &&
                     !string.IsNullOrWhiteSpace(nameElement.GetString())

@@ -46,7 +46,7 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
             Catalog = statement.Tenant.Catalog,
             Schema = statement.Tenant.Schema,
 
-            Statement = statement.Sql,
+            Statement = statement.SqlForExecution(),
             Parameters = [.. statement.ParametersForExecution().Select(p => new SqlStatementParameter
             {
                 Name = p.Name,

@@ -68,10 +68,9 @@ DI services (`IDashboardTokenBroker` for the embed side,
   call.
 - A host application that does not need the catalog does not pay the
   complexity tax of carrying an unused secret.
-- The embed and ops paths can scale their tokens independently. The
-  embed path benefits from caching (ADR 0018 — 3.1 in the gap
-  analysis); the ops path currently mints a fresh token per call, with
-  caching deferred to avoid a cross-PR dependency.
+- The embed and ops paths can scale their tokens independently. Both cache tokens by their
+  respective principal identities until shortly before expiry; the ops cache is an overridable
+  `IOpsTokenCache` registration.
 - A future change that adds *another* ops role (refresh, Genie)
   belongs as a third `Add…` method on the same pattern, not as a
   permission bump on the embed principal.

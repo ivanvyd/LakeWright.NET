@@ -12,7 +12,7 @@ namespace LakeWright.TenantIsolation.Tests;
 /// </summary>
 /// <remarks>
 /// <para>
-/// These prove the split between the embed and ops service principals (ADR 0019). The
+/// These prove the split between the embed and ops service principals (ADR 0024). The
 /// embed path's tests stay in <c>EmbedTokenBrokerTests</c>; this file proves the ops path
 /// authenticates as a different principal and that the catalog uses it.
 /// </para>

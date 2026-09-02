@@ -19,8 +19,8 @@ non-extension obsolete static forwarder so an already compiled caller continues 
 
 The stock net8 consumer registers its own resolver, resolves `IStatementExecutor`, and sends a
 shared-schema `TenantScopedStatement` to a loopback workspace. The loopback verifies the catalog,
-schema, and framework-supplied tenant parameter. It proves the package graph and the isolation
-request shape without an account, secret, or billable workspace.
+schema, library-owned tenant predicate, and framework-supplied tenant parameter. It proves the
+package graph and the isolation request shape without an account, secret, or billable workspace.
 
 ## Consequences
 

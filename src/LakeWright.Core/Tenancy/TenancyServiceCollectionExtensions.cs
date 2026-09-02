@@ -9,11 +9,15 @@ public static class TenancyServiceCollectionExtensions
     /// Registers <typeparamref name="TResolver"/> and passes it a context factory without making
     /// that factory available from the service container.
     /// </summary>
+    /// <param name="services">The composition-root service collection.</param>
+    /// <param name="lifetime">The resolver lifetime. Scoped is the safe default for request membership checks.</param>
     /// <exception cref="InvalidOperationException">
     /// <typeparamref name="TResolver"/> has no public constructor that accepts an
     /// <see cref="ITenantContextFactory"/>.
     /// </exception>
-    public static IServiceCollection AddLakeWrightTenancy<TResolver>(this IServiceCollection services)
+    public static IServiceCollection AddLakeWrightTenancy<TResolver>(
+        this IServiceCollection services,
+        ServiceLifetime lifetime = ServiceLifetime.Scoped)
         where TResolver : class, ITenantContextResolver
     {
         ArgumentNullException.ThrowIfNull(services);
@@ -27,10 +31,18 @@ public static class TenancyServiceCollectionExtensions
                 $"{typeof(TResolver).Name} needs a public constructor that takes an {nameof(ITenantContextFactory)}.");
         }
 
+        if (!Enum.IsDefined(lifetime))
+        {
+            throw new ArgumentOutOfRangeException(nameof(lifetime));
+        }
+
         var factory = new ResolverTenantContextFactory();
-        services.AddScoped<TResolver>(provider =>
-            ActivatorUtilities.CreateInstance<TResolver>(provider, factory));
-        services.AddScoped<ITenantContextResolver>(provider => provider.GetRequiredService<TResolver>());
+        // Do not register the concrete resolver. It holds the minting factory; exposing it would
+        // let unrelated application code bypass the resolver's membership decision.
+        services.Add(new ServiceDescriptor(
+            typeof(ITenantContextResolver),
+            provider => ActivatorUtilities.CreateInstance<TResolver>(provider, factory),
+            lifetime));
 
         return services;
     }

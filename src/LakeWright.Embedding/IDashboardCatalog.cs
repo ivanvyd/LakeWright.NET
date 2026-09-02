@@ -8,7 +8,7 @@ namespace LakeWright.Embedding;
 /// Distinct from <see cref="IDashboardTokenBroker"/>, which mints a per-viewer token for a
 /// dashboard the caller already knows about. The catalog answers the question "which
 /// dashboards exist in this workspace?" and returns enough metadata to decide which one to
-/// embed. It authenticates as the ops service principal (ADR 0019) because listing is a
+/// embed. It authenticates as the ops service principal (ADR 0024) because listing is a
 /// backend operation; the embed principal is locked down to a token-minting role and
 /// should not see the dashboard set.
 /// </para>

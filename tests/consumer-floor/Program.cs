@@ -50,7 +50,7 @@ var token = await scope.ServiceProvider.GetRequiredService<IDashboardTokenBroker
     .IssueAsync(tenant, "dashboard", "viewer", CancellationToken.None);
 var statement = TenantScopedStatement.Create(
     tenant,
-    "SELECT id FROM widgets WHERE tenant_id = :tenant_id");
+    "SELECT id, tenant_id FROM widgets WHERE tenant_id = :tenant_id");
 var outcome = await scope.ServiceProvider.GetRequiredService<IStatementExecutor>()
     .ExecuteAsync(statement, CancellationToken.None);
 
@@ -163,7 +163,8 @@ internal sealed class FloorSqlServer : IDisposable
             context.Request.Url!.AbsolutePath == "/api/2.0/sql/statements" &&
             root.GetProperty("catalog").GetString() == "analytics" &&
             root.GetProperty("schema").GetString() == "shared" &&
-            root.GetProperty("statement").GetString() == "SELECT id FROM widgets WHERE tenant_id = :tenant_id" &&
+            root.GetProperty("statement").GetString() ==
+                "SELECT * FROM (SELECT id, tenant_id FROM widgets WHERE tenant_id = :tenant_id) AS lakewright_tenant_scope WHERE lakewright_tenant_scope.tenant_id = :tenant_id" &&
             parameters.GetArrayLength() == 1 &&
             parameters[0].GetProperty("name").GetString() == "tenant_id" &&
             parameters[0].GetProperty("value").GetString() == InMemoryResolver.Tenant.ToString();

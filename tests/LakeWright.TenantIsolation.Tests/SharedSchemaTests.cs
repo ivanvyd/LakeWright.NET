@@ -24,16 +24,14 @@ public class SharedSchemaTests
 
     [Theory]
     [InlineData("SELECT * FROM events")]
-    [InlineData("SELECT ':tenant_id'")]
-    [InlineData("-- :tenant_id\nSELECT * FROM events")]
-    [InlineData("/* :tenant_id */ SELECT * FROM events")]
-    [InlineData("SELECT `:tenant_id` FROM events")]
-    public void A_shared_schema_statement_without_a_real_tenant_token_is_refused(string sql)
+    [InlineData("SELECT ':tenant_id' AS tenant_id")]
+    [InlineData("SELECT * FROM events WHERE :tenant_id IS NOT NULL")]
+    public void A_shared_schema_query_is_wrapped_in_a_tenant_predicate(string sql)
     {
         var statement = TenantScopedStatement.Create(SharedTenant(), sql);
 
-        Should.Throw<TenantScopeMissingException>(() => statement.ParametersForExecution())
-            .Message.ShouldContain(":tenant_id");
+        statement.SqlForExecution().ShouldBe(
+            $"SELECT * FROM ({sql}) AS lakewright_tenant_scope WHERE lakewright_tenant_scope.tenant_id = :tenant_id");
     }
 
     [Fact]
@@ -63,17 +61,28 @@ public class SharedSchemaTests
             .Message.ShouldContain("cannot be supplied by the caller");
     }
 
+    [Theory]
+    [InlineData("DELETE FROM events")]
+    [InlineData("SELECT * FROM events;")]
+    public void A_shared_schema_statement_that_cannot_be_safely_wrapped_is_refused(string sql)
+    {
+        var statement = TenantScopedStatement.Create(SharedTenant(), sql);
+
+        Should.Throw<TenantScopeMissingException>(() => statement.SqlForExecution())
+            .Message.ShouldContain("single SELECT or WITH query");
+    }
+
     [Fact]
-    public async Task The_executor_refuses_an_unscoped_shared_schema_statement_before_the_session()
+    public async Task The_executor_wraps_an_unscoped_shared_schema_statement_before_the_session()
     {
         var session = new RecordingSession();
         var executor = new DatabricksStatementExecutor(session, new DatabricksOptions { WarehouseId = "warehouse" });
         var statement = TenantScopedStatement.Create(SharedTenant(), "SELECT * FROM events");
 
-        await Should.ThrowAsync<TenantScopeMissingException>(
-            () => executor.ExecuteAsync(statement, TestContext.Current.CancellationToken));
+        await executor.ExecuteAsync(statement, TestContext.Current.CancellationToken);
 
-        session.Calls.ShouldBe(0);
+        session.Calls.ShouldBe(1);
+        session.LastRequest!.Statement.ShouldContain("WHERE lakewright_tenant_scope.tenant_id = :tenant_id");
     }
 
     [Fact]
@@ -90,10 +99,11 @@ public class SharedSchemaTests
         session.Calls.ShouldBe(1);
         session.LastRequest!.Parameters.ShouldContain(parameter => parameter.Name == "tenant_id"
             && parameter.Value == SharedTenant().TenantId.ToString());
+        session.LastRequest.Statement.ShouldContain("WHERE lakewright_tenant_scope.tenant_id = :tenant_id");
     }
 
     [Fact]
-    public async Task The_export_refuses_an_unscoped_shared_schema_statement_before_the_session()
+    public async Task The_export_wraps_a_shared_schema_query_before_calling_the_session()
     {
         var session = new RecordingSession();
         using var http = new HttpClient();
@@ -103,6 +113,33 @@ public class SharedSchemaTests
             http,
             NullLogger<DatabricksTenantScopedExport>.Instance);
         var statement = TenantScopedStatement.Create(SharedTenant(), "SELECT * FROM events");
+
+        async Task StreamAsync()
+        {
+            await foreach (var _ in export.StreamAsync(statement, TestContext.Current.CancellationToken)) { }
+        }
+
+        await Should.ThrowAsync<InvalidOperationException>(StreamAsync);
+        session.Calls.ShouldBe(1);
+        session.LastRequest!.Statement.ShouldContain("WHERE lakewright_tenant_scope.tenant_id = :tenant_id");
+        session.LastRequest.Parameters.ShouldContain(parameter => parameter.Name == "tenant_id"
+            && parameter.Value == SharedTenant().TenantId.ToString());
+    }
+
+    [Fact]
+    public async Task The_export_refuses_a_caller_supplied_shared_schema_tenant_before_the_session()
+    {
+        var session = new RecordingSession();
+        using var http = new HttpClient();
+        var export = new DatabricksTenantScopedExport(
+            session,
+            new DatabricksOptions { WarehouseId = "warehouse" },
+            http,
+            NullLogger<DatabricksTenantScopedExport>.Instance);
+        var statement = TenantScopedStatement.Create(
+            SharedTenant(),
+            "SELECT * FROM events",
+            StatementParameter.String("tenant_id", "other"));
 
         async Task StreamAsync()
         {

@@ -14,9 +14,9 @@ remains blocked because the verification identity lacks `USE SCHEMA` on `system.
 A `Documented` row is not promoted to `Verified` by a stable version number; the matrix
 records the work that has been done, not a claim about future work.
 
-The commands, results and cleanup evidence are in the
-[1.1.1 release evidence](release-evidence/v1.1.1.md), with the completed 1.1.0 publication record in
-[the prior release evidence](release-evidence/v1.1.0.md).
+The current package-publication and consumer evidence is in the
+[1.2.0 release evidence](release-evidence/v1.2.0.md). Earlier evidence remains available for
+[1.1.1](release-evidence/v1.1.1.md) and [1.1.0](release-evidence/v1.1.0.md).
 
 ## Legend
 
