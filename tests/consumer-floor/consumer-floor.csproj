@@ -5,6 +5,7 @@
     <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <!-- This harness consumes a freshly packed candidate version on every CI run. A lock file
          would pin yesterday's candidate rather than the artifact being verified. -->
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
@@ -13,7 +14,11 @@
   <ItemGroup>
     <PackageReference Include="LakeWright.Embedding" Version="$(LakeWrightVersion)" />
     <PackageReference Include="LakeWright.Databricks" Version="$(LakeWrightVersion)" />
-    <PackageReference Include="Microsoft.Extensions.Configuration" Version="8.0.0" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <!-- Lowest supported Microsoft.Extensions floor: a package that forces this consumer
+         higher must fail restore instead of silently widening the compatibility claim. -->
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="[8.0.0]" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="[8.0.1]" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="[8.0.1]" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="[8.0.2]" />
   </ItemGroup>
 </Project>

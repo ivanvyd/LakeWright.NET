@@ -10,7 +10,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 var services = new ServiceCollection();
-services.AddLakeWrightTenancy<FloorResolver>();
+services.AddLakeWrightTenancy<InMemoryResolver>();
 services.AddSingleton<TokenCredential>(new FloorCredential());
 var workspace = new FloorWorkspace();
 using var sqlServer = FloorSqlServer.Start();
@@ -36,8 +36,8 @@ services.AddHttpClient<IDashboardTokenBroker, DashboardTokenBroker>()
 await using var provider = services.BuildServiceProvider();
 await using var scope = provider.CreateAsyncScope();
 var resolver = scope.ServiceProvider.GetRequiredService<ITenantContextResolver>();
-var tenant = await resolver.ResolveAsync(FloorResolver.Tenant, "member", CancellationToken.None);
-if (tenant is null || await resolver.ResolveAsync(FloorResolver.Tenant, "outsider", CancellationToken.None) is not null)
+var tenant = await resolver.ResolveAsync(InMemoryResolver.Tenant, "member", CancellationToken.None);
+if (tenant is null || await resolver.ResolveAsync(InMemoryResolver.Tenant, "outsider", CancellationToken.None) is not null)
 {
     return 1;
 }
@@ -54,19 +54,36 @@ var statement = TenantScopedStatement.Create(
 var outcome = await scope.ServiceProvider.GetRequiredService<IStatementExecutor>()
     .ExecuteAsync(statement, CancellationToken.None);
 
-return token.AccessToken == "floor-token" &&
-    workspace.ExternalValue == FloorResolver.Tenant.ToString() &&
+var passed = token.AccessToken == "floor-token" &&
+    workspace.ExternalValue == InMemoryResolver.Tenant.ToString() &&
     outcome is StatementOutcome.Success &&
-    await sqlServer.VerifyAsync() ? 0 : 3;
+    await sqlServer.VerifyAsync();
 
-internal sealed class FloorResolver(ITenantContextFactory contexts) : ITenantContextResolver
+if (!passed)
+{
+    return 3;
+}
+
+Console.WriteLine("OK");
+return 0;
+
+internal sealed class InMemoryResolver(ITenantContextFactory contexts) : ITenantContextResolver
 {
     internal static readonly TenantId Tenant = TenantId.Parse("0198f000-0000-7000-8000-0000000000d1");
 
-    public Task<TenantContext?> ResolveAsync(TenantId tenantId, string principalId, CancellationToken cancellationToken) =>
-        Task.FromResult(principalId == "member" && tenantId == Tenant
-            ? contexts.ForSharedTenant(tenantId, "analytics", "shared")
+    private static readonly Dictionary<(TenantId TenantId, string PrincipalId), TenantContextRequest> Memberships = new()
+    {
+        [(Tenant, "member")] = new("analytics", "shared"),
+    };
+
+    public Task<TenantContext?> ResolveAsync(TenantId tenantId, string principalId, CancellationToken cancellationToken)
+    {
+        return Task.FromResult(Memberships.TryGetValue((tenantId, principalId), out var request)
+            ? contexts.ForSharedTenant(tenantId, request.Catalog, request.Schema)
             : null);
+    }
+
+    private sealed record TenantContextRequest(string Catalog, string Schema);
 }
 
 internal sealed class FloorCredential : TokenCredential
@@ -149,7 +166,7 @@ internal sealed class FloorSqlServer : IDisposable
             root.GetProperty("statement").GetString() == "SELECT id FROM widgets WHERE tenant_id = :tenant_id" &&
             parameters.GetArrayLength() == 1 &&
             parameters[0].GetProperty("name").GetString() == "tenant_id" &&
-            parameters[0].GetProperty("value").GetString() == FloorResolver.Tenant.ToString();
+            parameters[0].GetProperty("value").GetString() == InMemoryResolver.Tenant.ToString();
 
         var body = Encoding.UTF8.GetBytes("""{"statement_id":"floor-statement","status":{"state":"SUCCEEDED"},"manifest":{"schema":{"columns":[{"name":"id"}]},"total_row_count":1},"result":{"data_array":[["one"]]}}""");
         context.Response.ContentType = "application/json";
