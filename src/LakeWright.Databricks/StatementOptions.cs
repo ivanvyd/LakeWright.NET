@@ -23,6 +23,9 @@ public sealed class StatementOptions
     /// <summary>Maximum rows requested for inline statements.</summary>
     public long InlineRowLimit { get; set; } = 10_000;
 
+    /// <summary>Low-cardinality caller-defined category for telemetry, never a tenant identifier.</summary>
+    public string Kind { get; set; } = "query";
+
     internal void Validate()
     {
         if (PollInterval <= TimeSpan.Zero)
@@ -36,5 +39,6 @@ public sealed class StatementOptions
         }
 
         ArgumentException.ThrowIfNullOrWhiteSpace(WaitTimeout);
+        ArgumentException.ThrowIfNullOrWhiteSpace(Kind);
     }
 }

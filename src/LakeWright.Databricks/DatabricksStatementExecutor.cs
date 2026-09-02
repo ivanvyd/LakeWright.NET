@@ -1,6 +1,7 @@
 using Microsoft.Azure.Databricks.Client.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Diagnostics;
 
 namespace LakeWright.Databricks;
 
@@ -88,10 +89,29 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
             OnWaitTimeout = execution.OnWaitTimeout
         };
 
-        var outcome = await _session.ExecuteAsync(request, statement.Tenant.TenantId, cancellationToken);
-        return execution.OnWaitTimeout == SqlStatementOnWaitTimeout.CONTINUE
-            ? await PollToTerminalAsync(statement.Tenant, outcome, startedAt, execution, cancellationToken).ConfigureAwait(false)
-            : outcome;
+        using var activity = LakeWrightDatabricksTelemetry.Source.StartActivity("lakewright.statement.execute");
+        activity?.SetTag("statement.kind", execution.Kind);
+        try
+        {
+            var outcome = await _session.ExecuteAsync(request, statement.Tenant.TenantId, cancellationToken);
+            outcome = execution.OnWaitTimeout == SqlStatementOnWaitTimeout.CONTINUE
+                ? await PollToTerminalAsync(statement.Tenant, outcome, startedAt, execution, cancellationToken).ConfigureAwait(false)
+                : outcome;
+            RecordOutcome(outcome, execution.Kind, startedAt);
+            return outcome;
+        }
+        catch (StatementBudgetExceededException)
+        {
+            LakeWrightDatabricksTelemetry.StatementDuration.Record(
+                (_time.GetUtcNow() - startedAt).TotalSeconds,
+                new TagList { { "statement.kind", execution.Kind } });
+            LakeWrightDatabricksTelemetry.StatementOutcomes.Add(1, new TagList
+            {
+                { "state", "budget_exceeded" },
+                { "statement.kind", execution.Kind },
+            });
+            throw;
+        }
     }
 
     public async Task<StatementOutcome> GetAsync(
@@ -134,5 +154,25 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
         }
 
         return outcome;
+    }
+
+    private void RecordOutcome(StatementOutcome outcome, string kind, DateTimeOffset startedAt)
+    {
+        LakeWrightDatabricksTelemetry.StatementDuration.Record(
+            (_time.GetUtcNow() - startedAt).TotalSeconds,
+            new TagList { { "statement.kind", kind } });
+        LakeWrightDatabricksTelemetry.StatementOutcomes.Add(1, new TagList
+        {
+            { "state", outcome switch
+                {
+                    StatementOutcome.Success => "succeeded",
+                    StatementOutcome.LargeResult => "succeeded",
+                    StatementOutcome.Failure => "failed",
+                    StatementOutcome.Pending => "pending",
+                    _ => "unknown",
+                }
+            },
+            { "statement.kind", kind },
+        });
     }
 }
