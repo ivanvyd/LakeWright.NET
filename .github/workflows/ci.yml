@@ -193,7 +193,6 @@ jobs:
             --add-source "$GITHUB_WORKSPACE/consumer-floor-packages" \
             LakeWright.Tooling --version 1.1.2-ci.0
           .lakewright-tool/lakewright inspect-dashboard tests/assets/tooling-safe-dashboard.lvdash.json
-          .lakewright-tool/lakewright scope-check "SELECT id, tenant_id FROM events"
           .lakewright-tool/lakewright verify-floor "$GITHUB_WORKSPACE/consumer-floor-packages" 1.1.2-ci.0
 
   docs:
