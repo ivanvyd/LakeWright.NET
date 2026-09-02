@@ -94,6 +94,8 @@ builder.Services.AddLakeWrightTenancy<DirectoryTenantResolver>();
 builder.Services.AddLakeWrightDashboardEmbedding(
     builder.Configuration,
     http => http.AddStandardResilienceHandler());
+builder.Services.AddLakeWrightDashboardOps(builder.Configuration);
+builder.Services.AddLakeWrightDashboardRefresh(builder.Configuration);
 ```
 
 `AddLakeWrightTenancy` passes the factory to the resolver and registers it nowhere else, so a
@@ -119,6 +121,20 @@ credential is what knows how to get another one. An earlier version took a `GetT
 which was read once at startup and left every Databricks call failing 401 a little later with
 nothing to detect it.
 
+### Dashboard refreshes
+
+`AddLakeWrightDashboardRefresh` uses the separate `DashboardOps` principal and the Jobs API; it
+does not pretend that publishing a Lakeview draft refreshes a warehouse result. Call
+`StartOrJoinAsync` with the `TenantContext` produced by the resolver and a `RefreshJob` selected
+by application configuration. Job-level parameters are sent for the tenant id, catalog, and schema,
+so use a task type that supports job-parameter pushdown or explicitly forwards those parameters.
+
+The default `IRefreshRunOwnership` store is process-local. That is safe after a restart or on the
+wrong replica because an unrecorded run cannot be read, but it means a multi-replica host must
+replace it with durable storage before serving a refresh-status endpoint. Do not call
+`StatusAsync` with a bare run id from a browser; it requires the resolved `TenantContext` and checks
+that the application recorded ownership before making a workspace request.
+
 ## Configuration
 
 ```json
@@ -135,6 +151,10 @@ nothing to detect it.
     "Jobs": { "analysis": 123456789, "export": 987654321 }
   },
   "LakeWright": {
+    "DashboardRefresh": {
+      "Policy": { "MinimumInterval": "00:15:00", "MaxConcurrentPerTenant": 1 },
+      "JobLookupCacheDuration": "00:05:00"
+    },
     "Features": {
       "Enabled": { "embedding": true, "statements": true, "operations": true, "conversations": true }
     }

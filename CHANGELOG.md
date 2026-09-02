@@ -20,6 +20,13 @@ note.
 
 ### Added
 
+- New `LakeWright.Embedding.Ops` adds tenant-bound, ops-principal dashboard refresh orchestration
+  over Jobs API 2.2. It joins only an active run whose recorded job parameters identify the same
+  tenant, applies a minimum-success interval, uses opaque bucketed idempotency tokens across
+  replicas, invalidates stale name-to-id lookups, and refuses unrecorded or foreign run status
+  requests before they reach the workspace. Multi-replica applications replace the process-local
+  `IRefreshRunOwnership` implementation with durable storage before exposing status endpoints.
+
 - `GenieAnswerSanitizer` removes model-supplied HTML and neutralizes markdown links by default.
   Hosts may opt in to exact HTTPS allow-list entries when their renderer is prepared to render
   those links.
