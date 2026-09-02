@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace LakeWright.Conversations;
@@ -26,6 +27,8 @@ public static class ConversationsServiceCollectionExtensions
             .Bind(configuration.GetSection("Genie"))
             .Validate(o => !string.IsNullOrWhiteSpace(o.WorkspaceUrl), "Genie:WorkspaceUrl is required.")
             .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<GenieOptions>>(provider =>
+            new GenieSharedSpaceOptionsValidator(provider.GetService<ILoggerFactory>()));
 
         services.AddSingleton(TimeProvider.System);
 
