@@ -1,3 +1,4 @@
+using LakeWright.Core.Sql;
 using LakeWright.Core.Tenancy;
 
 namespace LakeWright.Databricks;
@@ -32,6 +33,28 @@ public readonly struct TenantScopedStatement
     public string Sql { get; }
 
     public IReadOnlyList<StatementParameter> Parameters { get; }
+
+    internal IReadOnlyList<StatementParameter> ParametersForExecution()
+    {
+        if (Tenant.Location is not TenantLocation.SharedSchema shared)
+        {
+            return Parameters;
+        }
+
+        var token = ":" + shared.TenantParameter;
+        if (SqlTokenScanner.Find(Sql, token).Count == 0)
+        {
+            throw new TenantScopeMissingException(
+                $"Statement does not reference {token}; in shared-schema mode every statement must filter on the tenant parameter.");
+        }
+        if (Parameters.Any(parameter => string.Equals(parameter.Name, shared.TenantParameter, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new TenantScopeMissingException(
+                $"{token} is supplied by the tenant context and cannot be supplied by the caller.");
+        }
+
+        return [.. Parameters, StatementParameter.Tenant(shared.TenantParameter, Tenant.TenantId)];
+    }
 
     /// <summary>Builds a statement scoped to <paramref name="tenant"/>.</summary>
     /// <param name="tenant">The resolved tenant. Supplies catalog and schema.</param>

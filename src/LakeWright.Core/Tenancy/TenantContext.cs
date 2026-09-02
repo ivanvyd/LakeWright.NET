@@ -15,21 +15,22 @@ namespace LakeWright.Core.Tenancy;
 /// </remarks>
 public sealed class TenantContext
 {
-    private TenantContext(TenantId tenantId, string catalog, string schema, string? scopeVersion)
+    private TenantContext(TenantId tenantId, TenantLocation location, string? scopeVersion)
     {
         TenantId = tenantId;
-        Catalog = catalog;
-        Schema = schema;
+        Location = location;
         ScopeVersion = scopeVersion;
     }
 
     public TenantId TenantId { get; }
 
+    public TenantLocation Location { get; }
+
     /// <summary>Unity Catalog catalog holding this tenant's data.</summary>
-    public string Catalog { get; }
+    public string Catalog => Location.Catalog;
 
     /// <summary>Schema within <see cref="Catalog"/>. One schema per tenant, per ADR 0002.</summary>
-    public string Schema { get; }
+    public string Schema => Location.Schema;
 
     /// <summary>
     /// Optional version of the tenant's access scope, used to compose the broker's
@@ -64,7 +65,27 @@ public sealed class TenantContext
                 nameof(scopeVersion));
         }
 
-        return new TenantContext(tenantId, catalog, schema, scopeVersion);
+        return new TenantContext(tenantId, new TenantLocation.SchemaPerTenant(catalog, schema), scopeVersion);
+    }
+
+    internal static TenantContext CreateShared(
+        TenantId tenantId,
+        string catalog,
+        string schema,
+        string? scopeVersion = null,
+        string tenantParameter = "tenant_id")
+    {
+        var context = Create(tenantId, catalog, schema, scopeVersion);
+        if (string.IsNullOrWhiteSpace(tenantParameter)
+            || tenantParameter.Any(character => !(character == '_' || char.IsLetterOrDigit(character))))
+        {
+            throw new ArgumentException("tenantParameter must be a plain SQL parameter identifier.", nameof(tenantParameter));
+        }
+
+        return new TenantContext(
+            context.TenantId,
+            new TenantLocation.SharedSchema(context.Catalog, context.Schema, tenantParameter),
+            context.ScopeVersion);
     }
 
     public override string ToString() => $"{Catalog}.{Schema} ({TenantId})";

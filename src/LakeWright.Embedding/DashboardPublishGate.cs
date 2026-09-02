@@ -1,3 +1,5 @@
+using LakeWright.Core.Sql;
+
 namespace LakeWright.Embedding;
 
 /// <summary>
@@ -48,10 +50,11 @@ public static class DashboardPublishGate
             return PublishGateVerdict.Fail("Dataset SQL is empty.");
         }
 
-        var marker = new MarkerScanner(datasetSql, datasetIndex);
-        var hits = marker.Scan();
+        var hits = SqlTokenScanner.Find(datasetSql, ExternalValueColumn)
+            .Select(offset => new MarkerHit(datasetIndex, offset))
+            .ToArray();
 
-        return hits.Count == 0
+        return hits.Length == 0
             ? PublishGateVerdict.Fail("No reference to __aibi_external_value outside of a string literal or comment.")
             : PublishGateVerdict.Pass(hits);
     }
