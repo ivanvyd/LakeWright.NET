@@ -58,3 +58,19 @@ internal sealed class MemoryEmbedTokenCache : IEmbedTokenCache
         CancellationToken cancellationToken) =>
         _inner.GetOrAddAsync(key, factory, cancellationToken);
 }
+
+internal sealed class MemoryOpsTokenCache : IOpsTokenCache
+{
+    private readonly MemoryTokenCache<string, EmbedToken> _inner;
+
+    public MemoryOpsTokenCache(TimeProvider time)
+    {
+        _inner = new MemoryTokenCache<string, EmbedToken>(time, token => token.ExpiresAt);
+    }
+
+    public Task<EmbedToken> GetOrAddAsync(
+        string clientId,
+        Func<CancellationToken, ValueTask<EmbedToken>> factory,
+        CancellationToken cancellationToken) =>
+        _inner.GetOrAddAsync(clientId, factory, cancellationToken);
+}

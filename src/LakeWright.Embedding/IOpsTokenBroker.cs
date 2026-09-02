@@ -28,3 +28,13 @@ public interface IOpsTokenBroker
     /// <param name="cancellationToken">Cancels the token request.</param>
     Task<EmbedToken> AcquireAsync(CancellationToken cancellationToken = default);
 }
+
+/// <summary>Caches operations workspace tokens without exposing their storage mechanism.</summary>
+public interface IOpsTokenCache
+{
+    /// <summary>Gets a cached token or acquires and caches a fresh one for this client ID.</summary>
+    Task<EmbedToken> GetOrAddAsync(
+        string clientId,
+        Func<CancellationToken, ValueTask<EmbedToken>> factory,
+        CancellationToken cancellationToken);
+}

@@ -92,6 +92,7 @@ public static class EmbeddingServiceCollectionExtensions
         // embed side has already added it, and supplies it when the ops side is registered
         // alone.
         services.AddSingleton(TimeProvider.System);
+        services.TryAddSingleton<IOpsTokenCache>(sp => new MemoryOpsTokenCache(sp.GetRequiredService<TimeProvider>()));
 
         services.AddHttpClient<IOpsTokenBroker, OpsTokenBroker>((provider, client) =>
         {
