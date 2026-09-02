@@ -8,6 +8,15 @@ note.
 
 ## [Unreleased]
 
+## [1.1.2] — 2026-09-02
+
+### Security
+
+- Removed unapproved project and environment identifiers from public XML documentation, design
+  records, release evidence, and collaboration metadata. Added a private-denylist gate to CI and
+  the release workflow; releases now unpack generated NuGet packages and scan their contents before
+  publication.
+
 ## [1.1.1] — 2026-09-01
 
 ### Fixed
