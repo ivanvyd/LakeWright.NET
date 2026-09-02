@@ -22,7 +22,7 @@ Consequences, stated plainly because this is where teams lose data:
 
 | Model | Enforcement point | Scaling ceiling | Isolation | Local dev | Cost |
 |---|---|---|---|---|---|
-| **A. Shared table + `tenant_id`** | .NET query layer plus required bound parameter | Table size only | Supported when every statement carries the resolved `:tenant_id`; missing scope is refused before execution. | Trivial | Lowest, one warehouse |
+| **A. Shared table + `tenant_id`** | .NET query layer wraps each read with a bound tenant predicate | Table size only | Supported when every shared-schema read projects `tenant_id`; the library applies the resolved parameter before execution. | Trivial | Lowest, one warehouse |
 | **B. Schema-per-tenant** | .NET catalog/schema resolution, plus grants | 10,000 schemas per catalog | Object-level grants are real. Wrong schema name returns an error, not another tenant's rows. | Good | Low |
 | **C. Catalog-per-tenant** | Grants, optionally row filters with per-tenant SPN | ~300 with disaster recovery, 1,000 raisable | Strong. Separate storage credentials possible. | Poor beyond a handful | Medium |
 | **D. Workspace-per-tenant** | Platform | Account-level | Strongest | Not reproducible in CI | Highest |
@@ -61,9 +61,9 @@ Bounded at roughly 300 tenants where disaster recovery is in scope. Requires a p
 principal, which is where row filters start earning their keep.
 
 **Model A, shared table**, is the right answer for tenants counted in tens of thousands, where B's
-schema ceiling and provisioning cost dominate. The query layer requires an executable `:tenant_id`
-token and binds it from `TenantContext`; a missing token or caller-supplied value is refused before
-the warehouse is contacted (ADR 0022).
+schema ceiling and provisioning cost dominate. The query layer wraps each shared-schema read with a
+bound `tenant_id` predicate from `TenantContext`; a caller-supplied value is refused before the
+warehouse is contacted (ADR 0022).
 
 ## Cost attribution
 

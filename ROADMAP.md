@@ -148,8 +148,9 @@ tracker is empty, so a contributor arriving has nowhere obvious to start.
   replacement for it.
 - ~~Any NuGet package.~~ **Reversed 2026-08-05, see [ADR 0010](docs/decisions/0010-publish-prerelease-packages.md).**
   The packages were already built, attested and attached to the v0.1.0 release; what was withheld
-  was the one surface a .NET developer actually searches. They publish with a prerelease suffix, so
-  the version string carries the warning the non-goal used to.
+  was the one surface a .NET developer actually searches. They initially published with a prerelease
+  suffix. **Outcome 2026-08-30:** stable tags now publish stable packages under
+  [ADR 0019](docs/decisions/0019-stable-1-0-0.md); the current stable line is v1.2.0.
 - A `dotnet new` template. It ossifies the structure before we know the structure is right.
 - Catalog-per-tenant and workspace-per-tenant as implemented paths. Documented, not built.
 - Billing, invoicing, or payment integration.
@@ -166,5 +167,6 @@ Ordered by how often the question is likely to be asked, not by how interesting 
    Conversation API takes no filter. [ADR 0011](docs/decisions/0011-brokered-access-as-separate-modules.md).
 3. Vector Search with tenant-safe filtering.
 4. Lakebase as a documented alternative to PostgreSQL, once it is generally available on Azure.
-5. A stable package surface. The packages publish as prereleases today; dropping the suffix means
-   committing to the API, which needs adopters first.
+5. ~~A stable package surface.~~ **Completed 2026-08-30:** stable tags publish stable packages.
+   Continued external adoption and independently reviewed tenancy changes remain release criteria;
+   they are not retroactive claims about existing releases.

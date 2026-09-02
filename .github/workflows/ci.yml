@@ -179,7 +179,11 @@ jobs:
           dotnet run --project tests/consumer-floor/consumer-floor.csproj \
             -p:LakeWrightVersion=1.1.2-ci.0 \
             -p:RestoreAdditionalProjectSources="$GITHUB_WORKSPACE/consumer-floor-packages"
-          if rg -i 'EntityFramework|Npgsql|PostgreSQL' tests/consumer-floor/obj/project.assets.json; then
+          command -v grep >/dev/null || {
+            echo "::error title=Consumer floor assertion unavailable::grep is required to enforce the persistence dependency boundary."
+            exit 1
+          }
+          if grep -Eiq 'EntityFramework|Npgsql|PostgreSQL' tests/consumer-floor/obj/project.assets.json; then
               echo "::error title=Consumer floor leaked persistence dependencies::The net8 Embedding and Databricks path must not acquire EF Core, Npgsql, or PostgreSQL."
             exit 1
           fi

@@ -235,4 +235,26 @@ public class DashboardPublishGateTests
         verdict.Passed.ShouldBeFalse();
         verdict.Datasets.ShouldBeEmpty();
     }
+
+    [Theory]
+    [InlineData("{\"datasets\":[null]}")]
+    [InlineData("{\"datasets\":[42]}")]
+    [InlineData("{\"datasets\":[\"not a dataset\"]}")]
+    public void Inspect_dashboard_fails_closed_when_a_dataset_is_not_an_object(string serializedDashboard)
+    {
+        var verdict = DashboardPublishGate.InspectDashboard(serializedDashboard);
+
+        verdict.Passed.ShouldBeFalse();
+        verdict.Datasets.Count.ShouldBe(1);
+        verdict.Datasets[0].Verdict.Reason.ShouldBe("Dataset is not an object.");
+    }
+
+    [Fact]
+    public void Inspect_dashboard_fails_closed_when_query_lines_are_not_an_array()
+    {
+        var verdict = DashboardPublishGate.InspectDashboard("""{ "datasets": [{ "queryLines": "SELECT 1" }] }""");
+
+        verdict.Passed.ShouldBeFalse();
+        verdict.Datasets.Single().Verdict.Reason.ShouldBe("Dataset SQL is empty.");
+    }
 }

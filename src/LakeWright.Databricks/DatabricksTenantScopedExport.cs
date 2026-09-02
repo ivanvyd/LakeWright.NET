@@ -75,7 +75,7 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
             WarehouseId = _options.WarehouseId,
             Catalog = statement.Tenant.Catalog,
             Schema = statement.Tenant.Schema,
-            Statement = statement.Sql,
+            Statement = statement.SqlForExecution(),
             Parameters = [.. statement.ParametersForExecution().Select(p => new SqlStatementParameter
             {
                 Name = p.Name,

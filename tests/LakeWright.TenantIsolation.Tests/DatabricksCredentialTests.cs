@@ -49,6 +49,26 @@ public sealed class DatabricksCredentialTests
     }
 
     [Fact]
+    public async Task A_rotated_service_principal_client_id_acquires_a_fresh_workspace_token()
+    {
+        var handler = new TokenHandler();
+        var time = new FakeTimeProvider();
+        var original = new ServicePrincipalDatabricksCredential(
+            new HttpClient(handler) { BaseAddress = new Uri("https://workspace.example/") },
+            Microsoft.Extensions.Options.Options.Create(CreateOptions("original-client-id")),
+            time);
+        var rotated = new ServicePrincipalDatabricksCredential(
+            new HttpClient(handler) { BaseAddress = new Uri("https://workspace.example/") },
+            Microsoft.Extensions.Options.Options.Create(CreateOptions("rotated-client-id")),
+            time);
+
+        await original.GetTokenAsync(TestContext.Current.CancellationToken);
+        await rotated.GetTokenAsync(TestContext.Current.CancellationToken);
+
+        handler.RequestCount.ShouldBe(2);
+    }
+
+    [Fact]
     public void Databricks_registration_rejects_ambiguous_credential_configuration()
     {
         var services = new ServiceCollection();
@@ -69,11 +89,32 @@ public sealed class DatabricksCredentialTests
             .Message.ShouldContain("either a TokenCredential or a client ID and secret");
     }
 
-    private static DatabricksOptions CreateOptions() => new()
+    [Fact]
+    public void Databricks_registration_rejects_ambiguous_credential_configuration_regardless_of_registration_order()
+    {
+        var services = new ServiceCollection();
+        services.AddLakeWrightDatabricks(Configuration(new()
+        {
+            ["Databricks:WorkspaceUrl"] = "https://workspace.example",
+            ["Databricks:WarehouseId"] = "warehouse-1",
+            ["Databricks:ClientId"] = "service-principal-id",
+            ["Databricks:ClientSecret"] = "service-principal-secret",
+        }));
+        services.AddSingleton<TokenCredential>(new StubCredential());
+
+        var validate = () => services.BuildServiceProvider()
+            .GetRequiredService<IStartupValidator>()
+            .Validate();
+
+        validate.ShouldThrow<OptionsValidationException>()
+            .Message.ShouldContain("either a TokenCredential or a client ID and secret");
+    }
+
+    private static DatabricksOptions CreateOptions(string clientId = "service-principal-id") => new()
     {
         WorkspaceUrl = "https://workspace.example",
         WarehouseId = "warehouse-1",
-        ClientId = "service-principal-id",
+        ClientId = clientId,
         ClientSecret = "service-principal-secret",
     };
 

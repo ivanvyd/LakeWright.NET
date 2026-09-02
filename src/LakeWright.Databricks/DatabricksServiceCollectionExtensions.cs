@@ -23,22 +23,15 @@ public static class DatabricksServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
 
-        var hasTokenCredential = services.Any(descriptor => descriptor.ServiceType == typeof(TokenCredential));
-
         services.AddOptions<DatabricksOptions>()
             .Bind(configuration.GetSection(DatabricksOptions.SectionName))
             .ValidateDataAnnotations()
-            .Validate(
-                options =>
-                {
-                    var hasClientId = !string.IsNullOrWhiteSpace(options.ClientId);
-                    var hasClientSecret = !string.IsNullOrWhiteSpace(options.ClientSecret);
-                    return hasClientId == hasClientSecret &&
-                        (hasTokenCredential || hasClientId) &&
-                        !(hasTokenCredential && hasClientId);
-                },
-                "Configure either a TokenCredential or a client ID and secret.")
             .ValidateOnStart();
+
+        // Resolve this after the composition root is complete. Capturing the service collection
+        // here would let a TokenCredential registered later bypass the ambiguity check.
+        services.AddSingleton<IValidateOptions<DatabricksOptions>>(provider =>
+            new DatabricksCredentialOptionsValidator(provider.GetService<TokenCredential>() is not null));
 
         TryAddSingletonTimeProvider(services);
         services.AddHttpClient("LakeWright.Databricks.Credentials", (provider, client) =>
@@ -82,5 +75,19 @@ public static class DatabricksServiceCollectionExtensions
         {
             services.AddSingleton(TimeProvider.System);
         }
+    }
+}
+
+internal sealed class DatabricksCredentialOptionsValidator(bool hasTokenCredential) : IValidateOptions<DatabricksOptions>
+{
+    public ValidateOptionsResult Validate(string? name, DatabricksOptions options)
+    {
+        var hasClientId = !string.IsNullOrWhiteSpace(options.ClientId);
+        var hasClientSecret = !string.IsNullOrWhiteSpace(options.ClientSecret);
+        return hasClientId == hasClientSecret &&
+            (hasTokenCredential || hasClientId) &&
+            !(hasTokenCredential && hasClientId)
+            ? ValidateOptionsResult.Success
+            : ValidateOptionsResult.Fail("Configure either a TokenCredential or a client ID and secret.");
     }
 }

@@ -30,7 +30,7 @@ public static class EmbeddingServiceCollectionExtensions
             .Validate(o => !string.IsNullOrWhiteSpace(o.ClientSecret), "DashboardEmbedding:ClientSecret is required.")
             .ValidateOnStart();
 
-        services.AddSingleton(TimeProvider.System);
+        services.TryAddSingleton(TimeProvider.System);
 
         // The token caches default to in-memory (ADR 0018). Both implementations are singletons:
         // a per-request cache would lose its entries between calls. A consumer that wants a
@@ -87,11 +87,9 @@ public static class EmbeddingServiceCollectionExtensions
             .Validate(o => !string.IsNullOrWhiteSpace(o.ClientSecret), "DashboardOps:ClientSecret is required.")
             .ValidateOnStart();
 
-        // TimeProvider is registered by AddLakeWrightDashboardEmbedding; the ops module does
-        // not depend on the embed module being called. Re-registering is a no-op when the
-        // embed side has already added it, and supplies it when the ops side is registered
-        // alone.
-        services.AddSingleton(TimeProvider.System);
+        // Either registration can stand alone, while an application-provided clock remains the
+        // clock used by both token caches.
+        services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IOpsTokenCache>(sp => new MemoryOpsTokenCache(sp.GetRequiredService<TimeProvider>()));
 
         services.AddHttpClient<IOpsTokenBroker, OpsTokenBroker>((provider, client) =>
