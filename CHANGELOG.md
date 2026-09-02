@@ -26,6 +26,10 @@ note.
   replicas, invalidates stale name-to-id lookups, and refuses unrecorded or foreign run status
   requests before they reach the workspace. Multi-replica applications replace the process-local
   `IRefreshRunOwnership` implementation with durable storage before exposing status endpoints.
+  It also supplies idempotent cache busting: a successful job run stamps every draft dataset with
+  a stable comment, PATCHes with the dashboard ETag, and publishes only once. Publishing defaults
+  to `embed_credentials: false`; an optimistic-concurrency retry succeeds only when the same
+  marker is already present.
 
 - `GenieAnswerSanitizer` removes model-supplied HTML and neutralizes markdown links by default.
   Hosts may opt in to exact HTTPS allow-list entries when their renderer is prepared to render

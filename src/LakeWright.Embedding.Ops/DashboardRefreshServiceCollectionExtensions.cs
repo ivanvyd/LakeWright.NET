@@ -37,7 +37,15 @@ public static class DashboardRefreshServiceCollectionExtensions
             client.BaseAddress = new Uri(options.WorkspaceUrl.TrimEnd('/') + "/");
         });
         configureClient?.Invoke(builder);
+        services.AddOptions<DashboardCacheBustOptions>();
+        var dashboardBuilder = services.AddHttpClient<IDashboardEditorApi, DatabricksDashboardEditorApi>((provider, client) =>
+        {
+            var options = provider.GetRequiredService<IOptions<DashboardOpsOptions>>().Value;
+            client.BaseAddress = new Uri(options.WorkspaceUrl.TrimEnd('/') + "/");
+        });
+        configureClient?.Invoke(dashboardBuilder);
         services.AddSingleton<IDashboardRefresher, DashboardRefresher>();
+        services.AddSingleton<IDashboardCacheBuster, DashboardCacheBuster>();
         return services;
     }
 }

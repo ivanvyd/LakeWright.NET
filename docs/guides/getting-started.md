@@ -135,6 +135,14 @@ replace it with durable storage before serving a refresh-status endpoint. Do not
 `StatusAsync` with a bare run id from a browser; it requires the resolved `TenantContext` and checks
 that the application recorded ownership before making a workspace request.
 
+`IDashboardCacheBuster.BustOnceAsync(dashboardId, runId)` is separate from the job start so a
+product can publish only after its refresh has reached a successful terminal state. It appends a
+stable comment marker to each dataset query, PATCHes the draft with its ETag, and publishes the
+revision. A repeated call for the same run is a no-op; a PATCH conflict is accepted only after a
+fresh read proves another replica wrote the exact same marker. It publishes with
+`embed_credentials: false` by default. Set `DashboardCacheBustOptions.EmbedCredentials` only when
+that credential model is an intentional, reviewed part of the dashboard deployment.
+
 ## Configuration
 
 ```json
