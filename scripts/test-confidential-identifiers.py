@@ -367,6 +367,7 @@ class ConfidentialIdentifierScannerTests(unittest.TestCase):
         self.assertIn("issues/$ISSUE_NUMBER/comments", confidentiality)
         self.assertIn("Metadata budget exceeded", confidentiality)
         self.assertIn("confidentiality-control-reviewed", confidentiality)
+        self.assertIn("github-advanced-security[bot]", confidentiality)
         self.assertIn("needs: confidentiality-preflight", ci)
         self.assertIn("pull_request:\n    types:", ci)
         self.assertIn("github.event.before", ci)
