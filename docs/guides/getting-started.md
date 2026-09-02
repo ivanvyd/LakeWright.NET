@@ -153,8 +153,9 @@ then fails minting closed until `DashboardPublishGate` passes on the proved serv
 
 `IDashboardMetadataCatalog` is the operations-only read surface for portal administration. It
 reads draft and published metadata by opaque dashboard id and walks every page for `ListAllAsync`.
-The shipped cache is local and deliberately short-lived; replace `IDashboardMetadataCache` with a
-shared implementation when replicas need to share this read cache. Do not expose this operations
+The shipped cache is local and deliberately short-lived; multi-replica hosts can call
+`AddLakeWrightDistributedDashboardMetadataCache` after registering `IDistributedCache` to share
+this read cache. Do not expose this operations
 catalog directly to a browser: authorize the requested dashboard in the host before asking it for
 metadata.
 

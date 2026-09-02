@@ -16,7 +16,7 @@ specific registration note where the extension intentionally replaces its defaul
 | `IEmbedPrecondition` | none | A host requires an additional proof before minting a browser token, such as served-revision verification. |
 | `IPublishedDashboardDefinitionReader` | none | A deployment system keeps the authoritative published dashboard artifact. The public Lakeview endpoint does not supply published serialized SQL. |
 | `IRefreshRunOwnership` | process-local memory | A refresh status endpoint runs on multiple replicas. Persist tenant-to-run ownership before exposing status. |
-| `IDashboardMetadataCache` | short-lived process memory | Operations metadata must be shared across replicas. This is a read cache, never an authorization boundary. |
+| `IDashboardMetadataCache` | short-lived process memory | Operations metadata must be shared across replicas. `AddLakeWrightDistributedDashboardMetadataCache` supplies the distributed adapter. This is a read cache, never an authorization boundary. |
 | `IWarehouseWarmLimiter` | process-local memory | More than one replica must obey one warehouse pre-warm rate. Warming remains disabled unless explicitly enabled. |
 | `IRawDataExportOwnership` | process-local memory | A CSV stream endpoint runs on more than one replica. Persist opaque operation id, tenant, and owner; never substitute a workspace statement id. |
 | `IConversationOwnership` | process-local memory | Genie continuation/list/delete runs on more than one replica. Unrecorded conversations must remain invisible. |
