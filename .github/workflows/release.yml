@@ -262,9 +262,9 @@ jobs:
       # Do it before creating a GitHub release, then make the GitHub release contingent on a
       # public restore endpoint confirming that consumers can actually acquire the packages.
       #
-      # Pushing the .nupkg also pushes the .snupkg beside it — the symbol package follows the
-      # primary one automatically when both are in the same folder, which `dotnet pack -o
-      # artifacts` guarantees. That only works against the V3 index, so the source URL is
+      # Publish each primary package and its matching symbol package explicitly. A wildcard has
+      # no dependency-aware ordering, so it can enqueue a package before the internal package it
+      # references. The ordered list below publishes the dependency roots first. The V3 source is
       # explicit rather than inherited from any NuGet.config.
       #
       # --skip-duplicate so re-running a release that failed after a partial push finishes
@@ -289,7 +289,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
           REF_NAME: ${{ github.event.client_payload.tag }}
+          VERSION: ${{ needs.build-release-candidate.outputs.version }}
         run: |
+          set -o pipefail
           if [ -z "$NUGET_API_KEY" ]; then
             # An unconfigured or lapsed trusted-publishing policy must fail the release rather
             # than create a GitHub release that claims a package version consumers cannot restore.
@@ -304,10 +306,32 @@ jobs:
             echo "::error::$REF_NAME moved after signature verification."
             exit 1
           }
-          dotnet nuget push "artifacts/*.nupkg" \
-            --api-key "$NUGET_API_KEY" \
-            --source https://api.nuget.org/v3/index.json \
-            --skip-duplicate | tee push.log
+          packages=(
+            "LakeWright.Core"
+            "LakeWright.Conversations"
+            "LakeWright.Databricks"
+            "LakeWright.Embedding"
+            "LakeWright.Multitenancy"
+            "LakeWright.AI"
+            "LakeWright.AspNetCore"
+          )
+          : > push.log
+          for package in "${packages[@]}"; do
+            primary="artifacts/$package.$VERSION.nupkg"
+            symbols="artifacts/$package.$VERSION.snupkg"
+            test -f "$primary" && test -f "$symbols" || {
+              echo "::error::Missing publication artifact for $package $VERSION."
+              exit 1
+            }
+            dotnet nuget push "$primary" \
+              --api-key "$NUGET_API_KEY" \
+              --source https://api.nuget.org/v3/index.json \
+              --skip-duplicate | tee -a push.log
+            dotnet nuget push "$symbols" \
+              --api-key "$NUGET_API_KEY" \
+              --source https://api.nuget.org/v3/index.json \
+              --skip-duplicate | tee -a push.log
+          done
 
           # --skip-duplicate turns a 409 into a warning, which is what makes a resumed release
           # work — and also what would let a re-tagged version look published when nuget.org is
