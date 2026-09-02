@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using LakeWright.Core.Features;
 using LakeWright.Core.Tenancy;
 using LakeWright.Embedding.Ops;
@@ -83,6 +84,20 @@ public sealed class DashboardRefresherTests
         api.InvalidateCalls.ShouldBe(1);
         api.ResolveCalls.ShouldBe(2);
         api.RunNowCalls.ShouldBe(2);
+    }
+
+    [Fact]
+    public void Reads_the_current_jobs_api_status_shape()
+    {
+        using var document = JsonDocument.Parse("""
+        {"run_id":17,"job_id":42,"start_time":0,"end_time":1000,"job_parameters":{"lakewright_tenant_id":"0198f000-0000-7000-8000-00000000ac11"},"status":{"state":"TERMINATED","termination_details":{"code":"SUCCESS"}},"tasks":[{"task_key":"refresh","status":{"state":"TERMINATED","termination_details":{"code":"SUCCESS"}}}]}
+        """);
+
+        var run = DatabricksJobsApi.ParseRun(document.RootElement);
+
+        run.State.ShouldBe(RefreshRunState.Succeeded);
+        run.Tasks.Single().State.ShouldBe(RefreshRunState.Succeeded);
+        run.TenantId.ShouldBe(FirstTenant.TenantId.ToString());
     }
 
     private static DashboardRefresher Refresher(FakeJobsApi api, IRefreshRunOwnership? ownership = null) => new(

@@ -209,13 +209,16 @@ internal sealed class DatabricksJobsApi(
         return !string.IsNullOrWhiteSpace(name);
     }
 
-    private static JobsRun ParseRun(JsonElement element)
+    internal static JobsRun ParseRun(JsonElement element)
     {
         var id = element.TryGetProperty("run_id", out var runId) && runId.TryGetInt64(out var runValue)
             ? runValue
             : throw new InvalidOperationException("A Jobs API run omitted run_id.");
         var jobId = element.TryGetProperty("job_id", out var job) && job.TryGetInt64(out var jobValue) ? jobValue : 0;
-        var state = ParseState(element.TryGetProperty("state", out var stateElement) ? stateElement : default, out var reason);
+        var state = ParseState(
+            element.TryGetProperty("status", out var statusElement) ? statusElement :
+            element.TryGetProperty("state", out var stateElement) ? stateElement : default,
+            out var reason);
         var tenantId = FindTenantParameter(element);
         var tasks = element.TryGetProperty("tasks", out var taskItems) && taskItems.ValueKind == JsonValueKind.Array
             ? taskItems.EnumerateArray().Select(ParseTask).ToArray()
@@ -228,23 +231,21 @@ internal sealed class DatabricksJobsApi(
         var key = task.TryGetProperty("task_key", out var taskKey) && taskKey.ValueKind == JsonValueKind.String
             ? taskKey.GetString() ?? string.Empty
             : string.Empty;
-        var state = ParseState(task.TryGetProperty("state", out var taskState) ? taskState : default, out var reason);
+        var state = ParseState(
+            task.TryGetProperty("status", out var taskStatus) ? taskStatus :
+            task.TryGetProperty("state", out var taskState) ? taskState : default,
+            out var reason);
         return new RefreshTaskStatus(key, state, reason);
     }
 
     private static RefreshRunState ParseState(JsonElement state, out string? failureReason)
     {
         failureReason = null;
-        var lifecycle = state.ValueKind == JsonValueKind.Object
-            && state.TryGetProperty("life_cycle_state", out var lifecycleProperty)
-            && lifecycleProperty.ValueKind == JsonValueKind.String
-            ? lifecycleProperty.GetString()
-            : null;
-        var result = state.ValueKind == JsonValueKind.Object
-            && state.TryGetProperty("result_state", out var resultProperty)
-            && resultProperty.ValueKind == JsonValueKind.String
-            ? resultProperty.GetString()
-            : null;
+        var lifecycle = ReadString(state, "life_cycle_state") ?? ReadString(state, "state");
+        var result = ReadString(state, "result_state")
+            ?? (state.ValueKind == JsonValueKind.Object && state.TryGetProperty("termination_details", out var termination)
+                ? ReadString(termination, "code")
+                : null);
         // Databricks state_message can include a SQL fragment or user-supplied parameter values.
         // Preserve a safe summary for portal callers; operators can inspect the workspace run.
         failureReason = result is "SUCCESS" or null ? null : "The job run reported a terminal failure.";
@@ -259,6 +260,13 @@ internal sealed class DatabricksJobsApi(
             _ => RefreshRunState.Running,
         };
     }
+
+    private static string? ReadString(JsonElement element, string propertyName) =>
+        element.ValueKind == JsonValueKind.Object
+        && element.TryGetProperty(propertyName, out var property)
+        && property.ValueKind == JsonValueKind.String
+            ? property.GetString()
+            : null;
 
     private static string? FindTenantParameter(JsonElement run)
     {
