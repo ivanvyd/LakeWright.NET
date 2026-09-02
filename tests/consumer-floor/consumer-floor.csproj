@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- This harness consumes a freshly packed candidate version on every CI run. A lock file
+         would pin yesterday's candidate rather than the artifact being verified. -->
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+    <LakeWrightVersion Condition="'$(LakeWrightVersion)' == ''">1.1.2</LakeWrightVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="LakeWright.Embedding" Version="$(LakeWrightVersion)" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+  </ItemGroup>
+</Project>

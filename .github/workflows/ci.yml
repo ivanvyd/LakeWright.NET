@@ -162,6 +162,28 @@ jobs:
           name: test-results
           path: TestResults/
 
+  consumer-floor:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+      - run: dotnet restore --locked-mode
+      - name: Pack the candidate packages
+        run: dotnet pack LakeWright.slnx -c Release -o consumer-floor-packages -p:Version=1.1.2-ci.0
+      - name: Run the net8 consumer floor
+        run: |
+          dotnet run --project tests/consumer-floor/consumer-floor.csproj \
+            -p:LakeWrightVersion=1.1.2-ci.0 \
+            -p:RestoreAdditionalProjectSources="$GITHUB_WORKSPACE/consumer-floor-packages"
+          if rg -i 'EntityFramework|Npgsql|PostgreSQL' tests/consumer-floor/obj/project.assets.json; then
+            echo "::error title=Consumer floor leaked persistence dependencies::The net8 embedding path must not acquire EF Core, Npgsql, or PostgreSQL."
+            exit 1
+          fi
+
   docs:
     needs: confidentiality-preflight
     if: always() && needs.confidentiality-preflight.result == 'success'
