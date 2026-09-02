@@ -120,6 +120,16 @@ public sealed partial class DashboardTokenBroker : IDashboardTokenBroker
         return uncached;
     }
 
+    /// <inheritdoc />
+    public async Task ProbeWorkspaceTokenAsync(CancellationToken cancellationToken = default)
+    {
+        _features.EnsureEnabled(LakeWrightFeatures.Embedding);
+        var basic = new AuthenticationHeaderValue(
+            "Basic",
+            Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_options.ClientId}:{_options.ClientSecret}")));
+        _ = await AcquireWorkspaceTokenAsync(basic, new MintDiagnostics(), cancellationToken).ConfigureAwait(false);
+    }
+
     private async Task<EmbedToken> IssueUncachedAsync(
         TenantContext tenant,
         string dashboardId,

@@ -8,6 +8,13 @@ namespace LakeWright.Embedding;
 public interface IDashboardTokenBroker
 {
     /// <summary>
+    /// Acquires only the workspace client-credentials token used by the first embedding-exchange
+    /// leg. This is intended for readiness checks and may return a cached token; it never reads a
+    /// dashboard or mints a browser token.
+    /// </summary>
+    Task ProbeWorkspaceTokenAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Exchanges the application's service principal credentials for a token scoped to one
     /// dashboard and one viewer, carrying <paramref name="tenant"/> as the row filter.
     /// </summary>

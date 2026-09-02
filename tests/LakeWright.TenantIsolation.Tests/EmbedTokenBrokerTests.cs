@@ -52,6 +52,17 @@ public class EmbedTokenBrokerTests : IDisposable
     }
 
     [Fact]
+    public async Task The_readiness_probe_performs_only_the_workspace_token_leg()
+    {
+        StubExchange();
+
+        await Broker().ProbeWorkspaceTokenAsync(TestContext.Current.CancellationToken);
+
+        _workspace.LogEntries.Count(entry => entry.RequestMessage!.Path == "/oidc/v1/token").ShouldBe(1);
+        _workspace.LogEntries.ShouldNotContain(entry => entry.RequestMessage!.Path.Contains("tokeninfo", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Two_tenants_get_two_different_filters()
     {
         // Arrange
