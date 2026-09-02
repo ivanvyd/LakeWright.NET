@@ -54,14 +54,13 @@ public sealed class DashboardCatalog : IDashboardCatalog
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
 
-        using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        using var response = await EmbeddingHttp.SendAsync(_http, request, cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            throw new HttpRequestException(
-                $"Databricks answered {(int)response.StatusCode} {response.ReasonPhrase}: {body}",
-                inner: null,
-                statusCode: response.StatusCode);
+            throw new WorkspaceRejectedException(
+                response.StatusCode,
+                body.Length <= 1024 ? body : body[..1024]);
         }
 
         using var payload = JsonDocument.Parse(

@@ -74,6 +74,25 @@ public sealed class OpsTokenBrokerCacheTests : IDisposable
         _workspace.LogEntries.Count(entry => entry.RequestMessage!.Path == "/oidc/v1/token").ShouldBe(2);
     }
 
+    [Fact]
+    public async Task Dashboard_ops_applies_the_adopters_http_client_configuration_to_both_clients()
+    {
+        StubTokenAndDashboardList();
+        var services = new ServiceCollection();
+        services.AddLakeWrightDashboardOps(
+            Configuration(),
+            builder => builder.ConfigureHttpClient(client => client.DefaultRequestHeaders.Add("X-LakeWright-Test", "configured")));
+        using var provider = services.BuildServiceProvider();
+
+        await provider.GetRequiredService<IDashboardCatalog>().ListAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        var requests = _workspace.LogEntries.Where(entry => entry.RequestMessage!.Path is "/oidc/v1/token" or "/api/2.0/lakeview/dashboards");
+        foreach (var request in requests)
+        {
+            request.RequestMessage!.Headers!["X-LakeWright-Test"].ShouldBe(["configured"]);
+        }
+    }
+
     private IConfiguration Configuration() => new ConfigurationBuilder()
         .AddInMemoryCollection(new Dictionary<string, string?>
         {

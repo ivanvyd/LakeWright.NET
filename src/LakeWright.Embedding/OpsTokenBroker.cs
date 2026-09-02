@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -71,7 +70,7 @@ public sealed class OpsTokenBroker : IOpsTokenBroker
         };
         request.Headers.Authorization = basic;
 
-        using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        using var response = await EmbeddingHttp.SendAsync(_http, request, cancellationToken).ConfigureAwait(false);
         await ThrowIfFailedAsync(response, cancellationToken).ConfigureAwait(false);
 
         using var payload = JsonDocument.Parse(
@@ -98,11 +97,8 @@ public sealed class OpsTokenBroker : IOpsTokenBroker
         }
 
         var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-        throw new HttpRequestException(
-            string.Create(
-                CultureInfo.InvariantCulture,
-                $"Databricks answered {(int)response.StatusCode} {response.ReasonPhrase}: {body}"),
-            inner: null,
-            statusCode: response.StatusCode);
+        throw new WorkspaceRejectedException(
+            response.StatusCode,
+            body.Length <= 1024 ? body : body[..1024]);
     }
 }

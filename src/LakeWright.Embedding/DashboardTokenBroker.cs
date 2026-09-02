@@ -1,4 +1,4 @@
-using System.Globalization;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -153,7 +153,7 @@ public sealed class DashboardTokenBroker : IDashboardTokenBroker
         };
         request.Headers.Authorization = basic;
 
-        using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        using var response = await EmbeddingHttp.SendAsync(_http, request, cancellationToken).ConfigureAwait(false);
         await ThrowIfFailedAsync(response, cancellationToken).ConfigureAwait(false);
 
         using var payload = JsonDocument.Parse(
@@ -189,8 +189,8 @@ public sealed class DashboardTokenBroker : IDashboardTokenBroker
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", workspaceToken);
 
-        using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
-        await ThrowIfFailedAsync(response, cancellationToken).ConfigureAwait(false);
+        using var response = await EmbeddingHttp.SendAsync(_http, request, cancellationToken).ConfigureAwait(false);
+        await ThrowIfFailedAsync(response, cancellationToken, dashboardId).ConfigureAwait(false);
 
         var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         if (JsonNode.Parse(body) is not JsonObject info)
@@ -222,21 +222,23 @@ public sealed class DashboardTokenBroker : IDashboardTokenBroker
         return form;
     }
 
-    private static async Task ThrowIfFailedAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    private static async Task ThrowIfFailedAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken,
+        string? dashboardId = null)
     {
         if (response.IsSuccessStatusCode)
         {
             return;
         }
 
-        // The body carries the reason — a dashboard that is not published, a service principal
-        // without CAN RUN — and the status code alone does not distinguish them.
         var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-        throw new HttpRequestException(
-            string.Create(
-                CultureInfo.InvariantCulture,
-                $"Databricks answered {(int)response.StatusCode} {response.ReasonPhrase}: {body}"),
-            inner: null,
-            statusCode: response.StatusCode);
+        var excerpt = body.Length <= 1024 ? body : body[..1024];
+        if (dashboardId is not null && response.StatusCode == HttpStatusCode.NotFound)
+        {
+            throw new NotPublishedException(dashboardId, excerpt);
+        }
+
+        throw new WorkspaceRejectedException(response.StatusCode, excerpt);
     }
 }

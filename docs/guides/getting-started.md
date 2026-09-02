@@ -90,12 +90,23 @@ public sealed class DirectoryTenantResolver(
 }
 
 builder.Services.AddLakeWrightTenancy<DirectoryTenantResolver>();
-builder.Services.AddLakeWrightDashboardEmbedding(builder.Configuration);
+builder.Services.AddLakeWrightDashboardEmbedding(
+    builder.Configuration,
+    http => http.AddStandardResilienceHandler());
 ```
 
 `AddLakeWrightTenancy` passes the factory to the resolver and registers it nowhere else, so a
 controller cannot mint a context from a caller-supplied tenant id. Return `null` for both a tenant
 the principal cannot access and one that does not exist. See [ADR 0021](../decisions/0021-registered-resolvers-mint-tenant-contexts.md).
+
+The embedding and dashboard-ops registrations do not install retries themselves. Pass their
+optional `IHttpClientBuilder` callback when your host has a resilience policy; the callback applies
+to every typed client registered by that call.
+
+Embedding failures are typed for HTTP mapping: `TransportException` usually maps to 502 or 503,
+`WorkspaceRejectedException` to 502, `NotPublishedException` to 404 or 409, and
+`TenantScopeMissingException` to 400. Do not expose the workspace response excerpt directly to a
+viewer; it is for server-side diagnostics.
 
 `TokenCredential` rather than a string, because Entra tokens expire within the hour and the
 credential is what knows how to get another one. An earlier version took a `GetToken()` string,

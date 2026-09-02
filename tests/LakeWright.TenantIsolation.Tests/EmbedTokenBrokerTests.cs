@@ -141,8 +141,50 @@ public class EmbedTokenBrokerTests : IDisposable
             Tenant(AcmeId), "dash-1", "viewer-7", TestContext.Current.CancellationToken);
 
         // Assert
-        var error = await act.ShouldThrowAsync<HttpRequestException>();
-        error.Message.ShouldContain("secret expired");
+        var error = await act.ShouldThrowAsync<WorkspaceRejectedException>();
+        error.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        error.BodyExcerpt.ShouldContain("secret expired");
+    }
+
+    [Fact]
+    public async Task A_network_failure_preserves_its_cause_in_a_transport_exception()
+    {
+        var broker = new DashboardTokenBroker(
+            new HttpClient(new ThrowingHandler()) { BaseAddress = new Uri("https://workspace.example/") },
+            Options.Create(new DashboardEmbeddingOptions
+            {
+                WorkspaceUrl = "https://workspace.example",
+                ClientId = "sp-id",
+                ClientSecret = "sp-secret",
+            }),
+            new FakeTimeProvider());
+
+        var error = await Should.ThrowAsync<TransportException>(() => broker.IssueAsync(
+            Tenant(AcmeId),
+            "dash-1",
+            "viewer-7",
+            TestContext.Current.CancellationToken));
+
+        error.InnerException.ShouldBeOfType<HttpRequestException>();
+    }
+
+    [Fact]
+    public async Task An_unpublished_dashboard_has_a_distinct_exception()
+    {
+        _workspace
+            .Given(Request.Create().WithPath("/oidc/v1/token").UsingPost())
+            .RespondWith(Response.Create()
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("""{"access_token":"a-token","expires_in":3600}"""));
+        var broker = Broker();
+
+        var error = await Should.ThrowAsync<NotPublishedException>(() => broker.IssueAsync(
+            Tenant(AcmeId),
+            "dash-unpublished",
+            "viewer-7",
+            TestContext.Current.CancellationToken));
+
+        error.DashboardId.ShouldBe("dash-unpublished");
     }
 
     private Dictionary<string, string> ScopedTokenForm()
@@ -196,4 +238,10 @@ public class EmbedTokenBrokerTests : IDisposable
 
     private static TenantContext Tenant(TenantId id) =>
         TenantContextFactory.ForTenant(id, "lakewright_dev", "analytics");
+
+    private sealed class ThrowingHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            throw new HttpRequestException("network unavailable");
+    }
 }

@@ -18,7 +18,8 @@ public static class EmbeddingServiceCollectionExtensions
     /// </remarks>
     public static IServiceCollection AddLakeWrightDashboardEmbedding(
         this IServiceCollection services,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        Action<IHttpClientBuilder>? configureClient = null)
     {
         // Validated by hand rather than by data annotations, which would mean a package reference
         // for three string checks. The messages name the setting, because "options validation
@@ -40,7 +41,7 @@ public static class EmbeddingServiceCollectionExtensions
         services.TryAddSingleton<IWorkspaceTokenCache>(sp => new MemoryWorkspaceTokenCache(sp.GetRequiredService<TimeProvider>()));
         services.TryAddSingleton<IEmbedTokenCache>(sp => new MemoryEmbedTokenCache(sp.GetRequiredService<TimeProvider>()));
 
-        services.AddHttpClient<IDashboardTokenBroker, DashboardTokenBroker>((provider, client) =>
+        var clientBuilder = services.AddHttpClient<IDashboardTokenBroker, DashboardTokenBroker>((provider, client) =>
         {
             var options = provider
                 .GetRequiredService<IOptions<DashboardEmbeddingOptions>>()
@@ -56,6 +57,7 @@ public static class EmbeddingServiceCollectionExtensions
             // exposure it looks like it closes. Query strings are redacted by default too, which is
             // what keeps external_viewer_id and external_value out of the logs.
         });
+        configureClient?.Invoke(clientBuilder);
 
         return services;
     }
@@ -78,7 +80,8 @@ public static class EmbeddingServiceCollectionExtensions
     /// </remarks>
     public static IServiceCollection AddLakeWrightDashboardOps(
         this IServiceCollection services,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        Action<IHttpClientBuilder>? configureClient = null)
     {
         services.AddOptions<DashboardOpsOptions>()
             .Bind(configuration.GetSection("DashboardOps"))
@@ -92,21 +95,23 @@ public static class EmbeddingServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IOpsTokenCache>(sp => new MemoryOpsTokenCache(sp.GetRequiredService<TimeProvider>()));
 
-        services.AddHttpClient<IOpsTokenBroker, OpsTokenBroker>((provider, client) =>
+        var tokenClientBuilder = services.AddHttpClient<IOpsTokenBroker, OpsTokenBroker>((provider, client) =>
         {
             var options = provider
                 .GetRequiredService<IOptions<DashboardOpsOptions>>()
                 .Value;
             client.BaseAddress = new Uri(options.WorkspaceUrl.TrimEnd('/') + "/");
         });
+        configureClient?.Invoke(tokenClientBuilder);
 
-        services.AddHttpClient<IDashboardCatalog, DashboardCatalog>((provider, client) =>
+        var catalogClientBuilder = services.AddHttpClient<IDashboardCatalog, DashboardCatalog>((provider, client) =>
         {
             var options = provider
                 .GetRequiredService<IOptions<DashboardOpsOptions>>()
                 .Value;
             client.BaseAddress = new Uri(options.WorkspaceUrl.TrimEnd('/') + "/");
         });
+        configureClient?.Invoke(catalogClientBuilder);
 
         return services;
     }
