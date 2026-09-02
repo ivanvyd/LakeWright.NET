@@ -38,14 +38,24 @@ public static class DashboardRefreshServiceCollectionExtensions
         });
         configureClient?.Invoke(builder);
         services.AddOptions<DashboardCacheBustOptions>();
+        services.AddOptions<DashboardPublishVerifierOptions>()
+            .Validate(options => options.CacheDuration > TimeSpan.Zero, "LakeWright:DashboardPublishVerifier:CacheDuration must be positive.")
+            .ValidateOnStart();
         var dashboardBuilder = services.AddHttpClient<IDashboardEditorApi, DatabricksDashboardEditorApi>((provider, client) =>
         {
             var options = provider.GetRequiredService<IOptions<DashboardOpsOptions>>().Value;
             client.BaseAddress = new Uri(options.WorkspaceUrl.TrimEnd('/') + "/");
         });
         configureClient?.Invoke(dashboardBuilder);
+        var verifierBuilder = services.AddHttpClient<IPublishVerificationApi, DatabricksPublishVerificationApi>((provider, client) =>
+        {
+            var options = provider.GetRequiredService<IOptions<DashboardOpsOptions>>().Value;
+            client.BaseAddress = new Uri(options.WorkspaceUrl.TrimEnd('/') + "/");
+        });
+        configureClient?.Invoke(verifierBuilder);
         services.AddSingleton<IDashboardRefresher, DashboardRefresher>();
         services.AddSingleton<IDashboardCacheBuster, DashboardCacheBuster>();
+        services.AddSingleton<IDashboardPublishVerifier, DashboardPublishVerifier>();
         return services;
     }
 }

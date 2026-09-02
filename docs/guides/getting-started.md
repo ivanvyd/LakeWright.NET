@@ -143,6 +143,14 @@ fresh read proves another replica wrote the exact same marker. It publishes with
 `embed_credentials: false` by default. Set `DashboardCacheBustOptions.EmbedCredentials` only when
 that credential model is an intentional, reviewed part of the dashboard deployment.
 
+`IDashboardPublishVerifier.HasUnpublishedChangesAsync` compares the draft's `update_time` with
+the published revision timestamp and caches that inexpensive metadata check briefly. The public
+Lakeview API does not return serialized SQL from its published-dashboard endpoint, so
+`VerifyServedRevisionAsync` deliberately reports that verification is unavailable until the host
+adds an `IPublishedDashboardDefinitionReader` for an authoritative published artifact. Register
+`PublishedRevisionEmbedPrecondition` with the token broker only when that reader is present; it
+then fails minting closed until `DashboardPublishGate` passes on the proved served definition.
+
 ## Configuration
 
 ```json

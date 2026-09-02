@@ -51,6 +51,7 @@ public sealed partial class DashboardTokenBroker : IDashboardTokenBroker
     private readonly IEmbedTokenCache? _embedCache;
     private readonly ILakeWrightFeatureGate _features;
     private readonly ILogger<DashboardTokenBroker> _logger;
+    private readonly IEmbedPrecondition? _precondition;
 
     public DashboardTokenBroker(
         HttpClient http,
@@ -59,7 +60,8 @@ public sealed partial class DashboardTokenBroker : IDashboardTokenBroker
         IWorkspaceTokenCache? workspaceCache = null,
         IEmbedTokenCache? embedCache = null,
         ILakeWrightFeatureGate? features = null,
-        ILogger<DashboardTokenBroker>? logger = null)
+        ILogger<DashboardTokenBroker>? logger = null,
+        IEmbedPrecondition? precondition = null)
     {
         _http = http;
         _options = options.Value;
@@ -68,6 +70,7 @@ public sealed partial class DashboardTokenBroker : IDashboardTokenBroker
         _embedCache = embedCache;
         _features = features ?? new AlwaysOnFeatureGate();
         _logger = logger ?? NullLogger<DashboardTokenBroker>.Instance;
+        _precondition = precondition;
     }
 
     public async Task<EmbedToken> IssueAsync(
@@ -77,6 +80,10 @@ public sealed partial class DashboardTokenBroker : IDashboardTokenBroker
         CancellationToken cancellationToken = default)
     {
         _features.EnsureEnabled(LakeWrightFeatures.Embedding);
+        if (_precondition is not null)
+        {
+            await _precondition.EnsureSatisfiedAsync(tenant, dashboardId, cancellationToken).ConfigureAwait(false);
+        }
         var startedAt = _time.GetTimestamp();
         var diagnostics = new MintDiagnostics();
         // ScopeVersion changes the external value so a scope change bypasses the vendor's

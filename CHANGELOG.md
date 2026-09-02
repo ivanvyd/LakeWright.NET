@@ -31,6 +31,12 @@ note.
   to `embed_credentials: false`; an optimistic-concurrency retry succeeds only when the same
   marker is already present.
 
+- `IEmbedPrecondition` is an opt-in broker seam. `IDashboardPublishVerifier` compares draft and
+  published revision metadata with a short cache; strict served-definition verification requires
+  an adopter-provided `IPublishedDashboardDefinitionReader`, because the public Lakeview published
+  endpoint does not expose serialized dashboard SQL. `PublishedRevisionEmbedPrecondition` fails
+  closed when that proof is unavailable or the published definition fails the publish gate.
+
 - `GenieAnswerSanitizer` removes model-supplied HTML and neutralizes markdown links by default.
   Hosts may opt in to exact HTTPS allow-list entries when their renderer is prepared to render
   those links.
