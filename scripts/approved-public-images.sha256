@@ -1,0 +1,12 @@
+# Raster files visually reviewed for public release. The hash is the approval unit.
+a35f7b3320877febdbc77b7a368deee2876d3b2d51fec5ea2455aca3d3e523b7  .codex/checklists/v1.1.0-whole-app-regression/01-home.png
+d69c717e2466dbcc081f8131ff148f96931a61f4fb5459cb44085f19673c9d2e  .codex/checklists/v1.1.0-whole-app-regression/02-signin.png
+fdb7d08a0cb066f278f93b98d1d79659ad00dfa13b8ed75bb4e511c99df1ea6e  .codex/checklists/v1.1.0-whole-app-regression/03-dashboard-admin.png
+acbcc8425ad528d49cc86560dad26f452ac0278ac7801f4d7ceb061cd53a83f5  .codex/checklists/v1.1.0-whole-app-regression/04-dashboard-dark.png
+c3533740901ef13bd661ea8c52aa5aceb0798c3a84ac05b5a467eb611fc957a2  .codex/checklists/v1.1.0-whole-app-regression/05-dashboard-mobile.png
+25570e83b4cc22761077628e62c10fc43b1346a4e2f088ad5f9fa0047e3107db  .codex/checklists/v1.1.0-whole-app-regression/06-dashboard-viewer.png
+dcfc79991a88474425ff58f837261ce7454d6a3e9609b1c31e9ec484af56542e  .codex/checklists/v1.1.0-whole-app-regression/07-dashboard-other-tenant.png
+b29c803efe619b5702a6b60955b8cdbcf32dc4801c43b2f54c6f87f17ca93324  docs/images/signalboard-dashboard-dark.png
+e3083dd73a10147ee555d5f57f0cc1586a170de9623e6741fcd968cfa89a3f70  docs/images/signalboard-dashboard.png
+b99def2fe3d18a47ced9f7dd45b41f42d6e331bf6bd704ec5a6a4097b4fca94e  docs/images/signalboard-mobile.png
+f12ac730148219bfcf071d4ad4c8d62c4ae1377b4edb6a921d4f8c85a695272c  docs/images/signalboard-viewer-denied.png
