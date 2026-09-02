@@ -1,3 +1,4 @@
+using System.Text.Json;
 using LakeWright.Core.Sql;
 
 namespace LakeWright.Embedding;
@@ -83,6 +84,73 @@ public static class DashboardPublishGate
         }
         return PublishGateVerdict.Pass(allHits);
     }
+
+    /// <summary>
+    /// Inspects every dataset in a serialized Lakeview dashboard definition.
+    /// </summary>
+    /// <remarks>
+    /// A dashboard is publishable only when every dataset contains an executable reference to
+    /// <see cref="ExternalValueColumn"/>. Invalid JSON, a missing dataset array, and datasets with
+    /// empty SQL fail closed because none of those shapes prove tenant filtering.
+    /// </remarks>
+    public static DashboardPublishGateVerdict InspectDashboard(string? serializedDashboard)
+    {
+        if (string.IsNullOrWhiteSpace(serializedDashboard))
+        {
+            return DashboardPublishGateVerdict.Fail("Serialized dashboard JSON is empty.");
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(serializedDashboard);
+            if (!document.RootElement.TryGetProperty("datasets", out var datasets) ||
+                datasets.ValueKind != JsonValueKind.Array ||
+                datasets.GetArrayLength() == 0)
+            {
+                return DashboardPublishGateVerdict.Fail("Dashboard has no datasets.");
+            }
+
+            var results = new List<DatasetPublishGateVerdict>();
+            for (var index = 0; index < datasets.GetArrayLength(); index++)
+            {
+                var dataset = datasets[index];
+                var name = dataset.TryGetProperty("name", out var nameElement) &&
+                    nameElement.ValueKind == JsonValueKind.String &&
+                    !string.IsNullOrWhiteSpace(nameElement.GetString())
+                    ? nameElement.GetString()!
+                    : "(unnamed)";
+                var verdict = InspectDataset(ReadDatasetSql(dataset), index);
+                results.Add(new DatasetPublishGateVerdict(index, name, verdict));
+            }
+
+            var failed = results.FirstOrDefault(result => !result.Verdict.Passed);
+            return failed is null
+                ? DashboardPublishGateVerdict.Pass(results)
+                : DashboardPublishGateVerdict.Fail(
+                    $"Dataset #{failed.DatasetIndex + 1} ({failed.Name}): {failed.Verdict.Reason}",
+                    results);
+        }
+        catch (JsonException)
+        {
+            return DashboardPublishGateVerdict.Fail("Serialized dashboard JSON is invalid.");
+        }
+    }
+
+    private static string? ReadDatasetSql(JsonElement dataset)
+    {
+        if (dataset.TryGetProperty("queryLines", out var lines) && lines.ValueKind == JsonValueKind.Array)
+        {
+            return string.Join(
+                Environment.NewLine,
+                lines.EnumerateArray()
+                    .Where(line => line.ValueKind == JsonValueKind.String)
+                    .Select(line => line.GetString()));
+        }
+
+        return dataset.TryGetProperty("query", out var query) && query.ValueKind == JsonValueKind.String
+            ? query.GetString()
+            : null;
+    }
 }
 
 /// <summary>
@@ -112,3 +180,21 @@ public sealed record PublishGateVerdict(
 /// <param name="DatasetIndex">Zero-based index of the dataset the hit belongs to.</param>
 /// <param name="Offset">Zero-based byte offset in the dataset SQL.</param>
 public sealed record MarkerHit(int DatasetIndex, int Offset);
+
+/// <summary>A publish-gate verdict for a complete serialized dashboard definition.</summary>
+public sealed record DashboardPublishGateVerdict(
+    bool Passed,
+    string Reason,
+    IReadOnlyList<DatasetPublishGateVerdict> Datasets)
+{
+    internal static DashboardPublishGateVerdict Pass(IReadOnlyList<DatasetPublishGateVerdict> datasets) =>
+        new(true, string.Empty, datasets);
+
+    internal static DashboardPublishGateVerdict Fail(
+        string reason,
+        IReadOnlyList<DatasetPublishGateVerdict>? datasets = null) =>
+        new(false, reason, datasets ?? Array.Empty<DatasetPublishGateVerdict>());
+}
+
+/// <summary>The name, index, and safety verdict for one serialized dashboard dataset.</summary>
+public sealed record DatasetPublishGateVerdict(int DatasetIndex, string Name, PublishGateVerdict Verdict);
