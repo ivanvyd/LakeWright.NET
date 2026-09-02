@@ -216,8 +216,9 @@ jobs:
     if: github.actor == github.repository_owner
     runs-on: ubuntu-latest
     # NuGet can acknowledge an upload before its public flat-container index has
-    # caught up. Leave time to verify that a clean consumer can discover it.
-    timeout-minutes: 25
+    # caught up. Its documented validation and indexing window is up to an hour,
+    # so leave time to verify that a clean consumer can discover it.
+    timeout-minutes: 75
     defaults:
       run:
         working-directory: candidate
@@ -356,7 +357,9 @@ jobs:
             packages+=("${package%.$VERSION.nupkg}")
           done < <(find artifacts -maxdepth 1 -type f -name '*.nupkg' -printf '%f\n' | sort)
 
-          for attempt in $(seq 1 10); do
+          # NuGet documents validation and indexing as taking up to one hour. Poll
+          # the endpoint a fresh restore consumes throughout that full window.
+          for attempt in $(seq 1 60); do
             missing=()
             for package in "${packages[@]}"; do
               package_id=${package,,}
@@ -373,8 +376,10 @@ jobs:
               exit 0
             fi
 
-            echo "Attempt $attempt: waiting for NuGet indexing of: ${missing[*]}"
-            sleep 60
+            echo "Attempt $attempt of 60: waiting for NuGet indexing of: ${missing[*]}"
+            if [ "$attempt" -lt 60 ]; then
+              sleep 60
+            fi
           done
 
-          echo "::warning::NuGet accepted the upload, but the public flat-container index did not list $VERSION within ten minutes. Missing: ${missing[*]}"
+          echo "::warning::NuGet accepted the upload, but the public flat-container index did not list $VERSION within its documented one-hour validation window. Missing: ${missing[*]}"
