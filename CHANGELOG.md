@@ -18,6 +18,12 @@ note.
   process-local, so multi-replica applications must replace `IConversationOwnership` with shared
   durable storage before enabling follow-ups.
 
+### Added
+
+- `GenieAnswerSanitizer` removes model-supplied HTML and neutralizes markdown links by default.
+  Hosts may opt in to exact HTTPS allow-list entries when their renderer is prepared to render
+  those links.
+
 ## [1.2.1] — 2026-09-02
 
 ### Security
