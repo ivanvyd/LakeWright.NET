@@ -45,7 +45,6 @@
          2026.0.0. The vulnerable-package gate in CI caught it, which is the
          whole reason that gate exists. -->
     <PackageVersion Include="SSH.NET" Version="2026.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.11" />
     <!-- Pinned for the net8.0 polyfill of TimeProvider/TimeProvider.System, which the runtime
          does not ship. .NET 8 is an LTS the embedding package explicitly multi-targets so a
          non-ASP.NET consumer on a lower LTS can adopt it; the BCL has the type on net8.0 but
@@ -63,6 +62,8 @@
     <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.Caching.Abstractions" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.11" />
   </ItemGroup>
 
   <ItemGroup Label="Extensions (net8.0 floor)" Condition="'$(TargetFramework)' == 'net8.0'">
@@ -75,6 +76,8 @@
     <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="8.0.0" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
     <PackageVersion Include="Microsoft.Extensions.Caching.Abstractions" Version="8.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="8.0.1" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.1" />
   </ItemGroup>
 
   <ItemGroup Label="Testing">

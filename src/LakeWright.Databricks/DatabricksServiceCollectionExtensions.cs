@@ -90,6 +90,7 @@ public static class DatabricksServiceCollectionExtensions
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<ILakeWrightFeatureGate>()));
         services.AddScoped<IJobSubmitter, DatabricksJobSubmitter>();
+        services.AddSingleton<IWarehouseReadinessProbe, DatabricksWarehouseReadinessProbe>();
 
         return services;
     }

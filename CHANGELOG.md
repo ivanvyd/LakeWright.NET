@@ -20,6 +20,10 @@ note.
 
 ### Added
 
+- New `LakeWright.HealthChecks` supplies readiness checks for the cached first OAuth token leg and
+  non-billable warehouse-state reads. A statement probe is excluded by default and requires a
+  host-provided `IReadinessStatementProbe`, so a health endpoint cannot accidentally wake compute.
+
 - New `LakeWright.Embedding.Ops` adds tenant-bound, ops-principal dashboard refresh orchestration
   over Jobs API 2.2. It joins only an active run whose recorded job parameters identify the same
   tenant, applies a minimum-success interval, uses opaque bucketed idempotency tokens across

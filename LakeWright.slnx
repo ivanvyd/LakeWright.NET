@@ -10,6 +10,7 @@
     <Project Path="src/LakeWright.Core/LakeWright.Core.csproj" />
     <Project Path="src/LakeWright.Embedding/LakeWright.Embedding.csproj" />
     <Project Path="src/LakeWright.Embedding.Ops/LakeWright.Embedding.Ops.csproj" />
+    <Project Path="src/LakeWright.HealthChecks/LakeWright.HealthChecks.csproj" />
     <Project Path="src/LakeWright.Databricks/LakeWright.Databricks.csproj" />
     <Project Path="src/LakeWright.Databricks.RawData/LakeWright.Databricks.RawData.csproj" />
     <Project Path="src/LakeWright.Multitenancy/LakeWright.Multitenancy.csproj" />

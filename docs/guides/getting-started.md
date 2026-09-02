@@ -164,6 +164,14 @@ configured interval per warehouse and never reads a statement result. The in-mem
 appropriate for one process. Replace `IWarehouseWarmLimiter` in a multi-replica application if a
 single cross-replica warm rate is required.
 
+### Readiness checks
+
+After registering embedding and Databricks, add the opt-in readiness checks with
+`builder.Services.AddHealthChecks().AddLakeWrightHealthChecks()`. They prove only the cached
+workspace-token leg and a read-only warehouse-state call. The billable statement check is absent
+unless the host explicitly enables it and registers `IReadinessStatementProbe`; that probe owns
+the resolved tenant context and approved `SELECT 1` statement.
+
 ### Raw-data grids
 
 `LakeWright.Databricks.RawData` turns a trusted `RawDataSource` definition into one
