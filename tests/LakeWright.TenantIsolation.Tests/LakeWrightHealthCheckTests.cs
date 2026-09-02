@@ -40,17 +40,15 @@ public sealed class LakeWrightHealthCheckTests
     private static ServiceCollection Services()
     {
         var services = new ServiceCollection();
-        services.AddSingleton<IDashboardTokenBroker, ReadyBroker>();
+        services.AddSingleton<IWorkspaceTokenProbe, ReadyBroker>();
         services.AddSingleton<IWarehouseReadinessProbe, ReadyWarehouse>();
         return services;
     }
 
-    private sealed class ReadyBroker : IDashboardTokenBroker
+    private sealed class ReadyBroker : IWorkspaceTokenProbe
     {
         public Task ProbeWorkspaceTokenAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-        public Task<EmbedToken> IssueAsync(TenantContext tenant, string dashboardId, string viewerId, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
     }
 
     private sealed class ReadyWarehouse : IWarehouseReadinessProbe

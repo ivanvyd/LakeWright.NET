@@ -36,7 +36,7 @@ namespace LakeWright.Embedding;
 /// produce a token that is valid and wrongly scoped.
 /// </para>
 /// </remarks>
-public sealed partial class DashboardTokenBroker : IDashboardTokenBroker
+public sealed partial class DashboardTokenBroker : IDashboardTokenBroker, IWorkspaceTokenProbe
 {
     /// <summary>
     /// Databricks documents this ceiling on the two values combined. Exceeding it fails the

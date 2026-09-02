@@ -41,7 +41,7 @@ public static class LakeWrightHealthCheckServiceCollectionExtensions
     }
 }
 
-internal sealed class WorkspaceTokenHealthCheck(IDashboardTokenBroker broker) : IHealthCheck
+internal sealed class WorkspaceTokenHealthCheck(IWorkspaceTokenProbe broker) : IHealthCheck
 {
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {

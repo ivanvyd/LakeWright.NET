@@ -60,6 +60,8 @@ public static class EmbeddingServiceCollectionExtensions
             // what keeps external_viewer_id and external_value out of the logs.
         });
         configureClient?.Invoke(clientBuilder);
+        services.TryAddTransient<IWorkspaceTokenProbe>(provider =>
+            (IWorkspaceTokenProbe)provider.GetRequiredService<IDashboardTokenBroker>());
 
         return services;
     }
