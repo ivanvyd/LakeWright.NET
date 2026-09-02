@@ -4,7 +4,7 @@ on:
   # repository_dispatch always loads this workflow from the default branch.
   # A branch copy cannot grant itself release permissions or bypass the gates.
   repository_dispatch:
-    types: [release, unlist-package-history]
+    types: [release]
 
 permissions:
   contents: read
@@ -13,7 +13,7 @@ jobs:
   build-release-candidate:
     # Creating a repository_dispatch event requires write access. Release authority is narrower:
     # only the repository owner's event is allowed to acquire write and OIDC permissions.
-    if: github.event.action == 'release' && github.actor == github.repository_owner
+    if: github.actor == github.repository_owner
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -333,46 +333,3 @@ jobs:
           if grep -qi 'already exists\|conflict' push.log; then
             echo "::warning::At least one package already existed on nuget.org and was not republished."
           fi
-
-  # Temporary owner-only remediation for immutable package versions whose historical contents
-  # must no longer appear in normal nuget.org search or version listings. The exact version list
-  # is intentionally fixed so a dispatch payload cannot select an arbitrary package or version.
-  unlist-package-history:
-    if: >-
-      github.event.action == 'unlist-package-history' &&
-      github.actor == github.repository_owner &&
-      github.event.client_payload.confirmation == 'UNLIST_AFFECTED_HISTORY'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - name: Check out the trusted workflow revision
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
-        with:
-          global-json-file: global.json
-
-      - name: Exchange an OIDC token for a short-lived NuGet key
-        id: nuget-login
-        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
-        with:
-          user: ${{ vars.NUGET_USER }}
-
-      - name: Unlist affected package history
-        env:
-          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -n "$NUGET_API_KEY"
-          for version in 1.0.0 1.0.1 1.1.0 1.1.1; do
-            dotnet nuget delete LakeWright.Embedding "$version" \
-              --source https://api.nuget.org/v3/index.json \
-              --api-key "$NUGET_API_KEY" \
-              --non-interactive
-          done
