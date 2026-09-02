@@ -15,8 +15,9 @@ A `Documented` row is not promoted to `Verified` by a stable version number; the
 records the work that has been done, not a claim about future work.
 
 The current package-publication and consumer evidence is in the
-[1.2.0 release evidence](release-evidence/v1.2.0.md). Earlier evidence remains available for
-[1.1.1](release-evidence/v1.1.1.md) and [1.1.0](release-evidence/v1.1.0.md).
+[2.0.0 release evidence](release-evidence/v2.0.0.md). Earlier evidence remains available for
+[1.2.0](release-evidence/v1.2.0.md), [1.1.1](release-evidence/v1.1.1.md), and
+[1.1.0](release-evidence/v1.1.0.md).
 
 ## Legend
 
