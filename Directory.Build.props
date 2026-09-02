@@ -54,7 +54,7 @@
 
     <!-- The release workflow overrides this from the tag, so a package can never claim a
          version the tag does not; this value is what a local `dotnet pack` produces. -->
-    <VersionPrefix>1.2.0</VersionPrefix>
+    <VersionPrefix>1.2.1</VersionPrefix>
     <Copyright>Copyright (c) LakeWright.NET contributors</Copyright>
   </PropertyGroup>
 
