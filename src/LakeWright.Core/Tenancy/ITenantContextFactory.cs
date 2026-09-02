@@ -21,5 +21,6 @@ public interface ITenantContextFactory
         string catalog,
         string schema,
         string? scopeVersion = null,
-        string tenantParameter = "tenant_id");
+        string tenantParameter = "tenant_id",
+        string? scopeStrategyName = null);
 }

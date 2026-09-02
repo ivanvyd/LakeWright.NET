@@ -39,6 +39,7 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
     private readonly DatabricksOptions _options;
     private readonly HttpClient _http;
     private readonly ILogger<DatabricksTenantScopedExport> _logger;
+    private readonly ITenantScopeStrategyResolver _scopeStrategies;
 
     public DatabricksTenantScopedExport(
         DatabricksClient client,
@@ -50,18 +51,21 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
         _options = options.Value;
         _http = http;
         _logger = logger;
+        _scopeStrategies = new DefaultTenantScopeStrategyResolver();
     }
 
     internal DatabricksTenantScopedExport(
         IDatabricksStatementSession session,
         DatabricksOptions options,
         HttpClient http,
-        ILogger<DatabricksTenantScopedExport> logger)
+        ILogger<DatabricksTenantScopedExport> logger,
+        ITenantScopeStrategyResolver? scopeStrategies = null)
     {
         _session = session;
         _options = options;
         _http = http;
         _logger = logger;
+        _scopeStrategies = scopeStrategies ?? new DefaultTenantScopeStrategyResolver();
     }
 
     public async IAsyncEnumerable<ExportRow> StreamAsync(
@@ -70,13 +74,16 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
     {
         ArgumentNullException.ThrowIfNull(statement.Tenant);
 
+        var scoped = statement.Tenant.Location is TenantLocation.SharedSchema
+            ? statement.ScopedForExecution(_scopeStrategies.Resolve(statement.Tenant))
+            : new ScopedStatementForExecution(statement.Sql, statement.Parameters);
         var request = new SqlStatement
         {
             WarehouseId = _options.WarehouseId,
             Catalog = statement.Tenant.Catalog,
             Schema = statement.Tenant.Schema,
-            Statement = statement.SqlForExecution(),
-            Parameters = [.. statement.ParametersForExecution().Select(p => new SqlStatementParameter
+            Statement = scoped.Sql,
+            Parameters = [.. scoped.Parameters.Select(p => new SqlStatementParameter
             {
                 Name = p.Name,
                 Value = p.Value,

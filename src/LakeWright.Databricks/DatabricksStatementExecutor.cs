@@ -12,6 +12,7 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
 {
     private readonly IDatabricksStatementSession _session;
     private readonly DatabricksOptions _options;
+    private readonly ITenantScopeStrategyResolver _scopeStrategies;
 
     public DatabricksStatementExecutor(
         Microsoft.Azure.Databricks.Client.DatabricksClient client,
@@ -23,10 +24,12 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
 
     internal DatabricksStatementExecutor(
         IDatabricksStatementSession session,
-        DatabricksOptions options)
+        DatabricksOptions options,
+        ITenantScopeStrategyResolver? scopeStrategies = null)
     {
         _session = session;
         _options = options;
+        _scopeStrategies = scopeStrategies ?? new DefaultTenantScopeStrategyResolver();
     }
 
     public async Task<StatementOutcome> ExecuteAsync(
@@ -38,6 +41,9 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
         // NullReferenceException three lines down, which reads as a bug in the wrong place.
         ArgumentNullException.ThrowIfNull(statement.Tenant);
 
+        var scoped = statement.Tenant.Location is Core.Tenancy.TenantLocation.SharedSchema
+            ? statement.ScopedForExecution(_scopeStrategies.Resolve(statement.Tenant))
+            : new ScopedStatementForExecution(statement.Sql, statement.Parameters);
         var request = new SqlStatement
         {
             WarehouseId = _options.WarehouseId,
@@ -46,8 +52,8 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
             Catalog = statement.Tenant.Catalog,
             Schema = statement.Tenant.Schema,
 
-            Statement = statement.SqlForExecution(),
-            Parameters = [.. statement.ParametersForExecution().Select(p => new SqlStatementParameter
+            Statement = scoped.Sql,
+            Parameters = [.. scoped.Parameters.Select(p => new SqlStatementParameter
             {
                 Name = p.Name,
                 Value = p.Value,

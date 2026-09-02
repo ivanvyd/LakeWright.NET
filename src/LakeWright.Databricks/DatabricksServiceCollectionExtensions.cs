@@ -28,6 +28,9 @@ public static class DatabricksServiceCollectionExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        services.AddKeyedSingleton<ITenantScopeStrategy>(ProjectedColumnScope.DefaultName, new ProjectedColumnScope());
+        services.AddScoped<ITenantScopeStrategyResolver, TenantScopeStrategyResolver>();
+
         // Resolve this after the composition root is complete. Capturing the service collection
         // here would let a TokenCredential registered later bypass the ambiguity check.
         services.AddSingleton<IValidateOptions<DatabricksOptions>>(provider =>
@@ -62,11 +65,50 @@ public static class DatabricksServiceCollectionExtensions
         });
 
         services.AddScoped<ITenantSchemaProvisioner, DatabricksSchemaProvisioner>();
-        services.AddScoped<IStatementExecutor, DatabricksStatementExecutor>();
-        services.AddHttpClient<ITenantScopedExport, DatabricksTenantScopedExport>();
+        services.AddScoped<IStatementExecutor>(provider => new DatabricksStatementExecutor(
+            new DatabricksStatementSession(
+                provider.GetRequiredService<Microsoft.Azure.Databricks.Client.DatabricksClient>(),
+                provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DatabricksStatementExecutor>>()),
+            provider.GetRequiredService<IOptions<DatabricksOptions>>().Value,
+            provider.GetRequiredService<ITenantScopeStrategyResolver>()));
+        services.AddHttpClient("LakeWright.Databricks.Export");
+        services.AddScoped<ITenantScopedExport>(provider => new DatabricksTenantScopedExport(
+            new DatabricksStatementSession(
+                provider.GetRequiredService<Microsoft.Azure.Databricks.Client.DatabricksClient>(),
+                provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DatabricksTenantScopedExport>>()),
+            provider.GetRequiredService<IOptions<DatabricksOptions>>().Value,
+            provider.GetRequiredService<IHttpClientFactory>().CreateClient("LakeWright.Databricks.Export"),
+            provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DatabricksTenantScopedExport>>(),
+            provider.GetRequiredService<ITenantScopeStrategyResolver>()));
         services.AddScoped<IJobSubmitter, DatabricksJobSubmitter>();
 
         return services;
+    }
+
+    /// <summary>
+    /// Registers a named tenant-scoping strategy selected only by a resolved shared-tenant
+    /// context. Request code never supplies the strategy name.
+    /// </summary>
+    public static IServiceCollection AddLakeWrightTenantScopeStrategy(
+        this IServiceCollection services,
+        string name,
+        ITenantScopeStrategy strategy)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentNullException.ThrowIfNull(strategy);
+        services.AddKeyedSingleton<ITenantScopeStrategy>(name, strategy);
+        return services;
+    }
+
+    /// <summary>Registers the shipped mapping-table strategy under its configured name.</summary>
+    public static IServiceCollection AddLakeWrightScopeTableScope(
+        this IServiceCollection services,
+        ScopeTableScopeOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(options);
+        return services.AddLakeWrightTenantScopeStrategy(options.StrategyName, new ScopeTableScope(options));
     }
 
     private static void TryAddSingletonTimeProvider(IServiceCollection services)
