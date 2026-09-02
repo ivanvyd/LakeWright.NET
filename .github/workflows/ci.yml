@@ -89,8 +89,11 @@ jobs:
           set -euo pipefail
           if [ "$EVENT_NAME" = "pull_request" ]; then
             export CONFIDENTIAL_GIT_RANGE="$BASE_SHA..$HEAD_SHA"
-          elif [[ "$BEFORE_SHA" =~ ^0+$ ]]; then
-            export CONFIDENTIAL_GIT_RANGE="HEAD^..HEAD"
+          elif [[ "$BEFORE_SHA" =~ ^0+$ ]] || ! git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
+            # A new branch or rewritten history has no trustworthy public base. Scan every
+            # reachable commit instead of either failing on a missing object or checking only
+            # the tip and allowing older newly-public commits to bypass the gate.
+            export CONFIDENTIAL_GIT_RANGE="HEAD"
           else
             export CONFIDENTIAL_GIT_RANGE="$BEFORE_SHA..$HEAD_SHA"
           fi
