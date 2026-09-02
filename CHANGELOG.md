@@ -24,6 +24,10 @@ note.
   Hosts may opt in to exact HTTPS allow-list entries when their renderer is prepared to render
   those links.
 
+- `StatementOptions` now also governs tenant-scoped exports: an export whose initial submission is
+  pending polls through the same bounded terminal-state path as an interactive statement before it
+  begins fetching external links.
+
 ## [1.2.1] — 2026-09-02
 
 ### Security

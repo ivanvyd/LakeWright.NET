@@ -80,7 +80,8 @@ public static class DatabricksServiceCollectionExtensions
             provider.GetRequiredService<IOptions<DatabricksOptions>>().Value,
             provider.GetRequiredService<IHttpClientFactory>().CreateClient("LakeWright.Databricks.Export"),
             provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DatabricksTenantScopedExport>>(),
-            provider.GetRequiredService<ITenantScopeStrategyResolver>()));
+            provider.GetRequiredService<ITenantScopeStrategyResolver>(),
+            provider.GetRequiredService<TimeProvider>()));
         services.AddScoped<IJobSubmitter, DatabricksJobSubmitter>();
 
         return services;

@@ -15,6 +15,7 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
     private readonly DatabricksOptions _options;
     private readonly ITenantScopeStrategyResolver _scopeStrategies;
     private readonly TimeProvider _time;
+    private readonly StatementTerminalPoller _poller;
 
     public DatabricksStatementExecutor(
         Microsoft.Azure.Databricks.Client.DatabricksClient client,
@@ -34,6 +35,7 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
         _options = options;
         _scopeStrategies = scopeStrategies ?? new DefaultTenantScopeStrategyResolver();
         _time = time ?? TimeProvider.System;
+        _poller = new StatementTerminalPoller(_session, _time);
     }
 
     public async Task<StatementOutcome> ExecuteAsync(
@@ -95,7 +97,7 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
         {
             var outcome = await _session.ExecuteAsync(request, statement.Tenant.TenantId, cancellationToken);
             outcome = execution.OnWaitTimeout == SqlStatementOnWaitTimeout.CONTINUE
-                ? await PollToTerminalAsync(statement.Tenant, outcome, startedAt, execution, cancellationToken).ConfigureAwait(false)
+                ? await _poller.PollAsync(statement.Tenant, outcome, startedAt, execution, cancellationToken).ConfigureAwait(false)
                 : outcome;
             RecordOutcome(outcome, execution.Kind, startedAt);
             return outcome;
@@ -131,29 +133,6 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
     {
         ArgumentNullException.ThrowIfNull(tenant);
         return _session.CancelAsync(statementId, cancellationToken);
-    }
-
-    private async Task<StatementOutcome> PollToTerminalAsync(
-        Core.Tenancy.TenantContext tenant,
-        StatementOutcome outcome,
-        DateTimeOffset startedAt,
-        StatementOptions execution,
-        CancellationToken cancellationToken)
-    {
-        while (outcome is StatementOutcome.Pending pending)
-        {
-            var remaining = execution.TotalBudget - (_time.GetUtcNow() - startedAt);
-            if (remaining <= TimeSpan.Zero)
-            {
-                throw new StatementBudgetExceededException(pending.StatementId, execution.TotalBudget);
-            }
-
-            var delay = execution.PollInterval < remaining ? execution.PollInterval : remaining;
-            await Task.Delay(delay, _time, cancellationToken).ConfigureAwait(false);
-            outcome = await _session.GetAsync(tenant.TenantId, pending.StatementId, cancellationToken).ConfigureAwait(false);
-        }
-
-        return outcome;
     }
 
     private void RecordOutcome(StatementOutcome outcome, string kind, DateTimeOffset startedAt)

@@ -40,6 +40,8 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
     private readonly HttpClient _http;
     private readonly ILogger<DatabricksTenantScopedExport> _logger;
     private readonly ITenantScopeStrategyResolver _scopeStrategies;
+    private readonly TimeProvider _time;
+    private readonly StatementTerminalPoller _poller;
 
     public DatabricksTenantScopedExport(
         DatabricksClient client,
@@ -52,6 +54,8 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
         _http = http;
         _logger = logger;
         _scopeStrategies = new DefaultTenantScopeStrategyResolver();
+        _time = TimeProvider.System;
+        _poller = new StatementTerminalPoller(_session, _time);
     }
 
     internal DatabricksTenantScopedExport(
@@ -59,13 +63,16 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
         DatabricksOptions options,
         HttpClient http,
         ILogger<DatabricksTenantScopedExport> logger,
-        ITenantScopeStrategyResolver? scopeStrategies = null)
+        ITenantScopeStrategyResolver? scopeStrategies = null,
+        TimeProvider? time = null)
     {
         _session = session;
         _options = options;
         _http = http;
         _logger = logger;
         _scopeStrategies = scopeStrategies ?? new DefaultTenantScopeStrategyResolver();
+        _time = time ?? TimeProvider.System;
+        _poller = new StatementTerminalPoller(_session, _time);
     }
 
     public async IAsyncEnumerable<ExportRow> StreamAsync(
@@ -73,6 +80,14 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(statement.Tenant);
+
+        var execution = statement.Options ?? _options.Statement ?? new StatementOptions
+        {
+            WaitTimeout = _options.WaitTimeout,
+            Disposition = SqlStatementDisposition.EXTERNAL_LINKS,
+        };
+        execution.Validate();
+        var startedAt = _time.GetUtcNow();
 
         var scoped = statement.Tenant.Location is TenantLocation.SharedSchema
             ? statement.ScopedForExecution(_scopeStrategies.Resolve(statement.Tenant))
@@ -97,14 +112,17 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
             // { "data_array": [[...]] } envelope as its INLINE response.
             Disposition = SqlStatementDisposition.EXTERNAL_LINKS,
             Format = StatementFormat.JSON_ARRAY,
-            WaitTimeout = _options.WaitTimeout,
-            OnWaitTimeout = SqlStatementOnWaitTimeout.CONTINUE
+            WaitTimeout = execution.WaitTimeout,
+            OnWaitTimeout = execution.OnWaitTimeout
         };
 
         var outcome = await _session.ExecuteAsync(
             request,
             statement.Tenant.TenantId,
             cancellationToken).ConfigureAwait(false);
+        outcome = execution.OnWaitTimeout == SqlStatementOnWaitTimeout.CONTINUE
+            ? await _poller.PollAsync(statement.Tenant, outcome, startedAt, execution, cancellationToken).ConfigureAwait(false)
+            : outcome;
 
         if (outcome is StatementOutcome.Failure failure)
         {
@@ -120,9 +138,8 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
         if (outcome is StatementOutcome.Pending)
         {
             throw new InvalidOperationException(
-                "Databricks returned a still-running statement; the export is not a polling surface. " +
-                "Use IStatementExecutor.ExecuteAsync and poll the returned statement id, then call " +
-                "ITenantScopedExport.StreamAsync with a shorter statement or longer WaitTimeout.");
+                "Databricks returned a still-running statement after export polling was disabled. " +
+                "Use StatementOptions.OnWaitTimeout=CONTINUE, or cancel and retry the export.");
         }
 
         if (outcome is not StatementOutcome.LargeResult result)
