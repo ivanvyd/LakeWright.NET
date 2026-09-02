@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using LakeWright.Core.Tenancy;
+using LakeWright.Core.Features;
 using Microsoft.Extensions.Options;
 
 namespace LakeWright.Embedding;
@@ -43,19 +44,22 @@ public sealed class DashboardTokenBroker : IDashboardTokenBroker
     private readonly TimeProvider _time;
     private readonly IWorkspaceTokenCache? _workspaceCache;
     private readonly IEmbedTokenCache? _embedCache;
+    private readonly ILakeWrightFeatureGate _features;
 
     public DashboardTokenBroker(
         HttpClient http,
         IOptions<DashboardEmbeddingOptions> options,
         TimeProvider time,
         IWorkspaceTokenCache? workspaceCache = null,
-        IEmbedTokenCache? embedCache = null)
+        IEmbedTokenCache? embedCache = null,
+        ILakeWrightFeatureGate? features = null)
     {
         _http = http;
         _options = options.Value;
         _time = time;
         _workspaceCache = workspaceCache;
         _embedCache = embedCache;
+        _features = features ?? new AlwaysOnFeatureGate();
     }
 
     public async Task<EmbedToken> IssueAsync(
@@ -64,6 +68,7 @@ public sealed class DashboardTokenBroker : IDashboardTokenBroker
         string viewerId,
         CancellationToken cancellationToken = default)
     {
+        _features.EnsureEnabled(LakeWrightFeatures.Embedding);
         // ScopeVersion changes the external value so a scope change bypasses the vendor's
         // cached filter. See docs/decisions/0017-scope-version.md for the delimiter contract.
         var externalValue = string.IsNullOrEmpty(tenant.ScopeVersion)

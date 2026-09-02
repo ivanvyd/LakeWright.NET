@@ -1,6 +1,7 @@
 using Azure.Core;
 using LakeWright.Core.Jobs;
 using LakeWright.Core.Tenancy;
+using LakeWright.Core.Features;
 using Microsoft.Azure.Databricks.Client;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -37,6 +38,10 @@ public static class DatabricksServiceCollectionExtensions
             new DatabricksCredentialOptionsValidator(provider.GetService<TokenCredential>() is not null));
 
         TryAddSingletonTimeProvider(services);
+        if (!services.Any(descriptor => descriptor.ServiceType == typeof(ILakeWrightFeatureGate)))
+        {
+            services.AddSingleton<ILakeWrightFeatureGate, AlwaysOnFeatureGate>();
+        }
         services.AddHttpClient("LakeWright.Databricks.Credentials", (provider, client) =>
         {
             var options = provider.GetRequiredService<IOptions<DatabricksOptions>>().Value;
@@ -71,7 +76,8 @@ public static class DatabricksServiceCollectionExtensions
                 provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DatabricksStatementExecutor>>()),
             provider.GetRequiredService<IOptions<DatabricksOptions>>().Value,
             provider.GetRequiredService<ITenantScopeStrategyResolver>(),
-            provider.GetRequiredService<TimeProvider>()));
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetRequiredService<ILakeWrightFeatureGate>()));
         services.AddHttpClient("LakeWright.Databricks.Export");
         services.AddScoped<ITenantScopedExport>(provider => new DatabricksTenantScopedExport(
             new DatabricksStatementSession(
@@ -81,7 +87,8 @@ public static class DatabricksServiceCollectionExtensions
             provider.GetRequiredService<IHttpClientFactory>().CreateClient("LakeWright.Databricks.Export"),
             provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DatabricksTenantScopedExport>>(),
             provider.GetRequiredService<ITenantScopeStrategyResolver>(),
-            provider.GetRequiredService<TimeProvider>()));
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetRequiredService<ILakeWrightFeatureGate>()));
         services.AddScoped<IJobSubmitter, DatabricksJobSubmitter>();
 
         return services;

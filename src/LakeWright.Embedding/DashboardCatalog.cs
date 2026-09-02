@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
+using LakeWright.Core.Features;
 using Microsoft.Extensions.Options;
 
 namespace LakeWright.Embedding;
@@ -26,11 +27,16 @@ public sealed class DashboardCatalog : IDashboardCatalog
 {
     private readonly HttpClient _http;
     private readonly IOpsTokenBroker _opsTokens;
+    private readonly ILakeWrightFeatureGate _features;
 
-    public DashboardCatalog(HttpClient http, IOpsTokenBroker opsTokens)
+    public DashboardCatalog(
+        HttpClient http,
+        IOpsTokenBroker opsTokens,
+        ILakeWrightFeatureGate? features = null)
     {
         _http = http;
         _opsTokens = opsTokens;
+        _features = features ?? new AlwaysOnFeatureGate();
     }
 
     public async Task<DashboardCatalogPage> ListAsync(
@@ -38,6 +44,7 @@ public sealed class DashboardCatalog : IDashboardCatalog
         string? pageToken = null,
         CancellationToken cancellationToken = default)
     {
+        _features.EnsureEnabled(LakeWrightFeatures.Operations);
         var token = await _opsTokens.AcquireAsync(cancellationToken).ConfigureAwait(false);
 
         var query = new List<string>();

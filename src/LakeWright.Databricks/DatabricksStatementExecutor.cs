@@ -2,6 +2,7 @@ using Microsoft.Azure.Databricks.Client.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Diagnostics;
+using LakeWright.Core.Features;
 
 namespace LakeWright.Databricks;
 
@@ -16,6 +17,7 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
     private readonly ITenantScopeStrategyResolver _scopeStrategies;
     private readonly TimeProvider _time;
     private readonly StatementTerminalPoller _poller;
+    private readonly ILakeWrightFeatureGate _features;
 
     public DatabricksStatementExecutor(
         Microsoft.Azure.Databricks.Client.DatabricksClient client,
@@ -29,19 +31,22 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
         IDatabricksStatementSession session,
         DatabricksOptions options,
         ITenantScopeStrategyResolver? scopeStrategies = null,
-        TimeProvider? time = null)
+        TimeProvider? time = null,
+        ILakeWrightFeatureGate? features = null)
     {
         _session = session;
         _options = options;
         _scopeStrategies = scopeStrategies ?? new DefaultTenantScopeStrategyResolver();
         _time = time ?? TimeProvider.System;
         _poller = new StatementTerminalPoller(_session, _time);
+        _features = features ?? new AlwaysOnFeatureGate();
     }
 
     public async Task<StatementOutcome> ExecuteAsync(
         TenantScopedStatement statement,
         CancellationToken cancellationToken)
     {
+        _features.EnsureEnabled(LakeWrightFeatures.Statements);
         // A struct always has an implicit parameterless constructor, so `default` bypasses both
         // Create factories and arrives here with a null Tenant. Without this the failure is a
         // NullReferenceException three lines down, which reads as a bug in the wrong place.
@@ -116,6 +121,7 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
         string statementId,
         CancellationToken cancellationToken)
     {
+        _features.EnsureEnabled(LakeWrightFeatures.Statements);
         ArgumentNullException.ThrowIfNull(tenant);
 
         return await _session.GetAsync(tenant.TenantId, statementId, cancellationToken);
@@ -126,6 +132,7 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
         string statementId,
         CancellationToken cancellationToken)
     {
+        _features.EnsureEnabled(LakeWrightFeatures.Statements);
         ArgumentNullException.ThrowIfNull(tenant);
         return _session.CancelAsync(statementId, cancellationToken);
     }

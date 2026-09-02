@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using LakeWright.Core.Features;
 using Microsoft.Extensions.Options;
 
 namespace LakeWright.Embedding;
@@ -27,21 +28,25 @@ public sealed class OpsTokenBroker : IOpsTokenBroker
     private readonly DashboardOpsOptions _options;
     private readonly TimeProvider _time;
     private readonly IOpsTokenCache? _cache;
+    private readonly ILakeWrightFeatureGate _features;
 
     public OpsTokenBroker(
         HttpClient http,
         IOptions<DashboardOpsOptions> options,
         TimeProvider time,
-        IOpsTokenCache? cache = null)
+        IOpsTokenCache? cache = null,
+        ILakeWrightFeatureGate? features = null)
     {
         _http = http;
         _options = options.Value;
         _time = time;
         _cache = cache;
+        _features = features ?? new AlwaysOnFeatureGate();
     }
 
     public async Task<EmbedToken> AcquireAsync(CancellationToken cancellationToken = default)
     {
+        _features.EnsureEnabled(LakeWrightFeatures.Operations);
         if (_cache is not null)
         {
             return await _cache.GetOrAddAsync(

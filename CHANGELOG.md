@@ -32,6 +32,11 @@ note.
   warehouse-wait, export row, and export-byte metrics. Every tag is a low-cardinality statement
   kind or outcome; no tenant identifier is emitted.
 
+- `ILakeWrightFeatureGate` adds a fail-closed runtime kill switch for embedding, statements,
+  operations, and conversations. The default is always-on; `AddLakeWrightFeatureGate` in the
+  ASP.NET Core package binds configuration through `IOptionsMonitor`, so reloads take effect
+  without a process restart.
+
 ## [1.2.1] — 2026-09-02
 
 ### Security

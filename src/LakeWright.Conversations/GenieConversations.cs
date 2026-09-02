@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Azure.Core;
 using LakeWright.Core.Tenancy;
+using LakeWright.Core.Features;
 using Microsoft.Extensions.Options;
 
 namespace LakeWright.Conversations;
@@ -29,19 +30,22 @@ public sealed class GenieConversations : IGenieConversations
     private readonly GenieOptions _options;
     private readonly TimeProvider _time;
     private readonly IConversationOwnership _ownership;
+    private readonly ILakeWrightFeatureGate _features;
 
     public GenieConversations(
         HttpClient http,
         TokenCredential credential,
         IOptions<GenieOptions> options,
         TimeProvider time,
-        IConversationOwnership? ownership = null)
+        IConversationOwnership? ownership = null,
+        ILakeWrightFeatureGate? features = null)
     {
         _http = http;
         _credential = credential;
         _options = options.Value;
         _time = time;
         _ownership = ownership ?? new MemoryConversationOwnership();
+        _features = features ?? new AlwaysOnFeatureGate();
     }
 
     public async Task<GenieAnswer> AskAsync(
@@ -50,6 +54,7 @@ public sealed class GenieConversations : IGenieConversations
         string question,
         CancellationToken cancellationToken = default)
     {
+        _features.EnsureEnabled(LakeWrightFeatures.Conversations);
         ArgumentException.ThrowIfNullOrWhiteSpace(ownerKey);
         var space = ResolveSpace(tenant);
         var answer = await SendAsync(
@@ -68,6 +73,7 @@ public sealed class GenieConversations : IGenieConversations
         string question,
         CancellationToken cancellationToken = default)
     {
+        _features.EnsureEnabled(LakeWrightFeatures.Conversations);
         await EnsureOwnerAsync(conversationId, ownerKey, cancellationToken).ConfigureAwait(false);
         var space = ResolveSpace(tenant);
         return await SendAsync(
@@ -77,8 +83,11 @@ public sealed class GenieConversations : IGenieConversations
             cancellationToken).ConfigureAwait(false);
     }
 
-    public ValueTask<IReadOnlyList<string>> ListAsync(string ownerKey, CancellationToken cancellationToken = default) =>
-        _ownership.ListAsync(ownerKey, cancellationToken);
+    public ValueTask<IReadOnlyList<string>> ListAsync(string ownerKey, CancellationToken cancellationToken = default)
+    {
+        _features.EnsureEnabled(LakeWrightFeatures.Conversations);
+        return _ownership.ListAsync(ownerKey, cancellationToken);
+    }
 
     public async Task DeleteAsync(
         TenantContext tenant,
@@ -86,6 +95,7 @@ public sealed class GenieConversations : IGenieConversations
         string conversationId,
         CancellationToken cancellationToken = default)
     {
+        _features.EnsureEnabled(LakeWrightFeatures.Conversations);
         await EnsureOwnerAsync(conversationId, ownerKey, cancellationToken).ConfigureAwait(false);
         var space = ResolveSpace(tenant);
         using var request = new HttpRequestMessage(

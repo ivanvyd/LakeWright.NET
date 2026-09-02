@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using LakeWright.Core.Tenancy;
+using LakeWright.Core.Features;
 using Microsoft.Azure.Databricks.Client;
 using Microsoft.Azure.Databricks.Client.Models;
 using Microsoft.Extensions.Logging;
@@ -43,6 +44,7 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
     private readonly ITenantScopeStrategyResolver _scopeStrategies;
     private readonly TimeProvider _time;
     private readonly StatementTerminalPoller _poller;
+    private readonly ILakeWrightFeatureGate _features;
 
     public DatabricksTenantScopedExport(
         DatabricksClient client,
@@ -57,6 +59,7 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
         _scopeStrategies = new DefaultTenantScopeStrategyResolver();
         _time = TimeProvider.System;
         _poller = new StatementTerminalPoller(_session, _time);
+        _features = new AlwaysOnFeatureGate();
     }
 
     internal DatabricksTenantScopedExport(
@@ -65,7 +68,8 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
         HttpClient http,
         ILogger<DatabricksTenantScopedExport> logger,
         ITenantScopeStrategyResolver? scopeStrategies = null,
-        TimeProvider? time = null)
+        TimeProvider? time = null,
+        ILakeWrightFeatureGate? features = null)
     {
         _session = session;
         _options = options;
@@ -74,12 +78,14 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
         _scopeStrategies = scopeStrategies ?? new DefaultTenantScopeStrategyResolver();
         _time = time ?? TimeProvider.System;
         _poller = new StatementTerminalPoller(_session, _time);
+        _features = features ?? new AlwaysOnFeatureGate();
     }
 
     public async IAsyncEnumerable<ExportRow> StreamAsync(
         TenantScopedStatement statement,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        _features.EnsureEnabled(LakeWrightFeatures.Statements);
         ArgumentNullException.ThrowIfNull(statement.Tenant);
 
         var execution = statement.Options ?? _options.Statement ?? new StatementOptions

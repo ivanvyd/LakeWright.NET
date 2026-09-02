@@ -43,6 +43,7 @@ builder.Services
     .AddOpenIdConnect(/* ... */);
 
 builder.Services.AddLakeWright(builder.Configuration);
+builder.Services.AddLakeWrightFeatureGate(builder.Configuration); // optional runtime kill switch
 
 // Both are optional. Tenancy, authorization and the operations API work without Databricks;
 // add these when you want queries and jobs, and omit the worker in a web-only process.
@@ -132,6 +133,11 @@ nothing to detect it.
   },
   "OperationWorker": {
     "Jobs": { "analysis": 123456789, "export": 987654321 }
+  },
+  "LakeWright": {
+    "Features": {
+      "Enabled": { "embedding": true, "statements": true, "operations": true, "conversations": true }
+    }
   }
 }
 ```
@@ -143,6 +149,12 @@ nothing to detect it.
 
 `OperationWorker:Jobs` maps each `Operation.Kind` to the Databricks job that runs it. A kind with no
 entry fails the operation saying so, rather than running whichever job happened to be configured.
+
+`AddLakeWrightFeatureGate` is optional and defaults every feature to enabled. When registered, a
+configuration reload can set any named feature to `false`; LakeWright refuses the call before
+making an external request. It never records the tenant in the exception or telemetry. Use it for
+an operational stop, not as authorization—the tenant resolver and per-call ownership checks remain
+the security boundary.
 
 ## Starting work safely from a client
 

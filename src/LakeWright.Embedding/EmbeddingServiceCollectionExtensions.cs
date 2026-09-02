@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
+using LakeWright.Core.Features;
 
 namespace LakeWright.Embedding;
 
@@ -32,6 +33,7 @@ public static class EmbeddingServiceCollectionExtensions
             .ValidateOnStart();
 
         services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<ILakeWrightFeatureGate, AlwaysOnFeatureGate>();
 
         // The token caches default to in-memory (ADR 0018). Both implementations are singletons:
         // a per-request cache would lose its entries between calls. A consumer that wants a
@@ -93,6 +95,7 @@ public static class EmbeddingServiceCollectionExtensions
         // Either registration can stand alone, while an application-provided clock remains the
         // clock used by both token caches.
         services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<ILakeWrightFeatureGate, AlwaysOnFeatureGate>();
         services.TryAddSingleton<IOpsTokenCache>(sp => new MemoryOpsTokenCache(sp.GetRequiredService<TimeProvider>()));
 
         var tokenClientBuilder = services.AddHttpClient<IOpsTokenBroker, OpsTokenBroker>((provider, client) =>
