@@ -70,8 +70,8 @@ public sealed class DashboardCatalog : IDashboardCatalog
                 body.Length <= 1024 ? body : body[..1024]);
         }
 
-        using var payload = JsonDocument.Parse(
-            await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+        using var payload = EmbeddingHttp.ParseJson(
+            await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false), "the dashboard catalog");
         var root = payload.RootElement;
 
         var dashboards = new List<DashboardSummary>();

@@ -78,13 +78,13 @@ public sealed class OpsTokenBroker : IOpsTokenBroker
         using var response = await EmbeddingHttp.SendAsync(_http, request, cancellationToken).ConfigureAwait(false);
         await ThrowIfFailedAsync(response, cancellationToken).ConfigureAwait(false);
 
-        using var payload = JsonDocument.Parse(
-            await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+        using var payload = EmbeddingHttp.ParseJson(
+            await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false), "the ops OAuth token exchange");
         var root = payload.RootElement;
 
         if (!root.TryGetProperty("access_token", out var token) || token.GetString() is not { } value)
         {
-            throw new InvalidOperationException("The token response carried no access_token.");
+            throw new WorkspaceRejectedException(System.Net.HttpStatusCode.BadGateway, "The token exchange response carried no access_token.");
         }
 
         var lifetime = root.TryGetProperty("expires_in", out var expires) && expires.TryGetInt32(out var seconds)

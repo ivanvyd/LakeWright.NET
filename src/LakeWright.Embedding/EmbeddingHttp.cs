@@ -1,3 +1,7 @@
+using System.Net;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+
 namespace LakeWright.Embedding;
 
 internal static class EmbeddingHttp
@@ -18,6 +22,37 @@ internal static class EmbeddingHttp
         catch (TaskCanceledException exception) when (!cancellationToken.IsCancellationRequested)
         {
             throw new TransportException("The Databricks workspace request timed out.", exception);
+        }
+    }
+
+    public static JsonDocument ParseJson(string body, string operation)
+    {
+        try
+        {
+            return JsonDocument.Parse(body);
+        }
+        catch (JsonException)
+        {
+            throw new WorkspaceRejectedException(
+                HttpStatusCode.BadGateway,
+                $"The workspace returned invalid JSON for {operation}.");
+        }
+    }
+
+    public static JsonObject ParseObject(string body, string operation)
+    {
+        try
+        {
+            return JsonNode.Parse(body) as JsonObject
+                ?? throw new WorkspaceRejectedException(
+                    HttpStatusCode.BadGateway,
+                    $"The workspace returned a non-object JSON value for {operation}.");
+        }
+        catch (JsonException)
+        {
+            throw new WorkspaceRejectedException(
+                HttpStatusCode.BadGateway,
+                $"The workspace returned invalid JSON for {operation}.");
         }
     }
 }

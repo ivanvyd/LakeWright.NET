@@ -246,13 +246,13 @@ public sealed partial class DashboardTokenBroker : IDashboardTokenBroker
         using var response = await EmbeddingHttp.SendAsync(_http, request, cancellationToken).ConfigureAwait(false);
         await ThrowIfFailedAsync(response, cancellationToken).ConfigureAwait(false);
 
-        using var payload = JsonDocument.Parse(
-            await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+        using var payload = EmbeddingHttp.ParseJson(
+            await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false), "the OAuth token exchange");
         var root = payload.RootElement;
 
         if (!root.TryGetProperty("access_token", out var token) || token.GetString() is not { } value)
         {
-            throw new InvalidOperationException("The token response carried no access_token.");
+            throw new WorkspaceRejectedException(HttpStatusCode.BadGateway, "The token exchange response carried no access_token.");
         }
 
         // Databricks issues one-hour tokens today. Reading the response rather than assuming that
@@ -283,10 +283,7 @@ public sealed partial class DashboardTokenBroker : IDashboardTokenBroker
         await ThrowIfFailedAsync(response, cancellationToken, dashboardId).ConfigureAwait(false);
 
         var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-        if (JsonNode.Parse(body) is not JsonObject info)
-        {
-            throw new InvalidOperationException("The tokeninfo response was not a JSON object.");
-        }
+        var info = EmbeddingHttp.ParseObject(body, "published dashboard token information");
 
         var form = new Dictionary<string, string>(StringComparer.Ordinal)
         {

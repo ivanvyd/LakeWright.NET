@@ -187,6 +187,20 @@ public class EmbedTokenBrokerTests : IDisposable
         error.DashboardId.ShouldBe("dash-unpublished");
     }
 
+    [Fact]
+    public async Task A_malformed_workspace_response_is_a_typed_gateway_failure()
+    {
+        _workspace
+            .Given(Request.Create().WithPath("/oidc/v1/token").UsingPost())
+            .RespondWith(Response.Create().WithBody("not-json"));
+        var broker = Broker();
+
+        var error = await Should.ThrowAsync<WorkspaceRejectedException>(() => broker.IssueAsync(
+            Tenant(AcmeId), "dash-1", "viewer-7", TestContext.Current.CancellationToken));
+
+        error.StatusCode.ShouldBe(HttpStatusCode.BadGateway);
+    }
+
     private Dictionary<string, string> ScopedTokenForm()
     {
         var body = _workspace.LogEntries
