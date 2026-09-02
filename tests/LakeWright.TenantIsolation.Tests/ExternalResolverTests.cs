@@ -161,6 +161,13 @@ public class ExternalResolverTests
     }
 
     [Fact]
+    public void The_public_tenancy_surface_cannot_create_a_shared_schema_context()
+    {
+        typeof(ITenantContextFactory).GetMethod("ForSharedTenant").ShouldBeNull();
+        typeof(TenantLocation).GetNestedType("SharedSchema").ShouldBeNull();
+    }
+
+    [Fact]
     public void The_shipped_resolver_goes_through_the_same_seam()
     {
         var configuration = new ConfigurationBuilder()

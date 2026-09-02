@@ -23,8 +23,12 @@ note.
 ### Added
 
 - New `LakeWright.Tooling` installs the `dotnet lakewright` command for offline or live dashboard
-  publish-gate inspection, non-executing tenant-scope dry runs, and clean net8 package-floor
-  validation against a packed candidate.
+  publish-gate inspection and clean net8 package-floor validation against a packed candidate.
+
+- Generic shared-schema statement and export support is removed before the 2.0.0 release. An outer
+  predicate over caller-authored SQL cannot prove a projected tenant or scope key belongs to every
+  source row. Use schema-per-tenant contexts, or enforce a source-owned shared-schema policy outside
+  the generic APIs.
 
 - New `LakeWright.HealthChecks` supplies readiness checks for the cached first OAuth token leg and
   non-billable warehouse-state reads. A statement probe is excluded by default and requires a

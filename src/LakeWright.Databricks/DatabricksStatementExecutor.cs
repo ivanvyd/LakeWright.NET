@@ -14,7 +14,6 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
 {
     private readonly IDatabricksStatementSession _session;
     private readonly DatabricksOptions _options;
-    private readonly ITenantScopeStrategyResolver _scopeStrategies;
     private readonly TimeProvider _time;
     private readonly StatementTerminalPoller _poller;
     private readonly ILakeWrightFeatureGate _features;
@@ -30,13 +29,11 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
     internal DatabricksStatementExecutor(
         IDatabricksStatementSession session,
         DatabricksOptions options,
-        ITenantScopeStrategyResolver? scopeStrategies = null,
         TimeProvider? time = null,
         ILakeWrightFeatureGate? features = null)
     {
         _session = session;
         _options = options;
-        _scopeStrategies = scopeStrategies ?? new DefaultTenantScopeStrategyResolver();
         _time = time ?? TimeProvider.System;
         _poller = new StatementTerminalPoller(_session, _time);
         _features = features ?? new AlwaysOnFeatureGate();
@@ -60,9 +57,6 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
         };
         execution.Validate();
         var startedAt = _time.GetUtcNow();
-        var scoped = statement.Tenant.Location is Core.Tenancy.TenantLocation.SharedSchema
-            ? statement.ScopedForExecution(_scopeStrategies.Resolve(statement.Tenant))
-            : new ScopedStatementForExecution(statement.Sql, statement.Parameters);
         var request = new SqlStatement
         {
             WarehouseId = _options.WarehouseId,
@@ -71,8 +65,8 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
             Catalog = statement.Tenant.Catalog,
             Schema = statement.Tenant.Schema,
 
-            Statement = scoped.Sql,
-            Parameters = [.. scoped.Parameters.Select(p => new SqlStatementParameter
+            Statement = statement.Sql,
+            Parameters = [.. statement.Parameters.Select(p => new SqlStatementParameter
             {
                 Name = p.Name,
                 Value = p.Value,

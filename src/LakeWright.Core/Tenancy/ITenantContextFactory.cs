@@ -15,25 +15,4 @@ public interface ITenantContextFactory
     TenantContext ForTenant(TenantId tenantId, string catalog, string schema, string? scopeVersion);
 
     TenantContext ForTenant(TenantId tenantId, string catalog);
-
-    TenantContext ForSharedTenant(
-        TenantId tenantId,
-        string catalog,
-        string schema,
-        string? scopeVersion = null,
-        string tenantParameter = "tenant_id");
-
-    TenantContext ForSharedTenant(
-        TenantId tenantId,
-        string catalog,
-        string schema,
-        string? scopeStrategyName);
-
-    TenantContext ForSharedTenant(
-        TenantId tenantId,
-        string catalog,
-        string schema,
-        string? scopeVersion,
-        string tenantParameter,
-        string? scopeStrategyName);
 }

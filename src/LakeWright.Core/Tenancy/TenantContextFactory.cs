@@ -35,14 +35,6 @@ internal static class TenantContextFactory
     public static TenantContext ForTenant(TenantId tenantId, string catalog) =>
         TenantContext.Create(tenantId, catalog, UnityCatalogIdentifier.SchemaForTenant(tenantId));
 
-    public static TenantContext ForSharedTenant(
-        TenantId tenantId,
-        string catalog,
-        string schema,
-        string? scopeVersion = null,
-        string tenantParameter = "tenant_id",
-        string? scopeStrategyName = null) =>
-        TenantContext.CreateShared(tenantId, catalog, schema, scopeVersion, tenantParameter, scopeStrategyName);
 }
 
 internal sealed class ResolverTenantContextFactory : ITenantContextFactory
@@ -56,27 +48,4 @@ internal sealed class ResolverTenantContextFactory : ITenantContextFactory
     public TenantContext ForTenant(TenantId tenantId, string catalog) =>
         TenantContext.Create(tenantId, catalog, UnityCatalogIdentifier.SchemaForTenant(tenantId));
 
-    public TenantContext ForSharedTenant(
-        TenantId tenantId,
-        string catalog,
-        string schema,
-        string? scopeVersion = null,
-        string tenantParameter = "tenant_id") =>
-        TenantContext.CreateShared(tenantId, catalog, schema, scopeVersion, tenantParameter);
-
-    public TenantContext ForSharedTenant(
-        TenantId tenantId,
-        string catalog,
-        string schema,
-        string? scopeStrategyName) =>
-        TenantContext.CreateShared(tenantId, catalog, schema, scopeStrategyName: scopeStrategyName);
-
-    public TenantContext ForSharedTenant(
-        TenantId tenantId,
-        string catalog,
-        string schema,
-        string? scopeVersion,
-        string tenantParameter,
-        string? scopeStrategyName) =>
-        TenantContext.CreateShared(tenantId, catalog, schema, scopeVersion, tenantParameter, scopeStrategyName);
 }

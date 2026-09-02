@@ -50,7 +50,7 @@ var token = await scope.ServiceProvider.GetRequiredService<IDashboardTokenBroker
     .IssueAsync(tenant, "dashboard", "viewer", CancellationToken.None);
 var statement = TenantScopedStatement.Create(
     tenant,
-    "SELECT id, tenant_id FROM widgets WHERE tenant_id = :tenant_id");
+    "SELECT id FROM widgets");
 var outcome = await scope.ServiceProvider.GetRequiredService<IStatementExecutor>()
     .ExecuteAsync(statement, CancellationToken.None);
 
@@ -73,13 +73,13 @@ internal sealed class InMemoryResolver(ITenantContextFactory contexts) : ITenant
 
     private static readonly Dictionary<(TenantId TenantId, string PrincipalId), TenantContextRequest> Memberships = new()
     {
-        [(Tenant, "member")] = new("analytics", "shared"),
+        [(Tenant, "member")] = new("analytics", "tenant_member"),
     };
 
     public Task<TenantContext?> ResolveAsync(TenantId tenantId, string principalId, CancellationToken cancellationToken)
     {
         return Task.FromResult(Memberships.TryGetValue((tenantId, principalId), out var request)
-            ? contexts.ForSharedTenant(tenantId, request.Catalog, request.Schema)
+            ? contexts.ForTenant(tenantId, request.Catalog, request.Schema)
             : null);
     }
 
@@ -162,12 +162,9 @@ internal sealed class FloorSqlServer : IDisposable
         var valid = context.Request.HttpMethod == "POST" &&
             context.Request.Url!.AbsolutePath == "/api/2.0/sql/statements" &&
             root.GetProperty("catalog").GetString() == "analytics" &&
-            root.GetProperty("schema").GetString() == "shared" &&
-            root.GetProperty("statement").GetString() ==
-                "SELECT * FROM (SELECT id, tenant_id FROM widgets WHERE tenant_id = :tenant_id) AS lakewright_tenant_scope WHERE lakewright_tenant_scope.tenant_id = :tenant_id" &&
-            parameters.GetArrayLength() == 1 &&
-            parameters[0].GetProperty("name").GetString() == "tenant_id" &&
-            parameters[0].GetProperty("value").GetString() == InMemoryResolver.Tenant.ToString();
+            root.GetProperty("schema").GetString() == "tenant_member" &&
+            root.GetProperty("statement").GetString() == "SELECT id FROM widgets" &&
+            parameters.GetArrayLength() == 0;
 
         var body = Encoding.UTF8.GetBytes("""{"statement_id":"floor-statement","status":{"state":"SUCCEEDED"},"manifest":{"schema":{"columns":[{"name":"id"}]},"total_row_count":1},"result":{"data_array":[["one"]]}}""");
         context.Response.ContentType = "application/json";

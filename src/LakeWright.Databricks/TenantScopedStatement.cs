@@ -38,46 +38,6 @@ public readonly struct TenantScopedStatement
     /// <summary>Optional per-call lifecycle settings, supplied by trusted application code.</summary>
     public StatementOptions? Options { get; }
 
-    internal IReadOnlyList<StatementParameter> ParametersForExecution()
-    {
-        if (Tenant.Location is not TenantLocation.SharedSchema)
-        {
-            return Parameters;
-        }
-
-        return ScopedForExecution(new ProjectedColumnScope()).Parameters;
-    }
-
-    internal ScopedStatementForExecution ScopedForExecution(ITenantScopeStrategy strategy)
-    {
-        ArgumentNullException.ThrowIfNull(strategy);
-        if (Tenant.Location is not TenantLocation.SharedSchema)
-        {
-            return new ScopedStatementForExecution(Sql, Parameters);
-        }
-
-        var scopeParameters = strategy.Parameters(Tenant);
-        var callerParameter = Parameters.FirstOrDefault(parameter => scopeParameters.Any(scopeParameter =>
-            string.Equals(parameter.Name, scopeParameter.Name, StringComparison.OrdinalIgnoreCase)));
-        if (callerParameter != default)
-        {
-            throw new TenantScopeMissingException(
-                $":{callerParameter.Name} is supplied by the tenant context and cannot be supplied by the caller.");
-        }
-
-        return new ScopedStatementForExecution(strategy.Apply(Sql, Tenant), [.. Parameters, .. scopeParameters]);
-    }
-
-    internal string SqlForExecution()
-    {
-        if (Tenant.Location is not TenantLocation.SharedSchema)
-        {
-            return Sql;
-        }
-
-        return ScopedForExecution(new ProjectedColumnScope()).Sql;
-    }
-
     /// <summary>Builds a statement scoped to <paramref name="tenant"/>.</summary>
     /// <param name="tenant">The resolved tenant. Supplies catalog and schema.</param>
     /// <param name="sql">
@@ -85,9 +45,7 @@ public readonly struct TenantScopedStatement
     /// The compiler rejects an interpolated literal, but it cannot reject a string built at
     /// runtime by concatenation or <c>string.Format</c>, which is the residual injection surface.
     /// Treat this parameter as "must be a constant" even though the type system only enforces
-    /// "must not be interpolated in place". A shared-schema context accepts one SELECT or WITH
-    /// query and wraps its results with its own tenant predicate; the query must project the
-    /// configured tenant column.
+    /// "must not be interpolated in place".
     /// </param>
     /// <param name="parameters">Values bound by the server, not interpolated.</param>
     public static TenantScopedStatement Create(
@@ -135,5 +93,3 @@ public readonly struct TenantScopedStatement
         params StatementParameter[] parameters) =>
         throw new InvalidOperationException("Unreachable: this overload does not compile.");
 }
-
-internal sealed record ScopedStatementForExecution(string Sql, IReadOnlyList<StatementParameter> Parameters);

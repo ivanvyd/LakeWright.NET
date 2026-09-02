@@ -24,20 +24,6 @@ not publishable; `2` means invalid input or configuration. To inspect a live das
 provide `DATABRICKS_HOST` and `DATABRICKS_TOKEN` through the environment. The token is used only
 for that request and is never written to output.
 
-## Preview shared-schema scope enforcement
-
-Use `scope-check` to determine whether a single read-only statement can be wrapped with the
-LakeWright-owned tenant predicate:
-
-```bash
-lakewright scope-check "SELECT id, tenant_id FROM analytics.events"
-lakewright scope-check --file report.sql
-```
-
-The result includes the candidate scoped SQL but does not open a connection, execute it, or make
-an authorization decision. A passing result is therefore a useful authoring check, not proof that
-the configured tenant mapping and workspace permissions are correct.
-
 ## Check the net8 consumer floor
 
 After packing a candidate into a local package source, verify its narrow net8 dependency floor:

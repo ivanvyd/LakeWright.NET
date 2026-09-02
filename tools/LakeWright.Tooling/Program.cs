@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Security;
 using System.Text.Json;
-using LakeWright.Databricks;
 using LakeWright.Embedding;
 
 return await LakeWrightTool.RunAsync(args);
@@ -18,7 +17,6 @@ internal static class LakeWrightTool
             return args.FirstOrDefault() switch
             {
                 "inspect-dashboard" => await InspectDashboardAsync(args.Skip(1).ToArray()).ConfigureAwait(false),
-                "scope-check" => await ScopeCheckAsync(args.Skip(1).ToArray()).ConfigureAwait(false),
                 "verify-floor" => await VerifyFloorAsync(args.Skip(1).ToArray()).ConfigureAwait(false),
                 _ => Usage(),
             };
@@ -77,38 +75,6 @@ internal static class LakeWrightTool
             && serialized.ValueKind == JsonValueKind.String
             ? serialized.GetString()!
             : throw new InvalidOperationException("The dashboard response omitted serialized_dashboard.");
-    }
-
-    private static async Task<int> ScopeCheckAsync(string[] args)
-    {
-        if (args.Length is < 1 or > 3)
-        {
-            return Usage();
-        }
-
-        string sql;
-        string tenantParameter;
-        if (args[0] == "--file")
-        {
-            if (args.Length != 2)
-            {
-                throw new ArgumentException("scope-check --file requires exactly one SQL file path.");
-            }
-            sql = await File.ReadAllTextAsync(args[1]).ConfigureAwait(false);
-            tenantParameter = "tenant_id";
-        }
-        else
-        {
-            if (args.Length != 1 && (args.Length != 3 || args[1] != "--tenant-parameter"))
-            {
-                throw new ArgumentException("Use --tenant-parameter <identifier> after SQL.");
-            }
-            sql = args[0];
-            tenantParameter = args.Length == 3 ? args[2] : "tenant_id";
-        }
-        var result = TenantScopeDryRun.Inspect(sql, tenantParameter);
-        Console.WriteLine(JsonSerializer.Serialize(result, IndentedJson));
-        return result.Passed ? 0 : 1;
     }
 
     private static async Task<int> VerifyFloorAsync(string[] args)
@@ -196,7 +162,7 @@ internal static class LakeWrightTool
 
     private static int Usage()
     {
-        Console.Error.WriteLine("Usage: lakewright inspect-dashboard <file|dashboard-id> | scope-check <sql>|--file <path> [--tenant-parameter <name>] | verify-floor <package-source> <version>");
+        Console.Error.WriteLine("Usage: lakewright inspect-dashboard <file|dashboard-id> | verify-floor <package-source> <version>");
         return 2;
     }
 }
