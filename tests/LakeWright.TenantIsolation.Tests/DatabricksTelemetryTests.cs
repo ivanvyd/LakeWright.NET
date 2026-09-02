@@ -1,7 +1,7 @@
 using System.Diagnostics.Metrics;
 using System.Reflection;
-using LakeWright.Databricks;
 using LakeWright.Core.Tenancy;
+using LakeWright.Databricks;
 using Microsoft.Azure.Databricks.Client.Models;
 
 namespace LakeWright.TenantIsolation.Tests;

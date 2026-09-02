@@ -1,8 +1,8 @@
+using LakeWright.Core.Features;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
-using LakeWright.Core.Features;
 
 namespace LakeWright.Embedding;
 

@@ -22,20 +22,20 @@ internal sealed class StatementTerminalPoller(
         var pendingStartedAt = time.GetUtcNow();
         try
         {
-        while (outcome is StatementOutcome.Pending pending)
-        {
-            var remaining = execution.TotalBudget - (time.GetUtcNow() - startedAt);
-            if (remaining <= TimeSpan.Zero)
+            while (outcome is StatementOutcome.Pending pending)
             {
-                throw new StatementBudgetExceededException(pending.StatementId, execution.TotalBudget);
+                var remaining = execution.TotalBudget - (time.GetUtcNow() - startedAt);
+                if (remaining <= TimeSpan.Zero)
+                {
+                    throw new StatementBudgetExceededException(pending.StatementId, execution.TotalBudget);
+                }
+
+                var delay = execution.PollInterval < remaining ? execution.PollInterval : remaining;
+                await Task.Delay(delay, time, cancellationToken).ConfigureAwait(false);
+                outcome = await session.GetAsync(tenant.TenantId, pending.StatementId, cancellationToken).ConfigureAwait(false);
             }
 
-            var delay = execution.PollInterval < remaining ? execution.PollInterval : remaining;
-            await Task.Delay(delay, time, cancellationToken).ConfigureAwait(false);
-            outcome = await session.GetAsync(tenant.TenantId, pending.StatementId, cancellationToken).ConfigureAwait(false);
-        }
-
-        return outcome;
+            return outcome;
         }
         finally
         {

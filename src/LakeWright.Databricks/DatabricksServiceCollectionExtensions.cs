@@ -1,8 +1,8 @@
 using Azure.Core;
 using LakeWright.Core;
+using LakeWright.Core.Features;
 using LakeWright.Core.Jobs;
 using LakeWright.Core.Tenancy;
-using LakeWright.Core.Features;
 using Microsoft.Azure.Databricks.Client;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;

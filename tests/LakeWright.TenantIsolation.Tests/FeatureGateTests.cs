@@ -1,14 +1,14 @@
 using Azure.Core;
-using LakeWright.Conversations;
 using LakeWright.AspNetCore;
+using LakeWright.Conversations;
 using LakeWright.Core.Features;
 using LakeWright.Core.Tenancy;
 using LakeWright.Databricks;
 using LakeWright.Embedding;
 using Microsoft.Azure.Databricks.Client.Models;
-using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace LakeWright.TenantIsolation.Tests;
 

@@ -1,8 +1,8 @@
+using System.Diagnostics;
+using LakeWright.Core.Features;
 using Microsoft.Azure.Databricks.Client.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using System.Diagnostics;
-using LakeWright.Core.Features;
 
 namespace LakeWright.Databricks;
 
