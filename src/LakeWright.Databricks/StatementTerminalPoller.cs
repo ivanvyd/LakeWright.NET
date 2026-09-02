@@ -41,7 +41,7 @@ internal sealed class StatementTerminalPoller(
         {
             LakeWrightDatabricksTelemetry.WarehouseWait.Record(
                 (time.GetUtcNow() - pendingStartedAt).TotalSeconds,
-                new System.Diagnostics.TagList { { "statement.kind", execution.Kind } });
+                new KeyValuePair<string, object?>("statement.kind", execution.Kind));
         }
     }
 }

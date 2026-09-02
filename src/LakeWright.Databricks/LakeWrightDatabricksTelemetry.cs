@@ -39,27 +39,28 @@ public static class LakeWrightDatabricksTelemetry
 
     internal static void RecordStatement(StatementOutcome outcome, string kind, TimeSpan elapsed)
     {
-        var tags = new TagList { { "statement.kind", kind } };
-        StatementDuration.Record(elapsed.TotalSeconds, tags);
-        tags.Add("state", outcome switch
+        var state = outcome switch
         {
             StatementOutcome.Success => "succeeded",
             StatementOutcome.LargeResult => "succeeded",
             StatementOutcome.Failure => "failed",
             StatementOutcome.Pending => "pending",
             _ => "unknown",
-        });
-        StatementOutcomes.Add(1, tags);
+        };
+        // Use the explicit tag overloads. Passing TagList by value selected an overload that
+        // dropped all tags with the target framework's metrics implementation, making the
+        // instruments look low-cardinality while silently losing their only useful dimension.
+        StatementDuration.Record(elapsed.TotalSeconds, new KeyValuePair<string, object?>("statement.kind", kind));
+        StatementOutcomes.Add(1,
+            new KeyValuePair<string, object?>("statement.kind", kind),
+            new KeyValuePair<string, object?>("state", state));
     }
 
     internal static void RecordBudgetExceeded(string kind, TimeSpan elapsed)
     {
-        var tags = new TagList
-        {
-            { "statement.kind", kind },
-            { "state", "budget_exceeded" },
-        };
-        StatementDuration.Record(elapsed.TotalSeconds, tags);
-        StatementOutcomes.Add(1, tags);
+        StatementDuration.Record(elapsed.TotalSeconds, new KeyValuePair<string, object?>("statement.kind", kind));
+        StatementOutcomes.Add(1,
+            new KeyValuePair<string, object?>("statement.kind", kind),
+            new KeyValuePair<string, object?>("state", "budget_exceeded"));
     }
 }
