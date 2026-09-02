@@ -18,6 +18,12 @@ public static class LakeWrightOptions
     {
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddEnumerable(ServiceDescriptor.Singleton<ILakeWrightOptionsValidator, OptionsStartupValidator<TOptions>>());
+        if (!services.Any(static descriptor =>
+            descriptor.ServiceType == typeof(IStartupValidator) &&
+            descriptor.ImplementationType == typeof(LakeWrightOptionsStartupValidator)))
+        {
+            services.AddSingleton<IStartupValidator, LakeWrightOptionsStartupValidator>();
+        }
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, LakeWrightOptionsStartupService>());
         return services;
     }
@@ -50,6 +56,20 @@ internal sealed class LakeWrightOptionsStartupService(IEnumerable<ILakeWrightOpt
     public Task StartAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        LakeWrightOptionsStartupValidator.ThrowForFailures(validators);
+
+        return Task.CompletedTask;
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+}
+
+internal sealed class LakeWrightOptionsStartupValidator(IEnumerable<ILakeWrightOptionsValidator> validators) : IStartupValidator
+{
+    public void Validate() => ThrowForFailures(validators);
+
+    internal static void ThrowForFailures(IEnumerable<ILakeWrightOptionsValidator> validators)
+    {
         var failures = validators.SelectMany(static validator => validator.Validate())
             .Where(static failure => !string.IsNullOrWhiteSpace(failure))
             .Distinct(StringComparer.Ordinal)
@@ -58,9 +78,5 @@ internal sealed class LakeWrightOptionsStartupService(IEnumerable<ILakeWrightOpt
         {
             throw new OptionsValidationException("LakeWright", typeof(LakeWrightOptions), failures);
         }
-
-        return Task.CompletedTask;
     }
-
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

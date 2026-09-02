@@ -22,6 +22,10 @@ note.
 
 ### Added
 
+- New `LakeWright.Tooling` installs the `dotnet lakewright` command for offline or live dashboard
+  publish-gate inspection, non-executing tenant-scope dry runs, and clean net8 package-floor
+  validation against a packed candidate.
+
 - New `LakeWright.HealthChecks` supplies readiness checks for the cached first OAuth token leg and
   non-billable warehouse-state reads. A statement probe is excluded by default and requires a
   host-provided `IReadinessStatementProbe`, so a health endpoint cannot accidentally wake compute.
