@@ -66,7 +66,7 @@ public static class EmbeddingServiceCollectionExtensions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Distinct from <see cref="AddLakeWrightDashboardEmbedding"/> on purpose (ADR 0019). A product
+    /// Distinct from <see cref="AddLakeWrightDashboardEmbedding"/> on purpose (ADR 0024). A product
     /// that only embeds dashboards does not register the ops side and never carries an ops secret
     /// in its configuration. A product that needs the catalog (or any future ops path) registers
     /// both methods; the two <see cref="HttpClient"/> registrations are independent.
@@ -92,6 +92,7 @@ public static class EmbeddingServiceCollectionExtensions
         // embed side has already added it, and supplies it when the ops side is registered
         // alone.
         services.AddSingleton(TimeProvider.System);
+        services.TryAddSingleton<IOpsTokenCache>(sp => new MemoryOpsTokenCache(sp.GetRequiredService<TimeProvider>()));
 
         services.AddHttpClient<IOpsTokenBroker, OpsTokenBroker>((provider, client) =>
         {

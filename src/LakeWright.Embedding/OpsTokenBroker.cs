@@ -12,8 +12,9 @@ namespace LakeWright.Embedding;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Each call mints a fresh token. A consumer that needs cached ops tokens can wrap this broker
-/// in a caching decorator.
+/// The default cache collapses concurrent exchanges and serves the workspace-issued token until
+/// shortly before its expiry. Consumers can replace <see cref="IOpsTokenCache"/> when they need
+/// a different in-process policy.
 /// </para>
 /// <para>
 /// The lifetime is read from the response's <c>expires_in</c>, falling back to one hour if
@@ -26,18 +27,34 @@ public sealed class OpsTokenBroker : IOpsTokenBroker
     private readonly HttpClient _http;
     private readonly DashboardOpsOptions _options;
     private readonly TimeProvider _time;
+    private readonly IOpsTokenCache? _cache;
 
     public OpsTokenBroker(
         HttpClient http,
         IOptions<DashboardOpsOptions> options,
-        TimeProvider time)
+        TimeProvider time,
+        IOpsTokenCache? cache = null)
     {
         _http = http;
         _options = options.Value;
         _time = time;
+        _cache = cache;
     }
 
     public async Task<EmbedToken> AcquireAsync(CancellationToken cancellationToken = default)
+    {
+        if (_cache is not null)
+        {
+            return await _cache.GetOrAddAsync(
+                _options.ClientId,
+                ct => new ValueTask<EmbedToken>(AcquireUncachedAsync(ct)),
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        return await AcquireUncachedAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<EmbedToken> AcquireUncachedAsync(CancellationToken cancellationToken)
     {
         var basic = new AuthenticationHeaderValue(
             "Basic",

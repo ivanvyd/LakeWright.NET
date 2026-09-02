@@ -39,6 +39,17 @@ The commands, results and cleanup evidence are in the
 | `Microsoft.Azure.Databricks.Client` | 2.9.3 |
 | PostgreSQL | 17 (Testcontainers, `postgres:17-alpine`) |
 
+## Target-framework compatibility
+
+| Package surface | Target frameworks | Evidence |
+|---|---|---|
+| `LakeWright.Core` | net8.0, net10.0 | Local Release builds verified on 2026-09-02. |
+| `LakeWright.Embedding` | net8.0, net10.0 | Local Release builds and the stock net8 `tests/consumer-floor` application verified on 2026-09-02. CI packs the candidate, installs it into that application, and rejects persistence dependencies from its net8 assets. |
+| `LakeWright.Databricks` | net10.0 | The current Azure Core dependency resolves hosting abstractions 10.x, so it cannot satisfy the net8 extensions floor without an incompatible dependency graph. This package is intentionally not represented as net8 compatible. |
+| `LakeWright.Conversations` | net10.0 | Uses the same Azure Core graph and is intentionally not represented as net8 compatible. |
+
+The consumer-floor result is a compatibility boundary, not a claim that every package supports net8.
+
 ### 2026-09-01 release revalidation
 
 The 1.0.1 release was checked with these commands:
@@ -98,7 +109,7 @@ request, package-consumer, publication and cleanup commands are in the
 | Genie Conversation API: start a conversation, poll to `COMPLETED` | **Verified** | 2026-08-05 | `LiveGenieTests`, against a real agent in `lakewright-dev`. The answer came back with the SQL Genie generated, which is what proves the attachment shape this library reads is the shape Databricks sends |
 | Genie Conversation API: follow-up in the same conversation | **Verified** | 2026-08-05 | `LiveGenieTests`. Same `conversation_id`, a new `message_id` |
 | Genie message states beyond the documented three | **Verified** | 2026-08-05 | A live `start-conversation` returned `SUBMITTED`, which this library does not map and therefore keeps polling rather than treating as terminal. The open-ended-states rule, observed rather than assumed |
-| Genie Agent as the only tenancy boundary | **Documented** | | The Conversation API takes no filter, no viewer identity and no row predicate. One agent per tenant is the design that follows; nothing in the API can be tested to confirm the absence of a feature |
+| Genie Agent as the only tenancy boundary | **Documented** | | The Conversation API takes no filter, no viewer identity and no row predicate. One agent per tenant is the design that follows; nothing in the API can be tested to confirm the absence of a feature. Shared mode exists for internal, staff-only tools and is never tenant-isolated. |
 | AI/BI external embedding: the three-leg token exchange | **Verified** | 2026-08-06 | `LiveEmbeddingTests`, against a published dashboard in `lakewright-dev` with a service principal holding CAN RUN. Shipped **unverified** on 2026-08-05 and the matrix said so for a day |
 | The scoped token carries the tenant as `external_value` | **Verified** | 2026-08-06 | `LiveEmbeddingTests` decodes the returned JWT payload and finds the tenant id inside it. The claim the module exists for, read off the wire rather than off the request we sent |
 | Service principal OAuth secrets from a **workspace** admin | **Verified** | 2026-08-06 | `service-principal-secrets-proxy` issues them at workspace level; the account console is not required. An earlier reading of this said it was, because the account API answered 303 to a workspace token |

@@ -1,3 +1,6 @@
+using System.Text.Json;
+using LakeWright.Core.Sql;
+
 namespace LakeWright.Embedding;
 
 /// <summary>
@@ -48,10 +51,11 @@ public static class DashboardPublishGate
             return PublishGateVerdict.Fail("Dataset SQL is empty.");
         }
 
-        var marker = new MarkerScanner(datasetSql, datasetIndex);
-        var hits = marker.Scan();
+        var hits = SqlTokenScanner.Find(datasetSql, ExternalValueColumn)
+            .Select(offset => new MarkerHit(datasetIndex, offset))
+            .ToArray();
 
-        return hits.Count == 0
+        return hits.Length == 0
             ? PublishGateVerdict.Fail("No reference to __aibi_external_value outside of a string literal or comment.")
             : PublishGateVerdict.Pass(hits);
     }
@@ -79,6 +83,73 @@ public static class DashboardPublishGate
             allHits.AddRange(result.Hits);
         }
         return PublishGateVerdict.Pass(allHits);
+    }
+
+    /// <summary>
+    /// Inspects every dataset in a serialized Lakeview dashboard definition.
+    /// </summary>
+    /// <remarks>
+    /// A dashboard is publishable only when every dataset contains an executable reference to
+    /// <see cref="ExternalValueColumn"/>. Invalid JSON, a missing dataset array, and datasets with
+    /// empty SQL fail closed because none of those shapes prove tenant filtering.
+    /// </remarks>
+    public static DashboardPublishGateVerdict InspectDashboard(string? serializedDashboard)
+    {
+        if (string.IsNullOrWhiteSpace(serializedDashboard))
+        {
+            return DashboardPublishGateVerdict.Fail("Serialized dashboard JSON is empty.");
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(serializedDashboard);
+            if (!document.RootElement.TryGetProperty("datasets", out var datasets) ||
+                datasets.ValueKind != JsonValueKind.Array ||
+                datasets.GetArrayLength() == 0)
+            {
+                return DashboardPublishGateVerdict.Fail("Dashboard has no datasets.");
+            }
+
+            var results = new List<DatasetPublishGateVerdict>();
+            for (var index = 0; index < datasets.GetArrayLength(); index++)
+            {
+                var dataset = datasets[index];
+                var name = dataset.TryGetProperty("name", out var nameElement) &&
+                    nameElement.ValueKind == JsonValueKind.String &&
+                    !string.IsNullOrWhiteSpace(nameElement.GetString())
+                    ? nameElement.GetString()!
+                    : "(unnamed)";
+                var verdict = InspectDataset(ReadDatasetSql(dataset), index);
+                results.Add(new DatasetPublishGateVerdict(index, name, verdict));
+            }
+
+            var failed = results.FirstOrDefault(result => !result.Verdict.Passed);
+            return failed is null
+                ? DashboardPublishGateVerdict.Pass(results)
+                : DashboardPublishGateVerdict.Fail(
+                    $"Dataset #{failed.DatasetIndex + 1} ({failed.Name}): {failed.Verdict.Reason}",
+                    results);
+        }
+        catch (JsonException)
+        {
+            return DashboardPublishGateVerdict.Fail("Serialized dashboard JSON is invalid.");
+        }
+    }
+
+    private static string? ReadDatasetSql(JsonElement dataset)
+    {
+        if (dataset.TryGetProperty("queryLines", out var lines) && lines.ValueKind == JsonValueKind.Array)
+        {
+            return string.Join(
+                Environment.NewLine,
+                lines.EnumerateArray()
+                    .Where(line => line.ValueKind == JsonValueKind.String)
+                    .Select(line => line.GetString()));
+        }
+
+        return dataset.TryGetProperty("query", out var query) && query.ValueKind == JsonValueKind.String
+            ? query.GetString()
+            : null;
     }
 }
 
@@ -110,136 +181,20 @@ public sealed record PublishGateVerdict(
 /// <param name="Offset">Zero-based byte offset in the dataset SQL.</param>
 public sealed record MarkerHit(int DatasetIndex, int Offset);
 
-/// <summary>
-/// Tokenizer that walks the SQL byte by byte, tracking single-quoted strings, line
-/// comments, and block comments, and reports the marker only when it appears in code.
-/// </summary>
-/// <remarks>
-/// Single-quoted strings use the SQL-standard doubled-quote escape (<c>''</c>). Backslash
-/// escapes are not honored because Databricks SQL does not honor them either. Line
-/// comments begin with <c>--</c> and run to the next newline. Block comments nest only
-/// one level (no <c>/* /* */ */</c>); that is the SQL standard.
-/// </remarks>
-internal sealed class MarkerScanner
+/// <summary>A publish-gate verdict for a complete serialized dashboard definition.</summary>
+public sealed record DashboardPublishGateVerdict(
+    bool Passed,
+    string Reason,
+    IReadOnlyList<DatasetPublishGateVerdict> Datasets)
 {
-    private readonly string _sql;
-    private readonly int _datasetIndex;
+    internal static DashboardPublishGateVerdict Pass(IReadOnlyList<DatasetPublishGateVerdict> datasets) =>
+        new(true, string.Empty, datasets);
 
-    internal MarkerScanner(string sql, int datasetIndex)
-    {
-        _sql = sql;
-        _datasetIndex = datasetIndex;
-    }
-
-    internal IReadOnlyList<MarkerHit> Scan()
-    {
-        var hits = new List<MarkerHit>();
-        var i = 0;
-        var len = _sql.Length;
-        while (i < len)
-        {
-            var c = _sql[i];
-            var next = i + 1 < len ? _sql[i + 1] : '\0';
-
-            // String literal — skip to the matching single quote, honoring '' as an
-            // escaped quote. The marker inside a string is data, not code.
-            if (c == '\'')
-            {
-                i++;
-                while (i < len)
-                {
-                    if (_sql[i] == '\'')
-                    {
-                        if (i + 1 < len && _sql[i + 1] == '\'')
-                        {
-                            i += 2; // doubled quote — keep going
-                        }
-                        else
-                        {
-                            i++; // closing quote
-                            break;
-                        }
-                    }
-                    else
-                    {
-                        i++;
-                    }
-                }
-                continue;
-            }
-
-            // Line comment.
-            if (c == '-' && next == '-')
-            {
-                while (i < len && _sql[i] != '\n')
-                {
-                    i++;
-                }
-                continue;
-            }
-
-            // Block comment — non-nesting.
-            if (c == '/' && next == '*')
-            {
-                i += 2;
-                while (i + 1 < len && !(_sql[i] == '*' && _sql[i + 1] == '/'))
-                {
-                    i++;
-                }
-                if (i + 1 < len)
-                {
-                    i += 2; // consume closing */
-                }
-                else
-                {
-                    i = len; // unterminated — be conservative and stop
-                }
-                continue;
-            }
-
-            // Bare double quote is not a SQL string delimiter, but a backtick-quoted
-            // identifier can contain anything. Treat the contents of a backtick-quoted
-            // identifier as not a reference.
-            if (c == '`')
-            {
-                i++;
-                while (i < len && _sql[i] != '`')
-                {
-                    i++;
-                }
-                if (i < len)
-                {
-                    i++; // closing `
-                }
-                continue;
-            }
-
-            // The marker is a bare identifier. Match only when the surrounding bytes
-            // are not part of an identifier — `x__aibi_external_value` should not match.
-            if (IsMarkerStart(c) && StartsMarkerAt(i))
-            {
-                if (i + DashboardPublishGate.ExternalValueColumn.Length <= len
-                    && string.Equals(
-                        _sql.Substring(i, DashboardPublishGate.ExternalValueColumn.Length),
-                        DashboardPublishGate.ExternalValueColumn,
-                        StringComparison.OrdinalIgnoreCase)
-                    && EndsMarkerAt(i + DashboardPublishGate.ExternalValueColumn.Length - 1))
-                {
-                    hits.Add(new MarkerHit(_datasetIndex, i));
-                }
-            }
-            i++;
-        }
-        return hits;
-    }
-
-    private static bool IsMarkerStart(char c) => c == '_' || char.IsLetter(c);
-
-    private bool StartsMarkerAt(int i) =>
-        i == 0 || !IsIdentifierPart(_sql[i - 1]);
-
-    private bool EndsMarkerAt(int i) =>
-        i + 1 == _sql.Length || !IsIdentifierPart(_sql[i + 1]);
-
-    private static bool IsIdentifierPart(char c) => c == '_' || char.IsLetterOrDigit(c);
+    internal static DashboardPublishGateVerdict Fail(
+        string reason,
+        IReadOnlyList<DatasetPublishGateVerdict>? datasets = null) =>
+        new(false, reason, datasets ?? Array.Empty<DatasetPublishGateVerdict>());
 }
+
+/// <summary>The name, index, and safety verdict for one serialized dashboard dataset.</summary>
+public sealed record DatasetPublishGateVerdict(int DatasetIndex, string Name, PublishGateVerdict Verdict);

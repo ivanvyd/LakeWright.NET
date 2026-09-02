@@ -14,9 +14,9 @@ namespace LakeWright.Conversations;
 /// serving two tenants is a cross-tenant read waiting for someone to ask the right question.
 /// </para>
 /// <para>
-/// There is deliberately no fallback agent. A tenant missing from <see cref="Spaces"/> is refused
-/// rather than pointed at something reasonable-looking, because the failure mode of guessing here
-/// is answering one tenant's question with another tenant's data.
+/// There is deliberately no implicit fallback agent. A tenant missing from <see cref="Spaces"/> is
+/// refused rather than pointed at something reasonable-looking, unless an operator explicitly opts
+/// into the acknowledged staff-only shared-space mode below.
 /// </para>
 /// </remarks>
 public sealed class GenieOptions
@@ -27,6 +27,16 @@ public sealed class GenieOptions
     /// <summary>Tenant id to Genie Agent (space) id. Keys are tenant GUIDs in string form.</summary>
     public IDictionary<string, string> Spaces { get; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Optional staff-only Genie Agent used for every tenant after an explicit acknowledgement.
+    /// </summary>
+    public string? SharedSpaceId { get; set; }
+
+    /// <summary>
+    /// Confirms that <see cref="SharedSpaceId"/> has no tenant isolation and is for internal tools only.
+    /// </summary>
+    public bool AcknowledgeNoTenantIsolation { get; set; }
+
     /// <summary>How long to keep polling one question before giving up.</summary>
     /// <remarks>
     /// Databricks recommends stopping at ten minutes: a question still running after that is not
@@ -35,6 +45,20 @@ public sealed class GenieOptions
     /// </remarks>
     public TimeSpan ResponseTimeout { get; set; } = TimeSpan.FromMinutes(10);
 
-    internal bool TryResolveSpace(TenantContext tenant, out string spaceId) =>
-        Spaces.TryGetValue(tenant.TenantId.ToString(), out spaceId!) && !string.IsNullOrWhiteSpace(spaceId);
+    internal bool TryResolveSpace(TenantContext tenant, out string spaceId)
+    {
+        if (Spaces.TryGetValue(tenant.TenantId.ToString(), out spaceId!) && !string.IsNullOrWhiteSpace(spaceId))
+        {
+            return true;
+        }
+
+        if (AcknowledgeNoTenantIsolation && !string.IsNullOrWhiteSpace(SharedSpaceId))
+        {
+            spaceId = SharedSpaceId;
+            return true;
+        }
+
+        spaceId = string.Empty;
+        return false;
+    }
 }

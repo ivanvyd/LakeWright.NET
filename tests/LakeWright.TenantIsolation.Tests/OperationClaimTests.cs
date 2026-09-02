@@ -257,7 +257,11 @@ public class OperationClaimTests(PostgresFixture postgres)
             $"UPDATE organizations SET \"Schema\" = 'legacy_schema_name' WHERE \"Id\" = {AcmeId.Value}",
             ct);
         db.ChangeTracker.Clear();
-        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
+        var resolver = new EfTenantContextResolver(
+            db,
+            Microsoft.Extensions.Options.Options.Create(new MultitenancyOptions { Catalog = "analytics" }),
+            new ResolverTenantContextFactory());
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System, resolver);
 
         // Act
         var resolved = await store.ResolveClaimedTenantAsync(AcmeId, "analytics", ct);

@@ -1,6 +1,8 @@
 using Azure.Core;
 using LakeWright.Conversations;
 using LakeWright.Core.Tenancy;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using WireMock.ResponseBuilders;
@@ -97,6 +99,53 @@ public class GenieConversationTests : IDisposable
         _workspace.LogEntries
             .Select(e => e.RequestMessage!.Path)
             .ShouldNotContain(p => p.Contains(GlobexSpace, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task An_acknowledged_shared_space_is_used_for_initial_and_follow_up_questions()
+    {
+        const string sharedSpace = "staff-only-space";
+        StubConversation(sharedSpace, "COMPLETED");
+        var options = new GenieOptions
+        {
+            WorkspaceUrl = _workspace.Urls[0],
+            SharedSpaceId = sharedSpace,
+            AcknowledgeNoTenantIsolation = true,
+        };
+        var genie = new GenieConversations(
+            new HttpClient { BaseAddress = new Uri(_workspace.Urls[0] + "/") },
+            new StubCredential(),
+            Options.Create(options),
+            new FakeTimeProvider());
+
+        await genie.AskAsync(Tenant(AcmeId), "how many orders?", TestContext.Current.CancellationToken);
+        await genie.ContinueAsync(Tenant(GlobexId), "conversation-1", "and last month?", TestContext.Current.CancellationToken);
+
+        _workspace.LogEntries
+            .Select(entry => entry.RequestMessage!.Path)
+            .ShouldContain($"/api/2.0/genie/spaces/{sharedSpace}/start-conversation");
+        _workspace.LogEntries
+            .Select(entry => entry.RequestMessage!.Path)
+            .ShouldContain($"/api/2.0/genie/spaces/{sharedSpace}/conversations/conversation-1/messages");
+    }
+
+    [Fact]
+    public void Shared_space_requires_an_explicit_no_isolation_acknowledgement_at_startup()
+    {
+        var services = new ServiceCollection();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Genie:WorkspaceUrl"] = "https://workspace.example",
+            ["Genie:SharedSpaceId"] = "staff-only-space",
+        }).Build();
+        services.AddLakeWrightGenie(configuration);
+
+        var validate = () => services.BuildServiceProvider()
+            .GetRequiredService<IStartupValidator>()
+            .Validate();
+
+        validate.ShouldThrow<OptionsValidationException>()
+            .Message.ShouldContain("AcknowledgeNoTenantIsolation");
     }
 
     [Theory]

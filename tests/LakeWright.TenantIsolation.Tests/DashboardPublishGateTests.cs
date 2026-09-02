@@ -204,4 +204,35 @@ public class DashboardPublishGateTests
 
         verdict.Passed.ShouldBeFalse();
     }
+
+    [Fact]
+    public void Inspect_dashboard_reports_the_name_of_each_unscoped_dataset()
+    {
+        var serializedDashboard = """
+            {
+              "datasets": [
+                { "name": "orders", "queryLines": ["SELECT * FROM orders WHERE __aibi_external_value = :tenant_id"] },
+                { "name": "regions", "queryLines": ["SELECT * FROM regions WHERE region = 'EMEA'"] },
+                { "name": "customers", "query": "SELECT * FROM customers WHERE __aibi_external_value = :tenant_id" }
+              ]
+            }
+            """;
+
+        var verdict = DashboardPublishGate.InspectDashboard(serializedDashboard);
+
+        verdict.Passed.ShouldBeFalse();
+        verdict.Datasets.Count.ShouldBe(3);
+        verdict.Datasets[1].Name.ShouldBe("regions");
+        verdict.Datasets[1].Verdict.Passed.ShouldBeFalse();
+        verdict.Datasets[2].Verdict.Passed.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Inspect_dashboard_fails_closed_when_no_datasets_are_declared()
+    {
+        var verdict = DashboardPublishGate.InspectDashboard("""{"datasets": []}""");
+
+        verdict.Passed.ShouldBeFalse();
+        verdict.Datasets.ShouldBeEmpty();
+    }
 }

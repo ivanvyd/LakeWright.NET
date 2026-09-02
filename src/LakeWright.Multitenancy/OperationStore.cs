@@ -21,7 +21,11 @@ namespace LakeWright.Multitenancy;
 /// without the same explicit note, because a blanket guarantee in this comment that two of the
 /// methods do not honour is worse than no comment.
 /// </remarks>
-public sealed class OperationStore(LakeWrightDbContext db, AuditLog audit, TimeProvider time)
+public sealed class OperationStore(
+    LakeWrightDbContext db,
+    AuditLog audit,
+    TimeProvider time,
+    EfTenantContextResolver? systemResolver = null)
 {
     /// <summary>The <c>Idempotency-Key</c> length a caller may send.</summary>
     public const int MaxClientRequestIdLength = 200;
@@ -264,12 +268,13 @@ public sealed class OperationStore(LakeWrightDbContext db, AuditLog audit, TimeP
         string catalog,
         CancellationToken cancellationToken)
     {
-        var schema = await db.Organizations
-            .Where(o => o.Id == tenantId && o.State == OrganizationState.Active)
-            .Select(o => o.Schema)
-            .SingleOrDefaultAsync(cancellationToken);
+        if (systemResolver is null)
+        {
+            throw new InvalidOperationException(
+                "Resolving a system-owned tenant context requires the resolver registered by AddLakeWright.");
+        }
 
-        return schema is null ? null : TenantContextFactory.ForTenant(tenantId, catalog, schema);
+        return await systemResolver.ResolveSystemOwnedAsync(tenantId, catalog, cancellationToken);
     }
 
     /// <summary>Marks a claimed operation as finished.</summary>
@@ -393,4 +398,3 @@ public sealed class OperationStore(LakeWrightDbContext db, AuditLog audit, TimeP
         return claimed.FirstOrDefault();
     }
 }
-

@@ -95,7 +95,7 @@ public static class TestApi
                 .ConfigureServices(services =>
                 {
                     services.AddDbContext<LakeWrightDbContext>(o => o.UseNpgsql(connectionString));
-                    services.AddScoped<ITenantContextResolver, EfTenantContextResolver>();
+                    services.AddLakeWrightTenancy<EfTenantContextResolver>();
                     services.AddScoped<IMembershipReader, EfMembershipReader>();
                     services.AddSingleton(TimeProvider.System);
                     services.AddScoped<AuditLog>();
