@@ -368,11 +368,14 @@ public class DatabricksBillingUsageReaderTests
     [Fact]
     public async Task ReadAsync_cancels_a_pending_statement_when_the_caller_cancels()
     {
-        var session = new StubStatementSession(new StatementOutcome.Pending("statement-1"));
+        var session = new StubStatementSession(new StatementOutcome.Pending("statement-1"))
+        {
+            BlockPollUntilCancelled = true
+        };
         using var cancellation = new CancellationTokenSource();
 
         var read = Reader(session).ReadAsync(Acme(), From, Until, [11], cancellation.Token);
-        await Task.Delay(10, TestContext.Current.CancellationToken);
+        await session.FirstPollStarted.WaitAsync(TestContext.Current.CancellationToken);
         cancellation.Cancel();
 
         await Should.ThrowAsync<OperationCanceledException>(async () => await read);
@@ -384,12 +387,13 @@ public class DatabricksBillingUsageReaderTests
     {
         var session = new StubStatementSession(new StatementOutcome.Pending("statement-1"))
         {
-            CancelException = new HttpRequestException("cancel transport failed")
+            CancelException = new HttpRequestException("cancel transport failed"),
+            BlockPollUntilCancelled = true
         };
         using var cancellation = new CancellationTokenSource();
 
         var read = Reader(session).ReadAsync(Acme(), From, Until, [11], cancellation.Token);
-        await Task.Delay(10, TestContext.Current.CancellationToken);
+        await session.FirstPollStarted.WaitAsync(TestContext.Current.CancellationToken);
         cancellation.Cancel();
 
         await Should.ThrowAsync<OperationCanceledException>(async () => await read);
