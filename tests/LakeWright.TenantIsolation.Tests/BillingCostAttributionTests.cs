@@ -366,7 +366,22 @@ public class DatabricksBillingUsageReaderTests
     }
 
     [Fact]
-    public async Task ReadAsync_cancels_a_pending_statement_when_the_caller_cancels()
+    public async Task ReadAsync_cancels_a_pending_statement_during_the_poll_interval()
+    {
+        var time = new FakeTimeProvider(Until);
+        var session = new StubStatementSession(new StatementOutcome.Pending("statement-1"));
+        using var cancellation = new CancellationTokenSource();
+
+        var read = Reader(session, time).ReadAsync(Acme(), From, Until, [11], cancellation.Token);
+        cancellation.Cancel();
+
+        await Should.ThrowAsync<OperationCanceledException>(async () => await read);
+        session.PolledStatementIds.ShouldBeEmpty();
+        session.CancelledStatementIds.ShouldBe(["statement-1"]);
+    }
+
+    [Fact]
+    public async Task ReadAsync_cancels_a_blocked_poll_when_the_caller_cancels()
     {
         var session = new StubStatementSession(new StatementOutcome.Pending("statement-1"))
         {
