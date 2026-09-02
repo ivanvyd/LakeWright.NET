@@ -376,6 +376,10 @@ class ConfidentialIdentifierScannerTests(unittest.TestCase):
         self.assertNotIn("  workflow_dispatch:\n", release)
         self.assertIn("if: github.actor == github.repository_owner", release)
         self.assertIn("trusted/scripts/validate-release-tag.py", release)
+        self.assertIn("  build-release-candidate:\n", release)
+        self.assertIn("  publish:\n", release)
+        self.assertIn("actions/download-artifact@", release)
+        self.assertNotIn("ref: ${{ steps.tag.outputs.commit_sha }}", release)
         self.assertLess(
             release.index("Refuse an unsigned tag"),
             release.index("Scan verified release source and history"),

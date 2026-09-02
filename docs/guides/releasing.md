@@ -84,9 +84,10 @@ Add the public key at <https://github.com/settings/keys> under **GPG keys**.
 3. **Watch the repository-dispatch run.** GitHub loads this event's workflow and confidentiality
    scanner only from the default branch. In order it verifies and pins the tag object and commit,
    checks out and scans that commit, derives the version, builds, tests, packs, generates a CycloneDX
-   SBOM, attests build provenance, rechecks that the tag did not move, extracts the release notes,
-   creates the GitHub release, and publishes to nuget.org last — because that is the only step that
-   cannot be undone.
+   SBOM, and extracts the release notes in a read-only job. A separate publication job downloads
+   only that immutable same-run artifact, attests build provenance, rechecks that the tag did not
+   move, creates the GitHub release, and publishes to nuget.org last — because that is the only step
+   that cannot be undone. Tagged build hooks never execute with release or OIDC permissions.
 
 ## If a release goes wrong
 
