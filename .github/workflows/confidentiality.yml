@@ -23,7 +23,9 @@ on:
 permissions:
   contents: read
   issues: write
-  pull-requests: read
+  # Label invalidation uses the pull-request issue endpoint. Repositories whose
+  # default workflow token is read-only need this explicit trusted-workflow grant.
+  pull-requests: write
 
 jobs:
   confidential-identifiers:
