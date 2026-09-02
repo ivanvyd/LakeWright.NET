@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
+using LakeWright.Core;
 using LakeWright.Core.Features;
 
 namespace LakeWright.Embedding.Ops;
@@ -25,8 +26,8 @@ public static class DashboardRefreshServiceCollectionExtensions
             .Bind(configuration.GetSection(DashboardRefreshOptions.SectionName))
             .Validate(options => options.Policy.MinimumInterval > TimeSpan.Zero, "LakeWright:DashboardRefresh:Policy:MinimumInterval must be positive.")
             .Validate(options => options.Policy.MaxConcurrentPerTenant >= 1, "LakeWright:DashboardRefresh:Policy:MaxConcurrentPerTenant must be at least one.")
-            .Validate(options => options.JobLookupCacheDuration > TimeSpan.Zero, "LakeWright:DashboardRefresh:JobLookupCacheDuration must be positive.")
-            .ValidateOnStart();
+            .Validate(options => options.JobLookupCacheDuration > TimeSpan.Zero, "LakeWright:DashboardRefresh:JobLookupCacheDuration must be positive.");
+        LakeWrightOptions.ValidateOnStart<DashboardRefreshOptions>(services);
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<ILakeWrightFeatureGate, AlwaysOnFeatureGate>();
         services.TryAddSingleton<IRefreshRunOwnership, MemoryRefreshRunOwnership>();
@@ -39,14 +40,14 @@ public static class DashboardRefreshServiceCollectionExtensions
         configureClient?.Invoke(builder);
         services.AddOptions<DashboardCacheBustOptions>();
         services.AddOptions<DashboardPublishVerifierOptions>()
-            .Validate(options => options.CacheDuration > TimeSpan.Zero, "LakeWright:DashboardPublishVerifier:CacheDuration must be positive.")
-            .ValidateOnStart();
+            .Validate(options => options.CacheDuration > TimeSpan.Zero, "LakeWright:DashboardPublishVerifier:CacheDuration must be positive.");
+        LakeWrightOptions.ValidateOnStart<DashboardPublishVerifierOptions>(services);
         services.AddOptions<DashboardMetadataCacheOptions>()
-            .Validate(options => options.Duration > TimeSpan.Zero, "LakeWright:DashboardMetadataCache:Duration must be positive.")
-            .ValidateOnStart();
+            .Validate(options => options.Duration > TimeSpan.Zero, "LakeWright:DashboardMetadataCache:Duration must be positive.");
+        LakeWrightOptions.ValidateOnStart<DashboardMetadataCacheOptions>(services);
         services.AddOptions<WarehouseWarmOptions>()
-            .Validate(options => options.MinimumInterval > TimeSpan.Zero, "LakeWright:WarehouseWarm:MinimumInterval must be positive.")
-            .ValidateOnStart();
+            .Validate(options => options.MinimumInterval > TimeSpan.Zero, "LakeWright:WarehouseWarm:MinimumInterval must be positive.");
+        LakeWrightOptions.ValidateOnStart<WarehouseWarmOptions>(services);
         var dashboardBuilder = services.AddHttpClient<IDashboardEditorApi, DatabricksDashboardEditorApi>((provider, client) =>
         {
             var options = provider.GetRequiredService<IOptions<DashboardOpsOptions>>().Value;

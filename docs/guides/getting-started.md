@@ -237,6 +237,11 @@ making an external request. It never records the tenant in the exception or tele
 an operational stop, not as authorization—the tenant resolver and per-call ownership checks remain
 the security boundary.
 
+The Databricks, Genie, and dashboard-operations registrations contribute to one LakeWright
+startup validation summary. A half-configured host fails once with every missing or invalid
+configuration key instead of emitting unrelated first-failure exceptions; resolve the reported
+list before retrying startup.
+
 For multiple application replicas, install `LakeWright.Caching.Distributed`, register your host's
 `IDistributedCache`, then call `AddLakeWrightDistributedTokenCaches()`. Its cache keys are hashed
 before reaching the cache provider and `EvictTenant` uses a shared generation marker, so an updated

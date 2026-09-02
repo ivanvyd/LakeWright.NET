@@ -1,4 +1,5 @@
 using Azure.Core;
+using LakeWright.Core;
 using LakeWright.Core.Jobs;
 using LakeWright.Core.Tenancy;
 using LakeWright.Core.Features;
@@ -26,8 +27,9 @@ public static class DatabricksServiceCollectionExtensions
 
         services.AddOptions<DatabricksOptions>()
             .Bind(configuration.GetSection(DatabricksOptions.SectionName))
-            .ValidateDataAnnotations()
-            .ValidateOnStart();
+            .Validate(options => !string.IsNullOrWhiteSpace(options.WorkspaceUrl), "Databricks:WorkspaceUrl is required.")
+            .Validate(options => !string.IsNullOrWhiteSpace(options.WarehouseId), "Databricks:WarehouseId is required.");
+        LakeWrightOptions.ValidateOnStart<DatabricksOptions>(services);
 
         services.AddKeyedSingleton<ITenantScopeStrategy>(ProjectedColumnScope.DefaultName, new ProjectedColumnScope());
         services.AddScoped<ITenantScopeStrategyResolver, TenantScopeStrategyResolver>();
