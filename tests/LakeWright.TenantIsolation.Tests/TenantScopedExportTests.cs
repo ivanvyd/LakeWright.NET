@@ -1,3 +1,4 @@
+using System.Diagnostics.Metrics;
 using LakeWright.Core.Tenancy;
 using LakeWright.Databricks;
 using Microsoft.Azure.Databricks.Client.Models;
@@ -244,6 +245,71 @@ public class TenantScopedExportTests : IDisposable
         ex.StatusCode.ShouldNotBeNull();
     }
 
+    [Fact]
+    public async Task A_pending_export_is_polled_to_external_links_within_its_budget()
+    {
+        StubChunk("""{"data_array":[[1]]}""");
+        var session = new SequencedSession(
+            new StatementOutcome.Pending("statement-1"),
+            new StatementOutcome.LargeResult(
+                ["id"],
+                [new Uri($"{_chunks.Urls[0]}/chunk-0.json")],
+                1,
+                "statement-1"));
+        var export = NewExport(session);
+        var statement = TenantScopedStatement.Create(
+            TenantContextFactory.ForTenant(TenantId.New(), "analytics"),
+            "SELECT id FROM customers",
+            new StatementOptions
+            {
+                PollInterval = TimeSpan.FromMilliseconds(1),
+                TotalBudget = TimeSpan.FromSeconds(1),
+            });
+
+        var rows = new List<ExportRow>();
+        await foreach (var row in export.StreamAsync(statement, TestContext.Current.CancellationToken))
+        {
+            rows.Add(row);
+        }
+
+        session.GetCalls.ShouldBe(1);
+        session.Request!.OnWaitTimeout.ShouldBe(SqlStatementOnWaitTimeout.CONTINUE);
+        rows.Select(row => row.Values.Count == 0 ? null : row.Values[0]).ShouldBe([null, "1"]);
+    }
+
+    [Fact]
+    public async Task Streaming_an_export_emits_row_and_response_byte_metrics()
+    {
+        StubStatementExecution(
+            chunks: [$"{_chunks.Urls[0]}/chunk-0.json"],
+            columns: ["id"]);
+        StubChunk("""{"data_array":[[1],[2]]}""");
+        var measurements = new List<(string Name, long Value)>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, meterListener) =>
+        {
+            if (instrument.Meter.Name == LakeWrightDatabricksTelemetry.MeterName
+                && instrument.Name.StartsWith("lakewright.exports.", StringComparison.Ordinal))
+            {
+                meterListener.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, measurement, _, _) =>
+            measurements.Add((instrument.Name, measurement)));
+        listener.Start();
+
+        await foreach (var _ in NewExport().StreamAsync(SampleStatement(), TestContext.Current.CancellationToken))
+        {
+            // Drain the stream so each row and its source chunk reaches the instrumentation.
+        }
+        listener.Dispose();
+
+        measurements.Where(measurement => measurement.Name == "lakewright.exports.rows")
+            .Sum(measurement => measurement.Value).ShouldBeGreaterThanOrEqualTo(2);
+        measurements.Where(measurement => measurement.Name == "lakewright.exports.bytes")
+            .Sum(measurement => measurement.Value).ShouldBeGreaterThan(0);
+    }
+
     private void StubStatementExecution(IReadOnlyList<string> chunks, IReadOnlyList<string> columns)
     {
         var manifest = new
@@ -290,7 +356,7 @@ public class TenantScopedExportTests : IDisposable
                 .WithBody(body));
     }
 
-    private DatabricksTenantScopedExport NewExport()
+    private DatabricksTenantScopedExport NewExport(IDatabricksStatementSession? session = null)
     {
         // The Databricks client talks to the fake workspace. The HttpClient talks to
         // the fake chunk server. Their BaseAddress pins the requests to the right place.
@@ -309,7 +375,9 @@ public class TenantScopedExportTests : IDisposable
         // build one directly so the test stands on its own.
         var chunkHttp = new HttpClient();
         var logger = Microsoft.Extensions.Logging.Abstractions.NullLogger<DatabricksTenantScopedExport>.Instance;
-        return new DatabricksTenantScopedExport(client, options, chunkHttp, logger);
+        return session is null
+            ? new DatabricksTenantScopedExport(client, options, chunkHttp, logger)
+            : new DatabricksTenantScopedExport(session, options.Value, chunkHttp, logger);
     }
 
     private static TenantScopedStatement SampleStatement()
@@ -328,5 +396,28 @@ public class TenantScopedExportTests : IDisposable
 
         public override async ValueTask<Azure.Core.AccessToken> GetTokenAsync(Azure.Core.TokenRequestContext requestContext, System.Threading.CancellationToken cancellationToken) =>
             await ValueTask.FromResult(GetToken(requestContext, cancellationToken));
+    }
+
+    private sealed class SequencedSession(params StatementOutcome[] outcomes) : IDatabricksStatementSession
+    {
+        private readonly Queue<StatementOutcome> _outcomes = new(outcomes);
+
+        public int GetCalls { get; private set; }
+
+        public SqlStatement? Request { get; private set; }
+
+        public Task<StatementOutcome> ExecuteAsync(SqlStatement request, TenantId tenantId, CancellationToken cancellationToken)
+        {
+            Request = request;
+            return Task.FromResult(_outcomes.Dequeue());
+        }
+
+        public Task<StatementOutcome> GetAsync(TenantId tenantId, string statementId, CancellationToken cancellationToken)
+        {
+            GetCalls++;
+            return Task.FromResult(_outcomes.Dequeue());
+        }
+
+        public Task CancelAsync(string statementId, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 }

@@ -1,6 +1,8 @@
 using LakeWright.Core.Tenancy;
 using LakeWright.Databricks;
 using Microsoft.Azure.Databricks.Client.Models;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LakeWright.TenantIsolation.Tests;
@@ -70,6 +72,26 @@ public class SharedSchemaTests
 
         Should.Throw<TenantScopeMissingException>(() => statement.SqlForExecution())
             .Message.ShouldContain("single SELECT or WITH query");
+    }
+
+    [Theory]
+    [InlineData("SELECT ';' AS punctuation")]
+    [InlineData("SELECT 1 -- ; inside a comment")]
+    [InlineData("SELECT `;` AS punctuation")]
+    public void A_semicolon_inside_non_executable_sql_is_allowed(string sql)
+    {
+        var statement = TenantScopedStatement.Create(SharedTenant(), sql);
+
+        statement.SqlForExecution().ShouldContain("lakewright_tenant_scope");
+    }
+
+    [Fact]
+    public void A_stacked_shared_schema_statement_is_refused_before_the_session()
+    {
+        var statement = TenantScopedStatement.Create(SharedTenant(), "SELECT * FROM events; SELECT 1");
+
+        Should.Throw<TenantScopeMissingException>(() => statement.SqlForExecution())
+            .Message.ShouldContain("one executable statement");
     }
 
     [Fact]
@@ -147,6 +169,110 @@ public class SharedSchemaTests
         }
 
         await Should.ThrowAsync<TenantScopeMissingException>(StreamAsync);
+        session.Calls.ShouldBe(0);
+    }
+
+    [Fact]
+    public void A_scope_table_strategy_wraps_and_binds_the_resolved_tenant()
+    {
+        var tenant = new ResolverTenantContextFactory().ForSharedTenant(
+            TenantId.Parse("0198f000-0000-7000-8000-0000000000c1"),
+            "analytics",
+            "shared",
+            scopeStrategyName: "scope-table");
+        var strategy = new ScopeTableScope(new ScopeTableScopeOptions
+        {
+            ScopeTable = "analytics.tenant_entities",
+            TenantColumn = "tenant_id",
+            ScopeTypeColumn = "entity_type",
+            Mappings = [new ScopeTableMapping("entity_id", "entity_id", "account")],
+        });
+
+        var scoped = TenantScopedStatement.Create(tenant, "SELECT entity_id, amount FROM events")
+            .ScopedForExecution(strategy);
+
+        scoped.Sql.ShouldContain("FROM analytics.tenant_entities AS lakewright_scope");
+        scoped.Sql.ShouldContain("lakewright_tenant_scope.entity_id = lakewright_scope.entity_id");
+        scoped.Parameters.ShouldContain(parameter => parameter.Name == "tenant_id"
+            && parameter.Value == tenant.TenantId.ToString());
+        scoped.Parameters.ShouldContain(parameter => parameter.Name == "lakewright_scope_type_0"
+            && parameter.Value == "account");
+    }
+
+    [Fact]
+    public void A_scope_table_strategy_refuses_a_query_without_a_mapped_fact_key()
+    {
+        var strategy = new ScopeTableScope(new ScopeTableScopeOptions
+        {
+            ScopeTable = "analytics.tenant_entities",
+            Mappings = [new ScopeTableMapping("entity_id", "entity_id")],
+        });
+
+        Should.Throw<TenantScopeMissingException>(() => strategy.Apply("SELECT amount FROM events", SharedTenant()))
+            .Message.ShouldContain("entity_id");
+    }
+
+    [Fact]
+    public async Task The_executor_uses_the_strategy_selected_by_the_resolved_context()
+    {
+        var services = new ServiceCollection();
+        services.AddLakeWrightDatabricks(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Databricks:WorkspaceUrl"] = "https://workspace.example",
+            ["Databricks:WarehouseId"] = "warehouse",
+        }).Build());
+        services.AddLakeWrightScopeTableScope(new ScopeTableScopeOptions
+        {
+            ScopeTable = "analytics.tenant_entities",
+            Mappings = [new ScopeTableMapping("entity_id", "entity_id")],
+        });
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var session = new RecordingSession();
+        var executor = new DatabricksStatementExecutor(
+            session,
+            new DatabricksOptions { WarehouseId = "warehouse" },
+            scope.ServiceProvider.GetRequiredService<ITenantScopeStrategyResolver>());
+        var tenant = new ResolverTenantContextFactory().ForSharedTenant(
+            TenantId.Parse("0198f000-0000-7000-8000-0000000000c1"),
+            "analytics",
+            "shared",
+            scopeStrategyName: "scope-table");
+
+        await executor.ExecuteAsync(
+            TenantScopedStatement.Create(tenant, "SELECT entity_id, amount FROM events"),
+            TestContext.Current.CancellationToken);
+
+        session.Calls.ShouldBe(1);
+        session.LastRequest!.Statement.ShouldContain("FROM analytics.tenant_entities AS lakewright_scope");
+    }
+
+    [Fact]
+    public async Task An_unknown_strategy_on_the_resolved_context_is_refused_before_the_session()
+    {
+        var services = new ServiceCollection();
+        services.AddLakeWrightDatabricks(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Databricks:WorkspaceUrl"] = "https://workspace.example",
+            ["Databricks:WarehouseId"] = "warehouse",
+        }).Build());
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var session = new RecordingSession();
+        var executor = new DatabricksStatementExecutor(
+            session,
+            new DatabricksOptions { WarehouseId = "warehouse" },
+            scope.ServiceProvider.GetRequiredService<ITenantScopeStrategyResolver>());
+        var tenant = new ResolverTenantContextFactory().ForSharedTenant(
+            TenantId.Parse("0198f000-0000-7000-8000-0000000000c1"),
+            "analytics",
+            "shared",
+            scopeStrategyName: "not-registered");
+
+        await Should.ThrowAsync<TenantScopeMissingException>(() => executor.ExecuteAsync(
+            TenantScopedStatement.Create(tenant, "SELECT tenant_id, amount FROM events"),
+            TestContext.Current.CancellationToken));
+
         session.Calls.ShouldBe(0);
     }
 

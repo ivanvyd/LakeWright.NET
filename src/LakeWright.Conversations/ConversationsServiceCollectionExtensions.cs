@@ -1,5 +1,8 @@
+using LakeWright.Core;
+using LakeWright.Core.Features;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -25,12 +28,14 @@ public static class ConversationsServiceCollectionExtensions
         // the tenant is known, rather than at boot, where it is not.
         services.AddOptions<GenieOptions>()
             .Bind(configuration.GetSection("Genie"))
-            .Validate(o => !string.IsNullOrWhiteSpace(o.WorkspaceUrl), "Genie:WorkspaceUrl is required.")
-            .ValidateOnStart();
+            .Validate(o => !string.IsNullOrWhiteSpace(o.WorkspaceUrl), "Genie:WorkspaceUrl is required.");
+        LakeWrightOptions.ValidateOnStart<GenieOptions>(services);
         services.AddSingleton<IValidateOptions<GenieOptions>>(provider =>
             new GenieSharedSpaceOptionsValidator(provider.GetService<ILoggerFactory>()));
 
         services.AddSingleton(TimeProvider.System);
+        services.TryAddSingleton<ILakeWrightFeatureGate, AlwaysOnFeatureGate>();
+        services.TryAddSingleton<IConversationOwnership, MemoryConversationOwnership>();
 
         services.AddHttpClient<IGenieConversations, GenieConversations>((provider, client) =>
         {

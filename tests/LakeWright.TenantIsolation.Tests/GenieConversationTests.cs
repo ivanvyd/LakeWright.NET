@@ -22,6 +22,7 @@ namespace LakeWright.TenantIsolation.Tests;
 [Trait("Category", "TenantIsolation")]
 public class GenieConversationTests : IDisposable
 {
+    private const string TestOwner = "test-owner";
     private const string AcmeSpace = "space-acme";
     private const string GlobexSpace = "space-globex";
 
@@ -47,7 +48,7 @@ public class GenieConversationTests : IDisposable
 
         // Act
         var act = async () => await genie.AskAsync(
-            Tenant(StrangerId), "how many orders?", TestContext.Current.CancellationToken);
+            Tenant(StrangerId), TestOwner, "how many orders?", TestContext.Current.CancellationToken);
 
         // Assert — and nothing was asked of the workspace on its behalf.
         var error = await act.ShouldThrowAsync<InvalidOperationException>();
@@ -64,8 +65,8 @@ public class GenieConversationTests : IDisposable
         var genie = Conversations();
 
         // Act — the same question from two tenants.
-        await genie.AskAsync(Tenant(AcmeId), "how many orders?", TestContext.Current.CancellationToken);
-        await genie.AskAsync(Tenant(GlobexId), "how many orders?", TestContext.Current.CancellationToken);
+        await genie.AskAsync(Tenant(AcmeId), TestOwner, "how many orders?", TestContext.Current.CancellationToken);
+        await genie.AskAsync(Tenant(GlobexId), TestOwner, "how many orders?", TestContext.Current.CancellationToken);
 
         // Assert
         var starts = _workspace.LogEntries
@@ -80,25 +81,19 @@ public class GenieConversationTests : IDisposable
     }
 
     [Fact]
-    public async Task A_follow_up_is_addressed_inside_the_callers_own_agent()
+    public async Task An_unowned_conversation_is_invisible_before_any_workspace_call()
     {
-        // Arrange — a conversation id belonging to Globex, presented by Acme. It is looked up in
-        // Acme's agent, where it does not exist, rather than in the agent that owns it.
+        // Arrange — conversations created before ownership tracking must not become shared by
+        // guessing their identifiers.
         StubConversation(AcmeSpace, "COMPLETED");
         var genie = Conversations();
 
         // Act
-        await genie.ContinueAsync(
-            Tenant(AcmeId), "conv-owned-by-globex", "and last month?", TestContext.Current.CancellationToken);
+        var act = () => genie.ContinueAsync(
+            Tenant(AcmeId), TestOwner, "conv-owned-by-globex", "and last month?", TestContext.Current.CancellationToken);
 
-        // Assert
-        _workspace.LogEntries
-            .Select(e => e.RequestMessage!.Path)
-            .ShouldContain($"/api/2.0/genie/spaces/{AcmeSpace}/conversations/conv-owned-by-globex/messages");
-
-        _workspace.LogEntries
-            .Select(e => e.RequestMessage!.Path)
-            .ShouldNotContain(p => p.Contains(GlobexSpace, StringComparison.Ordinal));
+        await Should.ThrowAsync<ConversationOwnershipException>(act);
+        _workspace.LogEntries.ShouldBeEmpty();
     }
 
     [Fact]
@@ -118,15 +113,63 @@ public class GenieConversationTests : IDisposable
             Options.Create(options),
             new FakeTimeProvider());
 
-        await genie.AskAsync(Tenant(AcmeId), "how many orders?", TestContext.Current.CancellationToken);
-        await genie.ContinueAsync(Tenant(GlobexId), "conversation-1", "and last month?", TestContext.Current.CancellationToken);
+        var answer = await genie.AskAsync(
+            Tenant(AcmeId), "staff-user", "how many orders?", TestContext.Current.CancellationToken);
+        await genie.ContinueAsync(
+            Tenant(GlobexId), "staff-user", answer.ConversationId, "and last month?", TestContext.Current.CancellationToken);
 
         _workspace.LogEntries
             .Select(entry => entry.RequestMessage!.Path)
             .ShouldContain($"/api/2.0/genie/spaces/{sharedSpace}/start-conversation");
         _workspace.LogEntries
             .Select(entry => entry.RequestMessage!.Path)
-            .ShouldContain($"/api/2.0/genie/spaces/{sharedSpace}/conversations/conversation-1/messages");
+            .ShouldContain($"/api/2.0/genie/spaces/{sharedSpace}/conversations/{answer.ConversationId}/messages");
+    }
+
+    [Fact]
+    public async Task Asking_records_an_owner_and_listing_never_exposes_another_owners_conversation()
+    {
+        StubConversation(AcmeSpace, "COMPLETED");
+        var genie = Conversations();
+
+        var answer = await genie.AskAsync(
+            Tenant(AcmeId), "alice", "how many orders?", TestContext.Current.CancellationToken);
+
+        (await genie.ListAsync("alice", TestContext.Current.CancellationToken)).ShouldBe([answer.ConversationId]);
+        (await genie.ListAsync("mallory", TestContext.Current.CancellationToken)).ShouldBeEmpty();
+        await Should.ThrowAsync<ConversationOwnershipException>(() => genie.ContinueAsync(
+            Tenant(AcmeId), "mallory", answer.ConversationId, "and last month?", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Deleting_an_owned_conversation_removes_its_record_only_after_the_workspace_accepts_it()
+    {
+        StubConversation(AcmeSpace, "COMPLETED");
+        _workspace
+            .Given(WireMockRequest.Create()
+                .WithPath($"/api/2.0/genie/spaces/{AcmeSpace}/conversations/conv-1")
+                .UsingDelete())
+            .RespondWith(Response.Create().WithStatusCode(200));
+        var genie = Conversations();
+
+        var answer = await genie.AskAsync(
+            Tenant(AcmeId), "alice", "how many orders?", TestContext.Current.CancellationToken);
+        await genie.DeleteAsync(Tenant(AcmeId), "alice", answer.ConversationId, TestContext.Current.CancellationToken);
+
+        (await genie.ListAsync("alice", TestContext.Current.CancellationToken)).ShouldBeEmpty();
+        _workspace.LogEntries.Select(entry => entry.RequestMessage!.Path).ShouldContain(
+            $"/api/2.0/genie/spaces/{AcmeSpace}/conversations/{answer.ConversationId}");
+    }
+
+    [Fact]
+    public async Task Deleting_an_unowned_conversation_does_not_call_the_workspace()
+    {
+        var genie = Conversations();
+
+        await Should.ThrowAsync<ConversationOwnershipException>(() => genie.DeleteAsync(
+            Tenant(AcmeId), "mallory", "conv-owned-by-alice", TestContext.Current.CancellationToken));
+
+        _workspace.LogEntries.ShouldBeEmpty();
     }
 
     [Fact]
@@ -160,7 +203,7 @@ public class GenieConversationTests : IDisposable
 
         // Act
         var answer = await genie.AskAsync(
-            Tenant(AcmeId), "how many orders?", TestContext.Current.CancellationToken);
+            Tenant(AcmeId), TestOwner, "how many orders?", TestContext.Current.CancellationToken);
 
         // Assert
         answer.Outcome.ShouldBe(expected);
@@ -175,7 +218,7 @@ public class GenieConversationTests : IDisposable
 
         // Act
         var answer = await genie.AskAsync(
-            Tenant(AcmeId), "how many orders?", TestContext.Current.CancellationToken);
+            Tenant(AcmeId), TestOwner, "how many orders?", TestContext.Current.CancellationToken);
 
         // Assert
         answer.Text.ShouldBe("There were 42 orders.");
@@ -209,7 +252,7 @@ public class GenieConversationTests : IDisposable
         var genie = Conversations(time);
 
         // Act
-        var asking = genie.AskAsync(Tenant(AcmeId), "how many orders?", TestContext.Current.CancellationToken);
+        var asking = genie.AskAsync(Tenant(AcmeId), TestOwner, "how many orders?", TestContext.Current.CancellationToken);
         await AdvanceUntilDone(time, asking);
         var answer = await asking;
 
@@ -234,7 +277,7 @@ public class GenieConversationTests : IDisposable
         var genie = Conversations(time);
 
         // Act
-        var asking = genie.AskAsync(Tenant(AcmeId), "how many orders?", TestContext.Current.CancellationToken);
+        var asking = genie.AskAsync(Tenant(AcmeId), TestOwner, "how many orders?", TestContext.Current.CancellationToken);
         await AdvanceUntilDone(time, asking);
         var answer = await asking;
 

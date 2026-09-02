@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Opt-in distributed token caching for LakeWright.NET.</Description>
+    <TargetFramework />
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Caching.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\LakeWright.Core\LakeWright.Core.csproj" />
+    <ProjectReference Include="..\LakeWright.Embedding\LakeWright.Embedding.csproj" />
+    <ProjectReference Include="..\LakeWright.Embedding.Ops\LakeWright.Embedding.Ops.csproj" />
+  </ItemGroup>
+</Project>

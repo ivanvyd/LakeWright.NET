@@ -92,6 +92,37 @@ public class TenantScopeVersionTests
     }
 
     [Fact]
+    public void ScopeVersion_from_members_is_order_independent_and_claim_safe()
+    {
+        var first = ScopeVersion.FromMembers(["entity-b", "entity-a", "entity-a"]);
+        var second = ScopeVersion.FromMembers(["entity-a", "entity-b"]);
+
+        first.ShouldBe(second);
+        first.Length.ShouldBe(12);
+        first.ShouldNotContain('|');
+        first.ShouldNotContain(':');
+        first.ShouldNotContain('~');
+    }
+
+    [Fact]
+    public async Task Cached_scope_version_source_reuses_a_value_until_its_ttl_expires()
+    {
+        var time = new FakeTimeProvider();
+        var source = new CountingScopeVersionSource();
+        var cached = new CachedScopeVersionSource(source, time, TimeSpan.FromMinutes(1));
+
+        var first = await cached.GetAsync(AcmeId, TestContext.Current.CancellationToken);
+        var second = await cached.GetAsync(AcmeId, TestContext.Current.CancellationToken);
+        time.Advance(TimeSpan.FromMinutes(1));
+        var refreshed = await cached.GetAsync(AcmeId, TestContext.Current.CancellationToken);
+
+        first.ShouldBe("version-1");
+        second.ShouldBe("version-1");
+        refreshed.ShouldBe("version-2");
+        source.Calls.ShouldBe(2);
+    }
+
+    [Fact]
     public async Task Broker_composes_external_value_with_tilde_delimiter_when_version_is_present()
     {
         // Arrange — a tenant whose scope version is the md5 of their scope rows. Hexadecimal and
@@ -189,5 +220,13 @@ public class TenantScopeVersionTests
             ClientSecret = "sp-secret",
         });
         return new DashboardTokenBroker(http, options, new FakeTimeProvider());
+    }
+
+    private sealed class CountingScopeVersionSource : IScopeVersionSource
+    {
+        public int Calls { get; private set; }
+
+        public ValueTask<string> GetAsync(TenantId tenantId, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult($"version-{++Calls}");
     }
 }

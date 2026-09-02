@@ -52,6 +52,17 @@ public class EmbedTokenBrokerTests : IDisposable
     }
 
     [Fact]
+    public async Task The_readiness_probe_performs_only_the_workspace_token_leg()
+    {
+        StubExchange();
+
+        await Broker().ProbeWorkspaceTokenAsync(TestContext.Current.CancellationToken);
+
+        _workspace.LogEntries.Count(entry => entry.RequestMessage!.Path == "/oidc/v1/token").ShouldBe(1);
+        _workspace.LogEntries.ShouldNotContain(entry => entry.RequestMessage!.Path.Contains("tokeninfo", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Two_tenants_get_two_different_filters()
     {
         // Arrange
@@ -141,8 +152,64 @@ public class EmbedTokenBrokerTests : IDisposable
             Tenant(AcmeId), "dash-1", "viewer-7", TestContext.Current.CancellationToken);
 
         // Assert
-        var error = await act.ShouldThrowAsync<HttpRequestException>();
-        error.Message.ShouldContain("secret expired");
+        var error = await act.ShouldThrowAsync<WorkspaceRejectedException>();
+        error.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        error.BodyExcerpt.ShouldContain("secret expired");
+    }
+
+    [Fact]
+    public async Task A_network_failure_preserves_its_cause_in_a_transport_exception()
+    {
+        var broker = new DashboardTokenBroker(
+            new HttpClient(new ThrowingHandler()) { BaseAddress = new Uri("https://workspace.example/") },
+            Options.Create(new DashboardEmbeddingOptions
+            {
+                WorkspaceUrl = "https://workspace.example",
+                ClientId = "sp-id",
+                ClientSecret = "sp-secret",
+            }),
+            new FakeTimeProvider());
+
+        var error = await Should.ThrowAsync<TransportException>(() => broker.IssueAsync(
+            Tenant(AcmeId),
+            "dash-1",
+            "viewer-7",
+            TestContext.Current.CancellationToken));
+
+        error.InnerException.ShouldBeOfType<HttpRequestException>();
+    }
+
+    [Fact]
+    public async Task An_unpublished_dashboard_has_a_distinct_exception()
+    {
+        _workspace
+            .Given(Request.Create().WithPath("/oidc/v1/token").UsingPost())
+            .RespondWith(Response.Create()
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("""{"access_token":"a-token","expires_in":3600}"""));
+        var broker = Broker();
+
+        var error = await Should.ThrowAsync<NotPublishedException>(() => broker.IssueAsync(
+            Tenant(AcmeId),
+            "dash-unpublished",
+            "viewer-7",
+            TestContext.Current.CancellationToken));
+
+        error.DashboardId.ShouldBe("dash-unpublished");
+    }
+
+    [Fact]
+    public async Task A_malformed_workspace_response_is_a_typed_gateway_failure()
+    {
+        _workspace
+            .Given(Request.Create().WithPath("/oidc/v1/token").UsingPost())
+            .RespondWith(Response.Create().WithBody("not-json"));
+        var broker = Broker();
+
+        var error = await Should.ThrowAsync<WorkspaceRejectedException>(() => broker.IssueAsync(
+            Tenant(AcmeId), "dash-1", "viewer-7", TestContext.Current.CancellationToken));
+
+        error.StatusCode.ShouldBe(HttpStatusCode.BadGateway);
     }
 
     private Dictionary<string, string> ScopedTokenForm()
@@ -196,4 +263,10 @@ public class EmbedTokenBrokerTests : IDisposable
 
     private static TenantContext Tenant(TenantId id) =>
         TenantContextFactory.ForTenant(id, "lakewright_dev", "analytics");
+
+    private sealed class ThrowingHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            throw new HttpRequestException("network unavailable");
+    }
 }

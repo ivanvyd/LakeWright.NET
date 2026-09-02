@@ -132,6 +132,25 @@ jobs:
             *)   echo "value=stable"    >> "$GITHUB_OUTPUT" ;;
           esac
 
+      # A stable release must promote source that has already been tagged as a release candidate.
+      # The packages are rebuilt for their stable SemVer identity, but the verified source commit
+      # is identical: a stable tag must never be the first release-pipeline execution for code.
+      - name: Require an identical release-candidate commit before stable publication
+        if: steps.kind.outputs.value == 'stable'
+        working-directory: ${{ github.workspace }}/candidate
+        env:
+          COMMIT_SHA: ${{ steps.tag.outputs.commit_sha }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          git fetch --tags origin
+          candidates=$(git tag --points-at "$COMMIT_SHA" --list "v${VERSION}-rc.*")
+          test -n "$candidates" || {
+            echo "::error::Stable v$VERSION must promote the same commit as a v$VERSION-rc.N tag."
+            exit 1
+          }
+          echo "Promoting release-candidate tag(s): $candidates"
+
       - run: dotnet restore --locked-mode
       - name: Build
         env:
@@ -184,13 +203,21 @@ jobs:
         run: |
           python3 - "$VERSION" <<'PY' > release-notes.md
           import re, sys
-          version = re.escape(sys.argv[1])
+          requested = sys.argv[1]
+          # Release candidates promote the same source as the stable tag. Their notes are the
+          # prepared stable section, rather than a second RC-only section that would require a
+          # commit between candidate and stable publication.
+          stable = re.sub(r'-rc\.\d+(?:\+.*)?$', '', requested)
+          versions = [requested] if stable == requested else [stable, requested]
           text = open("CHANGELOG.md", encoding="utf-8").read()
-          m = re.search(rf"^## \[{version}\][^\n]*\n(.*?)(?=^## \[|\Z)", text, re.S | re.M)
-          sys.stdout.write(m.group(1).strip() if m else "")
+          for version in versions:
+              m = re.search(rf"^## \[{re.escape(version)}\][^\n]*\n(.*?)(?=^## \[|\Z)", text, re.S | re.M)
+              if m:
+                  sys.stdout.write(m.group(1).strip())
+                  break
           PY
           test -s release-notes.md || {
-            echo "CHANGELOG.md has no '## [$VERSION]' section."
+            echo "CHANGELOG.md has no matching stable or requested section for '$VERSION'."
             exit 1
           }
 

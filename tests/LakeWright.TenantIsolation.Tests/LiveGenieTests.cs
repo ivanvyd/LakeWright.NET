@@ -25,6 +25,7 @@ namespace LakeWright.TenantIsolation.Tests;
 [Trait("Category", "Live")]
 public class LiveGenieTests
 {
+    private const string TestOwner = "live-test-owner";
     private static readonly TenantId AcmeId = TenantId.Parse("0198f000-0000-7000-8000-00000000ac11");
     private static readonly TenantId GlobexId = TenantId.Parse("0198f000-0000-7000-8000-00000000617b");
 
@@ -66,6 +67,7 @@ public class LiveGenieTests
         // Act
         var answer = await genie.AskAsync(
             Tenant(AcmeId),
+            TestOwner,
             "How many rows are in the largest table?",
             TestContext.Current.CancellationToken);
 
@@ -84,11 +86,11 @@ public class LiveGenieTests
         // Arrange
         var genie = Genie();
         var first = await genie.AskAsync(
-            Tenant(AcmeId), "How many rows are in the largest table?", TestContext.Current.CancellationToken);
+            Tenant(AcmeId), TestOwner, "How many rows are in the largest table?", TestContext.Current.CancellationToken);
 
         // Act
         var second = await genie.ContinueAsync(
-            Tenant(AcmeId), first.ConversationId, "And which table was that?", TestContext.Current.CancellationToken);
+            Tenant(AcmeId), TestOwner, first.ConversationId, "And which table was that?", TestContext.Current.CancellationToken);
 
         // Assert — same conversation, a second message in it.
         second.ConversationId.ShouldBe(first.ConversationId);
@@ -105,7 +107,7 @@ public class LiveGenieTests
 
         // Act
         var act = async () => await genie.AskAsync(
-            Tenant(GlobexId), "How many rows are in the largest table?", TestContext.Current.CancellationToken);
+            Tenant(GlobexId), TestOwner, "How many rows are in the largest table?", TestContext.Current.CancellationToken);
 
         // Assert
         var error = await act.ShouldThrowAsync<InvalidOperationException>();

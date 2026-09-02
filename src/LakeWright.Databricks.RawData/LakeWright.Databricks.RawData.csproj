@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Declarative, tenant-scoped raw-data queries for LakeWright.NET.</Description>
+    <TargetFramework />
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <ProjectReference Include="..\LakeWright.Core\LakeWright.Core.csproj" />
+    <ProjectReference Include="..\LakeWright.Databricks\LakeWright.Databricks.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="LakeWright.TenantIsolation.Tests" />
+  </ItemGroup>
+</Project>

@@ -57,6 +57,9 @@ internal sealed class MemoryEmbedTokenCache : IEmbedTokenCache
         Func<CancellationToken, ValueTask<EmbedToken>> factory,
         CancellationToken cancellationToken) =>
         _inner.GetOrAddAsync(key, factory, cancellationToken);
+
+    public void EvictTenant(TenantId tenantId) =>
+        _inner.RemoveWhere(key => key.TenantId == tenantId);
 }
 
 internal sealed class MemoryOpsTokenCache : IOpsTokenCache

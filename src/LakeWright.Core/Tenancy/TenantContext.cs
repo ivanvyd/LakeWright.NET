@@ -73,7 +73,8 @@ public sealed class TenantContext
         string catalog,
         string schema,
         string? scopeVersion = null,
-        string tenantParameter = "tenant_id")
+        string tenantParameter = "tenant_id",
+        string? scopeStrategyName = null)
     {
         var context = Create(tenantId, catalog, schema, scopeVersion);
         if (string.IsNullOrWhiteSpace(tenantParameter)
@@ -82,9 +83,15 @@ public sealed class TenantContext
             throw new ArgumentException("tenantParameter must be a plain SQL parameter identifier.", nameof(tenantParameter));
         }
 
+        if (scopeStrategyName is not null && (string.IsNullOrWhiteSpace(scopeStrategyName)
+            || scopeStrategyName.Any(character => !(character == '-' || character == '_' || char.IsLetterOrDigit(character)))))
+        {
+            throw new ArgumentException("scopeStrategyName must be a plain strategy identifier.", nameof(scopeStrategyName));
+        }
+
         return new TenantContext(
             context.TenantId,
-            new TenantLocation.SharedSchema(context.Catalog, context.Schema, tenantParameter),
+            new TenantLocation.SharedSchema(context.Catalog, context.Schema, tenantParameter, scopeStrategyName),
             context.ScopeVersion);
     }
 

@@ -50,7 +50,10 @@ if (outcome is not StatementOutcome.Success success || success.Rows.SingleOrDefa
 if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("LAKEWRIGHT_GENIE_SPACE_ID")))
 {
     var answer = await scope.ServiceProvider.GetRequiredService<IGenieConversations>()
-        .AskAsync(tenant, Environment.GetEnvironmentVariable("LAKEWRIGHT_GENIE_PROMPT") ?? "Return the number one.");
+        .AskAsync(
+            tenant,
+            "live-validator",
+            Environment.GetEnvironmentVariable("LAKEWRIGHT_GENIE_PROMPT") ?? "Return the number one.");
     if (answer.Outcome != GenieOutcome.Completed || string.IsNullOrWhiteSpace(answer.ConversationId))
     {
         throw new InvalidOperationException("The live net8 Genie call did not complete.");

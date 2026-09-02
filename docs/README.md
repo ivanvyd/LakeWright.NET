@@ -5,9 +5,11 @@
 | If you want to | Read |
 |---|---|
 | Get it running | [Getting started](guides/getting-started.md) |
+| Run local publish, scope, and package checks | [Local verification tooling](guides/local-verification-tooling.md) |
 | Know whether this project is for you | [The problem it solves](../README.md#what-problem-this-solves), and [what it is not](../README.md#what-this-is-not) |
 | Understand the architecture | [Architecture](planning/03-architecture.md) |
 | Understand why tenant isolation works the way it does | [Tenant model](planning/04-tenant-model.md), then [ADR 0002](decisions/0002-enforce-tenant-isolation-in-the-query-layer.md) |
+| Review the independent isolation-review release gate | [ADR 0027](decisions/0027-independent-isolation-seam-review.md) |
 | Know what actually works against a real workspace | [Compatibility matrix](compatibility.md) |
 | Contribute | [CONTRIBUTING.md](../CONTRIBUTING.md) and [Testing isolation](guides/testing-isolation.md) |
 | Know what is next, and what nobody has checked | [ROADMAP.md](../ROADMAP.md) |

@@ -13,6 +13,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Http" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options" />
     <!-- TimeProvider and TimeProvider.System are net8.0+, but on net8.0 the type lives in
          Microsoft.Bcl.TimeProvider (the polyfill the runtime ships). The reference is conditional
@@ -33,4 +34,3 @@
     <InternalsVisibleTo Include="LakeWright.TenantIsolation.Tests" />
   </ItemGroup>
 </Project>
-

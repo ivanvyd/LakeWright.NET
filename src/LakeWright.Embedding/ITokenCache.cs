@@ -52,6 +52,9 @@ public interface IEmbedTokenCache
         EmbedCacheKey key,
         Func<CancellationToken, ValueTask<EmbedToken>> factory,
         CancellationToken cancellationToken);
+
+    /// <summary>Evicts every cached viewer token for a tenant after its scope changes.</summary>
+    void EvictTenant(TenantId tenantId);
 }
 
 /// <summary>

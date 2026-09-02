@@ -44,6 +44,19 @@ public sealed class MemoryTokenCache<TKey, TValue> where TKey : notnull
         }
     }
 
+    /// <summary>Evicts every entry whose key satisfies <paramref name="predicate"/>.</summary>
+    public void RemoveWhere(Func<TKey, bool> predicate)
+    {
+        ArgumentNullException.ThrowIfNull(predicate);
+        foreach (var (key, entry) in _entries)
+        {
+            if (predicate(key))
+            {
+                _entries.TryRemove(new KeyValuePair<TKey, Entry>(key, entry));
+            }
+        }
+    }
+
     private Entry GetOrCreate(
         TKey key,
         Func<CancellationToken, ValueTask<TValue>> factory,

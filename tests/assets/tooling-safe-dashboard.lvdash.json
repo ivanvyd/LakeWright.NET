@@ -1,0 +1,8 @@
+{
+  "datasets": [
+    {
+      "name": "orders",
+      "query": "SELECT * FROM orders WHERE tenant_id = __aibi_external_value"
+    }
+  ]
+}

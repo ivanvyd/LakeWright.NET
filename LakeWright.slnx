@@ -4,11 +4,16 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/LakeWright.AspNetCore/LakeWright.AspNetCore.csproj" />
+    <Project Path="src/LakeWright.Caching.Distributed/LakeWright.Caching.Distributed.csproj" />
+    <Project Path="src/LakeWright.Caching.Redis/LakeWright.Caching.Redis.csproj" />
     <Project Path="src/LakeWright.AI/LakeWright.AI.csproj" />
     <Project Path="src/LakeWright.Conversations/LakeWright.Conversations.csproj" />
     <Project Path="src/LakeWright.Core/LakeWright.Core.csproj" />
     <Project Path="src/LakeWright.Embedding/LakeWright.Embedding.csproj" />
+    <Project Path="src/LakeWright.Embedding.Ops/LakeWright.Embedding.Ops.csproj" />
+    <Project Path="src/LakeWright.HealthChecks/LakeWright.HealthChecks.csproj" />
     <Project Path="src/LakeWright.Databricks/LakeWright.Databricks.csproj" />
+    <Project Path="src/LakeWright.Databricks.RawData/LakeWright.Databricks.RawData.csproj" />
     <Project Path="src/LakeWright.Multitenancy/LakeWright.Multitenancy.csproj" />
   </Folder>
   <Folder Name="/tests/">
@@ -17,5 +22,6 @@
   <Folder Name="/tools/">
     <Project Path="tools/LakeWright.DatabaseMaintenance.Core/LakeWright.DatabaseMaintenance.Core.csproj" />
     <Project Path="tools/LakeWright.DatabaseMaintenance/LakeWright.DatabaseMaintenance.csproj" />
+    <Project Path="tools/LakeWright.Tooling/LakeWright.Tooling.csproj" />
   </Folder>
 </Solution>

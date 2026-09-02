@@ -102,6 +102,7 @@ src/
   LakeWright.AI/              Databricks model serving as an IChatClient, optional
   LakeWright.Embedding/       scoped tokens for AI/BI dashboards, optional
   LakeWright.Conversations/   tenant-scoped Genie, optional
+  LakeWright.Caching.Redis/   Redis-backed Genie conversation ownership, optional
 samples/
   Signalboard/                two-tenant sample product, Blazor dashboard plus the API
 tests/

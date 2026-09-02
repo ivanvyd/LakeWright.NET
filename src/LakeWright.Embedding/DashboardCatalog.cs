@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
+using LakeWright.Core.Features;
 using Microsoft.Extensions.Options;
 
 namespace LakeWright.Embedding;
@@ -26,11 +27,16 @@ public sealed class DashboardCatalog : IDashboardCatalog
 {
     private readonly HttpClient _http;
     private readonly IOpsTokenBroker _opsTokens;
+    private readonly ILakeWrightFeatureGate _features;
 
-    public DashboardCatalog(HttpClient http, IOpsTokenBroker opsTokens)
+    public DashboardCatalog(
+        HttpClient http,
+        IOpsTokenBroker opsTokens,
+        ILakeWrightFeatureGate? features = null)
     {
         _http = http;
         _opsTokens = opsTokens;
+        _features = features ?? new AlwaysOnFeatureGate();
     }
 
     public async Task<DashboardCatalogPage> ListAsync(
@@ -38,6 +44,7 @@ public sealed class DashboardCatalog : IDashboardCatalog
         string? pageToken = null,
         CancellationToken cancellationToken = default)
     {
+        _features.EnsureEnabled(LakeWrightFeatures.Operations);
         var token = await _opsTokens.AcquireAsync(cancellationToken).ConfigureAwait(false);
 
         var query = new List<string>();
@@ -54,18 +61,17 @@ public sealed class DashboardCatalog : IDashboardCatalog
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
 
-        using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        using var response = await EmbeddingHttp.SendAsync(_http, request, cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            throw new HttpRequestException(
-                $"Databricks answered {(int)response.StatusCode} {response.ReasonPhrase}: {body}",
-                inner: null,
-                statusCode: response.StatusCode);
+            throw new WorkspaceRejectedException(
+                response.StatusCode,
+                body.Length <= 1024 ? body : body[..1024]);
         }
 
-        using var payload = JsonDocument.Parse(
-            await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+        using var payload = EmbeddingHttp.ParseJson(
+            await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false), "the dashboard catalog");
         var root = payload.RootElement;
 
         var dashboards = new List<DashboardSummary>();

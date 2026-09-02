@@ -8,6 +8,96 @@ note.
 
 ## [Unreleased]
 
+## [2.0.0] — 2026-09-02
+
+### Changed
+
+- `LakeWright.Conversations` now requires an opaque application owner key for `AskAsync` and
+  `ContinueAsync`. The library records ownership only after a conversation is created, refuses
+  unrecorded or foreign-owner continuation and deletion before any workspace call, and exposes
+  owner-filtered `ListAsync` and `DeleteAsync`. Migrate every caller by passing the authenticated
+  application's stable opaque principal key; do not use a display name or email address. The
+  former overloads cannot safely infer ownership and were removed rather than silently treating
+  all users as one owner.
+
+### Added
+
+- New `LakeWright.Tooling` installs the `dotnet lakewright` command for offline or live dashboard
+  publish-gate inspection, non-executing tenant-scope dry runs, and clean net8 package-floor
+  validation against a packed candidate.
+
+- New `LakeWright.HealthChecks` supplies readiness checks for the cached first OAuth token leg and
+  non-billable warehouse-state reads. A statement probe is excluded by default and requires a
+  host-provided `IReadinessStatementProbe`, so a health endpoint cannot accidentally wake compute.
+
+- LakeWright startup validation now aggregates registered Databricks, Genie, and dashboard-ops
+  option failures into one exception with their configuration-key messages, instead of failing on
+  the first hosted options validator that happens to run.
+
+- New `LakeWright.Embedding.Ops` adds tenant-bound, ops-principal dashboard refresh orchestration
+  over Jobs API 2.2. It joins only an active run whose recorded job parameters identify the same
+  tenant, applies a minimum-success interval, uses opaque bucketed idempotency tokens across
+  replicas, invalidates stale name-to-id lookups, and refuses unrecorded or foreign run status
+  requests before they reach the workspace. Multi-replica applications replace the process-local
+  `IRefreshRunOwnership` implementation with durable storage before exposing status endpoints.
+  It also supplies idempotent cache busting: a successful job run stamps every draft dataset with
+  a stable comment, PATCHes with the dashboard ETag, and publishes only once. Publishing defaults
+  to `embed_credentials: false`; an optimistic-concurrency retry succeeds only when the same
+  marker is already present.
+
+- `IEmbedPrecondition` is an opt-in broker seam. `IDashboardPublishVerifier` compares draft and
+  published revision metadata with a short cache; strict served-definition verification requires
+  an adopter-provided `IPublishedDashboardDefinitionReader`, because the public Lakeview published
+  endpoint does not expose serialized dashboard SQL. `PublishedRevisionEmbedPrecondition` fails
+  closed when that proof is unavailable or the published definition fails the publish gate.
+
+- `IDashboardMetadataCatalog` adds short-lived, host-replaceable caching for draft metadata,
+  published metadata, and a complete auto-paged dashboard listing. It is an operations-principal
+  surface for an authorized portal backend, not a browser-facing authorization mechanism.
+
+- `IWarehouseWarmer` provides an explicitly opt-in, rate-limited warehouse-start hint for a
+  dashboard-open signal. It is disabled by default and never executes or reads a statement.
+
+- New `LakeWright.Databricks.RawData` supplies declarative raw-data sources and a scoped query
+  service. It renders only allow-listed view and column identifiers, binds every filter and paging
+  value as a typed statement parameter, escapes text search wildcards, and rejects invalid input
+  before it can become a warehouse error.
+
+- Raw-data CSV export now returns only a bounded inline result or an opaque, tenant-and-owner
+  authorized operation. Larger results stream through the existing scoped external-links poller;
+  a caller never receives a warehouse statement id. Text formula prefixes are neutralized in the
+  shared source projection so grid and CSV values agree. Multi-replica hosts replace the
+  process-local `IRawDataExportOwnership` store before exposing stream endpoints.
+
+- `GenieAnswerSanitizer` removes model-supplied HTML and neutralizes markdown links by default.
+  Hosts may opt in to exact HTTPS allow-list entries when their renderer is prepared to render
+  those links.
+
+- `StatementOptions` now also governs tenant-scoped exports: an export whose initial submission is
+  pending polls through the same bounded terminal-state path as an interactive statement before it
+  begins fetching external links.
+
+- `LakeWright.Databricks` now exposes dependency-free statement duration, outcome, pending
+  warehouse-wait, export row, and export-byte metrics. Every tag is a low-cardinality statement
+  kind or outcome; no tenant identifier is emitted.
+
+- `ILakeWrightFeatureGate` adds a fail-closed runtime kill switch for embedding, statements,
+  operations, and conversations. The default is always-on; `AddLakeWrightFeatureGate` in the
+  ASP.NET Core package binds configuration through `IOptionsMonitor`, so reloads take effect
+  without a process restart.
+
+- New opt-in `LakeWright.Caching.Distributed` supplies `IDistributedCache` implementations for
+  workspace and viewer token caches. Keys are hashed, entries have token-derived absolute expiry
+  with jitter, and tenant eviction advances a shared generation marker.
+
+- New opt-in `LakeWright.Caching.Redis` supplies immutable, Redis-backed conversation ownership
+  across replicas. It claims a conversation with `SET NX`, records an owner-specific membership
+  set for safe listing, and hashes conversation and owner identifiers in Redis keys.
+
+- Dashboard token minting now emits a duration histogram and cache lookup counter, plus one
+  Information log with dashboard id, cache states, elapsed time, and a truncated SHA-256 viewer
+  hash. Raw viewer identifiers and tenant identifiers are never telemetry or log fields.
+
 ## [1.2.1] — 2026-09-02
 
 ### Security

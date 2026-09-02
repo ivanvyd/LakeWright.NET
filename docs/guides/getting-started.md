@@ -43,6 +43,7 @@ builder.Services
     .AddOpenIdConnect(/* ... */);
 
 builder.Services.AddLakeWright(builder.Configuration);
+builder.Services.AddLakeWrightFeatureGate(builder.Configuration); // optional runtime kill switch
 
 // Both are optional. Tenancy, authorization and the operations API work without Databricks;
 // add these when you want queries and jobs, and omit the worker in a web-only process.
@@ -90,17 +91,110 @@ public sealed class DirectoryTenantResolver(
 }
 
 builder.Services.AddLakeWrightTenancy<DirectoryTenantResolver>();
-builder.Services.AddLakeWrightDashboardEmbedding(builder.Configuration);
+builder.Services.AddLakeWrightDashboardEmbedding(
+    builder.Configuration,
+    http => http.AddStandardResilienceHandler());
+builder.Services.AddLakeWrightDashboardOps(builder.Configuration);
+builder.Services.AddLakeWrightDashboardRefresh(builder.Configuration);
 ```
 
 `AddLakeWrightTenancy` passes the factory to the resolver and registers it nowhere else, so a
 controller cannot mint a context from a caller-supplied tenant id. Return `null` for both a tenant
 the principal cannot access and one that does not exist. See [ADR 0021](../decisions/0021-registered-resolvers-mint-tenant-contexts.md).
 
+The embedding and dashboard-ops registrations do not install retries themselves. Pass their
+optional `IHttpClientBuilder` callback when your host has a resilience policy; the callback applies
+to every typed client registered by that call.
+
+Embedding failures are typed for HTTP mapping: `TransportException` usually maps to 502 or 503,
+`WorkspaceRejectedException` to 502, `NotPublishedException` to 404 or 409, and
+`TenantScopeMissingException` to 400. Do not expose the workspace response excerpt directly to a
+viewer; it is for server-side diagnostics.
+
+When an adopter changes a tenant's effective scope, compute a new `ScopeVersion`, persist it with
+the resolved tenant data, and call `IEmbedTokenCache.EvictTenant(tenantId)`. The changed version
+alters `external_value`, which bypasses the vendor result cache; eviction removes this process's
+old viewer-token entries. An iframe that is already rendered keeps its prior data until reload.
+
 `TokenCredential` rather than a string, because Entra tokens expire within the hour and the
 credential is what knows how to get another one. An earlier version took a `GetToken()` string,
 which was read once at startup and left every Databricks call failing 401 a little later with
 nothing to detect it.
+
+### Dashboard refreshes
+
+`AddLakeWrightDashboardRefresh` uses the separate `DashboardOps` principal and the Jobs API; it
+does not pretend that publishing a Lakeview draft refreshes a warehouse result. Call
+`StartOrJoinAsync` with the `TenantContext` produced by the resolver and a `RefreshJob` selected
+by application configuration. Job-level parameters are sent for the tenant id, catalog, and schema,
+so use a task type that supports job-parameter pushdown or explicitly forwards those parameters.
+
+The default `IRefreshRunOwnership` store is process-local. That is safe after a restart or on the
+wrong replica because an unrecorded run cannot be read, but it means a multi-replica host must
+replace it with durable storage before serving a refresh-status endpoint. Do not call
+`StatusAsync` with a bare run id from a browser; it requires the resolved `TenantContext` and checks
+that the application recorded ownership before making a workspace request.
+
+`IDashboardCacheBuster.BustOnceAsync(dashboardId, runId)` is separate from the job start so a
+product can publish only after its refresh has reached a successful terminal state. It appends a
+stable comment marker to each dataset query, PATCHes the draft with its ETag, and publishes the
+revision. A repeated call for the same run is a no-op; a PATCH conflict is accepted only after a
+fresh read proves another replica wrote the exact same marker. It publishes with
+`embed_credentials: false` by default. Set `DashboardCacheBustOptions.EmbedCredentials` only when
+that credential model is an intentional, reviewed part of the dashboard deployment.
+
+`IDashboardPublishVerifier.HasUnpublishedChangesAsync` compares the draft's `update_time` with
+the published revision timestamp and caches that inexpensive metadata check briefly. The public
+Lakeview API does not return serialized SQL from its published-dashboard endpoint, so
+`VerifyServedRevisionAsync` deliberately reports that verification is unavailable until the host
+adds an `IPublishedDashboardDefinitionReader` for an authoritative published artifact. Register
+`PublishedRevisionEmbedPrecondition` with the token broker only when that reader is present; it
+then fails minting closed until `DashboardPublishGate` passes on the proved served definition.
+
+`IDashboardMetadataCatalog` is the operations-only read surface for portal administration. It
+reads draft and published metadata by opaque dashboard id and walks every page for `ListAllAsync`.
+The shipped cache is local and deliberately short-lived; multi-replica hosts can call
+`AddLakeWrightDistributedDashboardMetadataCache` after registering `IDistributedCache` to share
+this read cache. Do not expose this operations
+catalog directly to a browser: authorize the requested dashboard in the host before asking it for
+metadata.
+
+`IWarehouseWarmer` is an optional opening-a-board hint. `WarehouseWarmOptions.Enabled` defaults
+to `false`; when explicitly enabled, the library requests a warehouse start at most once per
+configured interval per warehouse and never reads a statement result. The in-memory limiter is
+appropriate for one process. Replace `IWarehouseWarmLimiter` in a multi-replica application if a
+single cross-replica warm rate is required.
+
+### Readiness checks
+
+After registering embedding and Databricks, add the opt-in readiness checks with
+`builder.Services.AddHealthChecks().AddLakeWrightHealthChecks()`. They prove only the cached
+workspace-token leg and a read-only warehouse-state call. The billable statement check is absent
+unless the host explicitly enables it and registers `IReadinessStatementProbe`; that probe owns
+the resolved tenant context and approved `SELECT 1` statement.
+
+### Raw-data grids
+
+`LakeWright.Databricks.RawData` turns a trusted `RawDataSource` definition into one
+tenant-scoped, parameterized inline statement. A request cannot choose a view, physical column,
+SQL operator text, or sort fragment: those are validated against the source's allow-listed fields.
+Malformed values, excessive filters, values, offsets, and page sizes throw `ValidationException`
+before a warehouse call, which a host maps to HTTP 400. Register the scoped service after
+`AddLakeWrightDatabricks`:
+
+```csharp
+builder.Services.AddLakeWrightRawData(options => options.MaximumPageSize = 250);
+```
+
+`QueryAsync` deliberately refuses the `Export` request flag so a paged grid request cannot silently
+become a file download. Use `IRawDataExportService.StartAsync` with the resolved tenant, an opaque
+application owner key, and an application-owned operation id. Results at or below
+`ExportInlineRowCap` are returned as bounded CSV lines. Larger results are recorded without a
+workspace statement id and then retrieved through `StreamCsvAsync`, which checks the same tenant
+and owner before it opens the tenant-scoped external-links stream. Replace
+`IRawDataExportOwnership` with durable shared storage before serving the stream from multiple
+replicas. Both the grid and CSV use the same source projection; text cells beginning with a formula
+prefix are neutralized by default, unless the source opts out after a security review.
 
 ## Configuration
 
@@ -116,6 +210,15 @@ nothing to detect it.
   },
   "OperationWorker": {
     "Jobs": { "analysis": 123456789, "export": 987654321 }
+  },
+  "LakeWright": {
+    "DashboardRefresh": {
+      "Policy": { "MinimumInterval": "00:15:00", "MaxConcurrentPerTenant": 1 },
+      "JobLookupCacheDuration": "00:05:00"
+    },
+    "Features": {
+      "Enabled": { "embedding": true, "statements": true, "operations": true, "conversations": true }
+    }
   }
 }
 ```
@@ -127,6 +230,30 @@ nothing to detect it.
 
 `OperationWorker:Jobs` maps each `Operation.Kind` to the Databricks job that runs it. A kind with no
 entry fails the operation saying so, rather than running whichever job happened to be configured.
+
+`AddLakeWrightFeatureGate` is optional and defaults every feature to enabled. When registered, a
+configuration reload can set any named feature to `false`; LakeWright refuses the call before
+making an external request. It never records the tenant in the exception or telemetry. Use it for
+an operational stop, not as authorization—the tenant resolver and per-call ownership checks remain
+the security boundary.
+
+The Databricks, Genie, and dashboard-operations registrations contribute to one LakeWright
+startup validation summary. A half-configured host fails once with every missing or invalid
+configuration key instead of emitting unrelated first-failure exceptions; resolve the reported
+list before retrying startup.
+
+For multiple application replicas, install `LakeWright.Caching.Distributed`, register your host's
+`IDistributedCache`, then call `AddLakeWrightDistributedTokenCaches()`. Its cache keys are hashed
+before reaching the cache provider and `EvictTenant` uses a shared generation marker, so an updated
+scope makes earlier viewer tokens unreachable on every replica. Generic `IDistributedCache` has no
+atomic lock primitive; the package collapses concurrent requests within each process, while a host
+that needs global cold-miss coalescing must supply its cache provider's lease mechanism.
+
+For Genie conversation continuation, listing, or deletion across replicas, install
+`LakeWright.Caching.Redis`, register a shared `IConnectionMultiplexer`, then call
+`AddLakeWrightRedisConversationOwnership()`. This is deliberately a Redis-specific adapter:
+generic `IDistributedCache` cannot atomically claim a conversation or enumerate an owner's
+conversations. Claims use Redis `SET NX`, so a foreign replica cannot overwrite an owner.
 
 ## Starting work safely from a client
 

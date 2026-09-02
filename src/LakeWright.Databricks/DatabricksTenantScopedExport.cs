@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using LakeWright.Core.Features;
 using LakeWright.Core.Tenancy;
 using Microsoft.Azure.Databricks.Client;
 using Microsoft.Azure.Databricks.Client.Models;
@@ -39,6 +41,10 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
     private readonly DatabricksOptions _options;
     private readonly HttpClient _http;
     private readonly ILogger<DatabricksTenantScopedExport> _logger;
+    private readonly ITenantScopeStrategyResolver _scopeStrategies;
+    private readonly TimeProvider _time;
+    private readonly StatementTerminalPoller _poller;
+    private readonly ILakeWrightFeatureGate _features;
 
     public DatabricksTenantScopedExport(
         DatabricksClient client,
@@ -50,33 +56,58 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
         _options = options.Value;
         _http = http;
         _logger = logger;
+        _scopeStrategies = new DefaultTenantScopeStrategyResolver();
+        _time = TimeProvider.System;
+        _poller = new StatementTerminalPoller(_session, _time);
+        _features = new AlwaysOnFeatureGate();
     }
 
     internal DatabricksTenantScopedExport(
         IDatabricksStatementSession session,
         DatabricksOptions options,
         HttpClient http,
-        ILogger<DatabricksTenantScopedExport> logger)
+        ILogger<DatabricksTenantScopedExport> logger,
+        ITenantScopeStrategyResolver? scopeStrategies = null,
+        TimeProvider? time = null,
+        ILakeWrightFeatureGate? features = null)
     {
         _session = session;
         _options = options;
         _http = http;
         _logger = logger;
+        _scopeStrategies = scopeStrategies ?? new DefaultTenantScopeStrategyResolver();
+        _time = time ?? TimeProvider.System;
+        _poller = new StatementTerminalPoller(_session, _time);
+        _features = features ?? new AlwaysOnFeatureGate();
     }
 
     public async IAsyncEnumerable<ExportRow> StreamAsync(
         TenantScopedStatement statement,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        _features.EnsureEnabled(LakeWrightFeatures.Statements);
         ArgumentNullException.ThrowIfNull(statement.Tenant);
 
+        var execution = statement.Options ?? _options.Statement ?? new StatementOptions
+        {
+            WaitTimeout = _options.WaitTimeout,
+            Disposition = SqlStatementDisposition.EXTERNAL_LINKS,
+        };
+        execution.Validate();
+        var startedAt = _time.GetUtcNow();
+        using var activity = LakeWrightDatabricksTelemetry.Source.StartActivity("lakewright.statement.export");
+        activity?.SetTag("statement.kind", execution.Kind);
+
+        var scoped = statement.Tenant.Location is TenantLocation.SharedSchema
+            ? statement.ScopedForExecution(_scopeStrategies.Resolve(statement.Tenant))
+            : new ScopedStatementForExecution(statement.Sql, statement.Parameters);
         var request = new SqlStatement
         {
             WarehouseId = _options.WarehouseId,
             Catalog = statement.Tenant.Catalog,
             Schema = statement.Tenant.Schema,
-            Statement = statement.SqlForExecution(),
-            Parameters = [.. statement.ParametersForExecution().Select(p => new SqlStatementParameter
+            Statement = scoped.Sql,
+            Parameters = [.. scoped.Parameters.Select(p => new SqlStatementParameter
             {
                 Name = p.Name,
                 Value = p.Value,
@@ -90,17 +121,21 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
             // { "data_array": [[...]] } envelope as its INLINE response.
             Disposition = SqlStatementDisposition.EXTERNAL_LINKS,
             Format = StatementFormat.JSON_ARRAY,
-            WaitTimeout = _options.WaitTimeout,
-            OnWaitTimeout = SqlStatementOnWaitTimeout.CONTINUE
+            WaitTimeout = execution.WaitTimeout,
+            OnWaitTimeout = execution.OnWaitTimeout
         };
 
         var outcome = await _session.ExecuteAsync(
             request,
             statement.Tenant.TenantId,
             cancellationToken).ConfigureAwait(false);
+        outcome = execution.OnWaitTimeout == SqlStatementOnWaitTimeout.CONTINUE
+            ? await _poller.PollAsync(statement.Tenant, outcome, startedAt, execution, cancellationToken).ConfigureAwait(false)
+            : outcome;
 
         if (outcome is StatementOutcome.Failure failure)
         {
+            LakeWrightDatabricksTelemetry.RecordStatement(outcome, execution.Kind, _time.GetUtcNow() - startedAt);
             LogStatementFailed(statement.Tenant.TenantId, failure.StatementId, failure.ErrorCode);
             throw new HttpRequestException(
                 string.Create(
@@ -112,14 +147,15 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
 
         if (outcome is StatementOutcome.Pending)
         {
+            LakeWrightDatabricksTelemetry.RecordStatement(outcome, execution.Kind, _time.GetUtcNow() - startedAt);
             throw new InvalidOperationException(
-                "Databricks returned a still-running statement; the export is not a polling surface. " +
-                "Use IStatementExecutor.ExecuteAsync and poll the returned statement id, then call " +
-                "ITenantScopedExport.StreamAsync with a shorter statement or longer WaitTimeout.");
+                "Databricks returned a still-running statement after export polling was disabled. " +
+                "Use StatementOptions.OnWaitTimeout=CONTINUE, or cancel and retry the export.");
         }
 
         if (outcome is not StatementOutcome.LargeResult result)
         {
+            LakeWrightDatabricksTelemetry.RecordStatement(outcome, execution.Kind, _time.GetUtcNow() - startedAt);
             throw new InvalidOperationException(
                 "Databricks export did not return an external-links result.");
         }
@@ -128,8 +164,11 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
 
         if (columnNames.Length == 0)
         {
+            LakeWrightDatabricksTelemetry.RecordStatement(outcome, execution.Kind, _time.GetUtcNow() - startedAt);
             yield break;
         }
+
+        LakeWrightDatabricksTelemetry.RecordStatement(outcome, execution.Kind, _time.GetUtcNow() - startedAt);
 
         // The header is the first item in the stream. A caller that writes CSV can use
         // the header to write its column-name row, then write the values.
@@ -138,7 +177,7 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
         foreach (var link in result.Links)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await foreach (var row in FetchChunkAsync(link, columnNames, cancellationToken).ConfigureAwait(false))
+            await foreach (var row in FetchChunkAsync(link, columnNames, execution.Kind, cancellationToken).ConfigureAwait(false))
             {
                 yield return row;
             }
@@ -148,6 +187,7 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
     private async IAsyncEnumerable<ExportRow> FetchChunkAsync(
         Uri chunkUrl,
         string[] columnNames,
+        string kind,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         // Presigned SAS URLs do not accept an Authorization header; the chunk is a
@@ -171,7 +211,13 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
         }
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+        using var countingStream = new CountingReadStream(stream);
+        using var doc = await JsonDocument.ParseAsync(
+            countingStream,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        LakeWrightDatabricksTelemetry.ExportBytes.Add(
+            countingStream.BytesRead,
+            new TagList { { "statement.kind", kind } });
 
         if (!doc.RootElement.TryGetProperty("data_array", out var dataArray)
             || dataArray.ValueKind != JsonValueKind.Array)
@@ -205,7 +251,63 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
                     _ => cell.GetRawText(),
                 };
             }
+            LakeWrightDatabricksTelemetry.ExportRows.Add(1, new TagList { { "statement.kind", kind } });
             yield return new ExportRow(null, values);
         }
+    }
+
+    private sealed class CountingReadStream(Stream inner) : Stream
+    {
+        public long BytesRead { get; private set; }
+
+        public override bool CanRead => inner.CanRead;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override void Flush() => throw new NotSupportedException();
+
+        public override Task FlushAsync(CancellationToken cancellationToken) =>
+            Task.FromException(new NotSupportedException());
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            var read = inner.Read(buffer, offset, count);
+            BytesRead += read;
+            return read;
+        }
+
+        public override async ValueTask<int> ReadAsync(
+            Memory<byte> buffer,
+            CancellationToken cancellationToken = default)
+        {
+            var read = await inner.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+            BytesRead += read;
+            return read;
+        }
+
+        public override async Task<int> ReadAsync(
+            byte[] buffer,
+            int offset,
+            int count,
+            CancellationToken cancellationToken)
+        {
+            return await ReadAsync(buffer.AsMemory(offset, count), cancellationToken).ConfigureAwait(false);
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 }

@@ -56,12 +56,19 @@ Add the public key at <https://github.com/settings/keys> under **GPG keys**.
 
 ## Cutting a release
 
-1. **Write the CHANGELOG section first.** Rename `## [Unreleased]` to the version being released and
-   open a fresh `## [Unreleased]` above it. The workflow extracts the section matching the tag
-   *exactly* and fails when there is not one — notes for the wrong version are worse than a failed
-   release. Land that through a pull request.
+1. **Cut and verify a release candidate first.** Tag the exact main commit as
+   `v<version>-rc.N`, dispatch the release workflow, and verify its prerelease result. A stable
+   `v<version>` tag must point at that exact commit; the workflow refuses a stable tag without a
+   matching release-candidate tag. This exercises the complete release pipeline before consumers
+   see the stable version.
 
-2. **Tag it, signed and annotated.** Only the repository owner can send the release event; other
+2. **Write the stable CHANGELOG section before the candidate.** Rename `## [Unreleased]` to the
+   intended stable version and open a fresh `## [Unreleased]` above it. The RC workflow uses that
+   stable section, so the stable tag can promote the unchanged commit. The workflow fails when the
+   matching section is absent — notes for the wrong version are worse than a failed release. Land
+   that through a pull request.
+
+3. **Tag it, signed and annotated.** Only the repository owner can send the release event; other
    writers cannot grant a release job its publication permissions.
 
    ```bash
@@ -81,7 +88,7 @@ Add the public key at <https://github.com/settings/keys> under **GPG keys**.
    for refusing stable tags; [ADR 0019](../decisions/0019-stable-1-0-0.md) is the rationale
    for no longer refusing them.
 
-3. **Watch the repository-dispatch run.** GitHub loads this event's workflow and confidentiality
+4. **Watch the repository-dispatch run.** GitHub loads this event's workflow and confidentiality
    scanner only from the default branch. In order it verifies and pins the tag object and commit,
    checks out and scans that commit, derives the version, builds, tests, packs, generates a CycloneDX
    SBOM, and extracts the release notes in a read-only job. A separate publication job downloads

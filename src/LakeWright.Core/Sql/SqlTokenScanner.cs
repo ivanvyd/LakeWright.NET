@@ -3,6 +3,51 @@ namespace LakeWright.Core.Sql;
 /// <summary>Finds SQL tokens while ignoring strings, comments, and quoted identifiers.</summary>
 public static class SqlTokenScanner
 {
+    /// <summary>
+    /// Returns whether <paramref name="character"/> occurs in executable SQL rather than a
+    /// quoted literal, comment, or backtick identifier.
+    /// </summary>
+    public static bool ContainsExecutableCharacter(string sql, char character)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sql);
+
+        for (var index = 0; index < sql.Length; index++)
+        {
+            var current = sql[index];
+            var next = index + 1 < sql.Length ? sql[index + 1] : '\0';
+            if (current == '\'')
+            {
+                index = SkipQuoted(sql, index, '\'');
+                continue;
+            }
+            if (current == '`')
+            {
+                index = SkipQuoted(sql, index, '`');
+                continue;
+            }
+            if (current == '-' && next == '-')
+            {
+                index = sql.IndexOf('\n', index + 2);
+                if (index < 0) { break; }
+                continue;
+            }
+            if (current == '/' && next == '*')
+            {
+                var end = sql.IndexOf("*/", index + 2, StringComparison.Ordinal);
+                if (end < 0) { break; }
+                index = end + 1;
+                continue;
+            }
+
+            if (current == character)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>Returns offsets of <paramref name="token"/> that occur in executable SQL.</summary>
     public static IReadOnlyList<int> Find(string sql, string token)
     {

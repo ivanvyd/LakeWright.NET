@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using LakeWright.Core.Features;
 using Microsoft.Azure.Databricks.Client.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -12,6 +14,10 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
 {
     private readonly IDatabricksStatementSession _session;
     private readonly DatabricksOptions _options;
+    private readonly ITenantScopeStrategyResolver _scopeStrategies;
+    private readonly TimeProvider _time;
+    private readonly StatementTerminalPoller _poller;
+    private readonly ILakeWrightFeatureGate _features;
 
     public DatabricksStatementExecutor(
         Microsoft.Azure.Databricks.Client.DatabricksClient client,
@@ -23,21 +29,40 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
 
     internal DatabricksStatementExecutor(
         IDatabricksStatementSession session,
-        DatabricksOptions options)
+        DatabricksOptions options,
+        ITenantScopeStrategyResolver? scopeStrategies = null,
+        TimeProvider? time = null,
+        ILakeWrightFeatureGate? features = null)
     {
         _session = session;
         _options = options;
+        _scopeStrategies = scopeStrategies ?? new DefaultTenantScopeStrategyResolver();
+        _time = time ?? TimeProvider.System;
+        _poller = new StatementTerminalPoller(_session, _time);
+        _features = features ?? new AlwaysOnFeatureGate();
     }
 
     public async Task<StatementOutcome> ExecuteAsync(
         TenantScopedStatement statement,
         CancellationToken cancellationToken)
     {
+        _features.EnsureEnabled(LakeWrightFeatures.Statements);
         // A struct always has an implicit parameterless constructor, so `default` bypasses both
         // Create factories and arrives here with a null Tenant. Without this the failure is a
         // NullReferenceException three lines down, which reads as a bug in the wrong place.
         ArgumentNullException.ThrowIfNull(statement.Tenant);
 
+        var execution = statement.Options ?? _options.Statement ?? new StatementOptions
+        {
+            WaitTimeout = _options.WaitTimeout,
+            Disposition = _options.Disposition,
+            InlineRowLimit = _options.InlineRowLimit,
+        };
+        execution.Validate();
+        var startedAt = _time.GetUtcNow();
+        var scoped = statement.Tenant.Location is Core.Tenancy.TenantLocation.SharedSchema
+            ? statement.ScopedForExecution(_scopeStrategies.Resolve(statement.Tenant))
+            : new ScopedStatementForExecution(statement.Sql, statement.Parameters);
         var request = new SqlStatement
         {
             WarehouseId = _options.WarehouseId,
@@ -46,8 +71,8 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
             Catalog = statement.Tenant.Catalog,
             Schema = statement.Tenant.Schema,
 
-            Statement = statement.SqlForExecution(),
-            Parameters = [.. statement.ParametersForExecution().Select(p => new SqlStatementParameter
+            Statement = scoped.Sql,
+            Parameters = [.. scoped.Parameters.Select(p => new SqlStatementParameter
             {
                 Name = p.Name,
                 Value = p.Value,
@@ -57,21 +82,38 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
             // INLINE returns rows in the response; EXTERNAL_LINKS returns presigned URLs and
             // leaves DataArray null. Getting this pair wrong is how the first version returned
             // zero rows for every successful query, so disposition and format move together.
-            Disposition = _options.Disposition,
-            Format = _options.Disposition == SqlStatementDisposition.INLINE
+            Disposition = execution.Disposition,
+            Format = execution.Disposition == SqlStatementDisposition.INLINE
                 ? StatementFormat.JSON_ARRAY
                 : StatementFormat.ARROW_STREAM,
 
             // INLINE hard-fails at 25 MiB and cancels the statement rather than truncating, so a
             // row limit is what keeps an interactive query from dying instead of degrading.
-            RowLimit = _options.Disposition == SqlStatementDisposition.INLINE
-                ? _options.InlineRowLimit
+            RowLimit = execution.Disposition == SqlStatementDisposition.INLINE
+                ? execution.InlineRowLimit
                 : null,
-            WaitTimeout = _options.WaitTimeout,
-            OnWaitTimeout = SqlStatementOnWaitTimeout.CONTINUE
+            WaitTimeout = execution.WaitTimeout,
+            OnWaitTimeout = execution.OnWaitTimeout
         };
 
-        return await _session.ExecuteAsync(request, statement.Tenant.TenantId, cancellationToken);
+        using var activity = LakeWrightDatabricksTelemetry.Source.StartActivity("lakewright.statement.execute");
+        activity?.SetTag("statement.kind", execution.Kind);
+        try
+        {
+            var outcome = await _session.ExecuteAsync(request, statement.Tenant.TenantId, cancellationToken);
+            outcome = execution.OnWaitTimeout == SqlStatementOnWaitTimeout.CONTINUE
+                ? await _poller.PollAsync(statement.Tenant, outcome, startedAt, execution, cancellationToken).ConfigureAwait(false)
+                : outcome;
+            RecordOutcome(outcome, execution.Kind, startedAt);
+            return outcome;
+        }
+        catch (StatementBudgetExceededException)
+        {
+            LakeWrightDatabricksTelemetry.RecordBudgetExceeded(
+                execution.Kind,
+                _time.GetUtcNow() - startedAt);
+            throw;
+        }
     }
 
     public async Task<StatementOutcome> GetAsync(
@@ -79,6 +121,7 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
         string statementId,
         CancellationToken cancellationToken)
     {
+        _features.EnsureEnabled(LakeWrightFeatures.Statements);
         ArgumentNullException.ThrowIfNull(tenant);
 
         return await _session.GetAsync(tenant.TenantId, statementId, cancellationToken);
@@ -89,7 +132,11 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
         string statementId,
         CancellationToken cancellationToken)
     {
+        _features.EnsureEnabled(LakeWrightFeatures.Statements);
         ArgumentNullException.ThrowIfNull(tenant);
         return _session.CancelAsync(statementId, cancellationToken);
     }
+
+    private void RecordOutcome(StatementOutcome outcome, string kind, DateTimeOffset startedAt) =>
+        LakeWrightDatabricksTelemetry.RecordStatement(outcome, kind, _time.GetUtcNow() - startedAt);
 }

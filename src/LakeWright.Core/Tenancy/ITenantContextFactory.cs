@@ -22,4 +22,18 @@ public interface ITenantContextFactory
         string schema,
         string? scopeVersion = null,
         string tenantParameter = "tenant_id");
+
+    TenantContext ForSharedTenant(
+        TenantId tenantId,
+        string catalog,
+        string schema,
+        string? scopeStrategyName);
+
+    TenantContext ForSharedTenant(
+        TenantId tenantId,
+        string catalog,
+        string schema,
+        string? scopeVersion,
+        string tenantParameter,
+        string? scopeStrategyName);
 }
