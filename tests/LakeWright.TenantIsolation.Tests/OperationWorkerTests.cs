@@ -89,6 +89,8 @@ public class OperationWorkerTests(PostgresFixture postgres)
         var submitter = new FakeSubmitter();
         var services = new ServiceCollection();
         services.AddDbContext<LakeWrightDbContext>(o => o.UseNpgsql(connectionString));
+        services.Configure<MultitenancyOptions>(options => options.Catalog = "analytics");
+        services.AddLakeWrightTenancy<EfTenantContextResolver>();
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<AuditLog>();
         services.AddScoped<OperationStore>();

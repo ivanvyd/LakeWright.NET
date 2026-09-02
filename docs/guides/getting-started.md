@@ -70,6 +70,30 @@ managed identity, which Databricks accepts directly with no stored secret
 builder.Services.AddSingleton<TokenCredential>(new DefaultAzureCredential());
 ```
 
+## Bring your own tenancy
+
+`AddLakeWright` uses this library's PostgreSQL membership model. A product that already has a
+trusted membership store can register its own resolver instead:
+
+```csharp
+public sealed class DirectoryTenantResolver(
+    IDirectoryClient directory,
+    ITenantContextFactory contexts) : ITenantContextResolver
+{
+    public async Task<TenantContext?> ResolveAsync(TenantId tenantId, string principalId, CancellationToken ct) =>
+        await directory.IsMemberAsync(principalId, tenantId, ct)
+            ? contexts.ForTenant(tenantId, "analytics")
+            : null;
+}
+
+builder.Services.AddLakeWrightTenancy<DirectoryTenantResolver>();
+builder.Services.AddLakeWrightDashboardEmbedding(builder.Configuration);
+```
+
+`AddLakeWrightTenancy` passes the factory to the resolver and registers it nowhere else, so a
+controller cannot mint a context from a caller-supplied tenant id. Return `null` for both a tenant
+the principal cannot access and one that does not exist. See [ADR 0021](../decisions/0021-registered-resolvers-mint-tenant-contexts.md).
+
 `TokenCredential` rather than a string, because Entra tokens expire within the hour and the
 credential is what knows how to get another one. An earlier version took a `GetToken()` string,
 which was read once at startup and left every Databricks call failing 401 a little later with

@@ -5,11 +5,10 @@ namespace LakeWright.Core.Tenancy;
 /// lives in.
 /// </summary>
 /// <remarks>
-/// There is no public constructor. An instance can only come from
-/// <see cref="ITenantContextResolver"/>, which resolves membership from the application
-/// database. That is what stops a caller from manufacturing a context for a tenant the
-/// current principal does not belong to, and it is why the Databricks query layer can treat
-/// possession of a <see cref="TenantContext"/> as proof of authorisation.
+/// There is no public constructor. An instance comes from an <see cref="ITenantContextResolver"/>
+/// that checked membership in a store the caller cannot influence. Registered resolvers receive
+/// the factory required to mint one; no other service does. That is what stops a caller from
+/// manufacturing a context for a tenant the current principal does not belong to.
 ///
 /// See ADR 0002. Unity Catalog row filters resolve the caller with <c>session_user()</c>, so a
 /// shared service principal makes them a no-op. Isolation lives here instead.
@@ -41,9 +40,8 @@ public sealed class TenantContext
     public string? ScopeVersion { get; }
 
     /// <summary>
-    /// Only <see cref="LakeWright.Core"/> and the multitenancy implementation may create a
-    /// context. Kept internal rather than public so the type system carries the authorisation
-    /// claim described above.
+    /// Kept internal rather than public so the type system carries the authorisation claim described
+    /// above. Registered resolvers reach it through <see cref="ITenantContextFactory"/>.
     /// </summary>
     internal static TenantContext Create(TenantId tenantId, string catalog, string schema, string? scopeVersion = null)
     {

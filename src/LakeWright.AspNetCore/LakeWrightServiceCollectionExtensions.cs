@@ -47,7 +47,7 @@ public static class LakeWrightServiceCollectionExtensions
         services.AddDbContext<LakeWrightDbContext>((provider, options) =>
             options.UseNpgsql(configuration.GetConnectionString("LakeWright")));
 
-        services.AddScoped<ITenantContextResolver, EfTenantContextResolver>();
+        services.AddLakeWrightTenancy<EfTenantContextResolver>();
         services.AddScoped<IMembershipReader, EfMembershipReader>();
         services.TryAddSingletonTimeProvider();
         services.AddScoped<AuditLog>();

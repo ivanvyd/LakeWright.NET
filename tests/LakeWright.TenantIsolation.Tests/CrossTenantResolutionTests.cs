@@ -20,7 +20,7 @@ public class CrossTenantResolutionTests(PostgresFixture postgres)
     private const string BobPrincipal = "auth0|bob";
 
     private static EfTenantContextResolver ResolverFor(LakeWrightDbContext db) =>
-        new(db, Options.Create(new MultitenancyOptions { Catalog = "analytics" }));
+        new(db, Options.Create(new MultitenancyOptions { Catalog = "analytics" }), new ResolverTenantContextFactory());
 
     private static async Task<LakeWrightDbContext> SeedTwoTenantsAsync(PostgresFixture postgres)
     {

@@ -14,7 +14,8 @@ namespace LakeWright.Multitenancy;
 /// </remarks>
 public sealed class EfTenantContextResolver(
     LakeWrightDbContext db,
-    Microsoft.Extensions.Options.IOptions<MultitenancyOptions> options) : ITenantContextResolver
+    Microsoft.Extensions.Options.IOptions<MultitenancyOptions> options,
+    ITenantContextFactory contexts) : ITenantContextResolver
 {
     private readonly MultitenancyOptions _options = options.Value;
 
@@ -42,7 +43,21 @@ public sealed class EfTenantContextResolver(
             return null;
         }
 
-        return TenantContextFactory.ForTenant(tenantId, _options.Catalog, resolved.Schema);
+        return contexts.ForTenant(tenantId, _options.Catalog, resolved.Schema);
+    }
+
+    internal async Task<TenantContext?> ResolveSystemOwnedAsync(
+        TenantId tenantId,
+        string catalog,
+        CancellationToken cancellationToken)
+    {
+        var schema = await db.Organizations
+            .Where(organization => organization.Id == tenantId
+                && organization.State == OrganizationState.Active)
+            .Select(organization => organization.Schema)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return schema is null ? null : contexts.ForTenant(tenantId, catalog, schema);
     }
 }
 

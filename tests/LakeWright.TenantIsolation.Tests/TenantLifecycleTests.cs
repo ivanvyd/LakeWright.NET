@@ -179,7 +179,10 @@ public class TenantLifecycleTests(PostgresFixture postgres)
         requested.ShouldBeTrue();
         (await db.Organizations.SingleAsync(ct)).State.ShouldBe(OrganizationState.PendingDeletion);
         schemas.Calls.ShouldBeEmpty();
-        (await new EfTenantContextResolver(db, Options.Create(new MultitenancyOptions { Catalog = "analytics" }))
+        (await new EfTenantContextResolver(
+            db,
+            Options.Create(new MultitenancyOptions { Catalog = "analytics" }),
+            new ResolverTenantContextFactory())
             .ResolveAsync(tenant.Id, "auth0|ops", ct)).ShouldBeNull();
     }
 
