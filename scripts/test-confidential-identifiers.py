@@ -384,6 +384,12 @@ class ConfidentialIdentifierScannerTests(unittest.TestCase):
         self.assertIn("actions/download-artifact@", release)
         self.assertIn("Verify NuGet public availability", release)
         self.assertIn("v3-flatcontainer", release)
+        self.assertIn("refusing to create an incomplete release", release)
+        self.assertIn("NuGet accepted the upload", release)
+        self.assertLess(
+            release.index("Verify NuGet public availability"),
+            release.index("Create GitHub release"),
+        )
         self.assertNotIn("ref: ${{ steps.tag.outputs.commit_sha }}", release)
         self.assertLess(
             release.index("Refuse an unsigned tag"),

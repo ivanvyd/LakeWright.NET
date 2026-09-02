@@ -246,7 +246,7 @@ jobs:
         with:
           subject-path: 'candidate/artifacts/*.nupkg'
 
-      - name: Confirm the verified tag has not moved before release creation
+      - name: Confirm the verified tag has not moved before publication
         env:
           EXPECTED_TAG_OBJECT: ${{ needs.build-release-candidate.outputs.tag_object_sha }}
           GH_TOKEN: ${{ github.token }}
@@ -258,33 +258,9 @@ jobs:
             exit 1
           }
 
-      - name: Create GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.build-release-candidate.outputs.version }}
-          REF_NAME: ${{ github.event.client_payload.tag }}
-          KIND: ${{ needs.build-release-candidate.outputs.kind }}
-        run: |
-          # A prerelease label means a pre-release under SemVer. gh does not infer that, so a
-          # tag like 1.0.0-rc.1 would otherwise publish as an ordinary release. The
-          # classification is shared with the (now-removed) prerelease guard so the same
-          # version reads the same way in both places.
-          prerelease=""
-          if [ "$KIND" = "prerelease" ]; then
-            prerelease="--prerelease"
-          fi
-
-          # This job intentionally receives only the immutable candidate artifact, not a checkout.
-          # Give gh the repository explicitly instead of asking it to infer one from a missing .git.
-          gh release create "$REF_NAME" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "$REF_NAME" \
-            --notes-file release-notes.md \
-            $prerelease \
-            artifacts/*.nupkg artifacts/sbom.cyclonedx.json
-
-      # Last, because it is the only step that cannot be undone: nuget.org unlists but never
-      # deletes. Everything before this is recoverable by deleting a tag and a release.
+      # Publishing to NuGet is the only irreversible step: nuget.org unlists but never deletes.
+      # Do it before creating a GitHub release, then make the GitHub release contingent on a
+      # public restore endpoint confirming that consumers can actually acquire the packages.
       #
       # Pushing the .nupkg also pushes the .snupkg beside it — the symbol package follows the
       # primary one automatically when both are in the same folder, which `dotnet pack -o
@@ -315,13 +291,13 @@ jobs:
           REF_NAME: ${{ github.event.client_payload.tag }}
         run: |
           if [ -z "$NUGET_API_KEY" ]; then
-            # A warning rather than a log line: an unconfigured or lapsed trusted-publishing policy
-            # would otherwise let every tagged release report success while publishing nothing.
+            # An unconfigured or lapsed trusted-publishing policy must fail the release rather
+            # than create a GitHub release that claims a package version consumers cannot restore.
             # nuget.org deactivates a new policy if nothing publishes within seven days, so this
             # can start working and later stop without anything else changing.
-            echo "::warning::No NuGet trusted-publishing key; packages are on the GitHub release only."
+            echo "::error::No NuGet trusted-publishing key; refusing to create an incomplete release."
             echo "::warning::Set the NUGET_USER repository variable and add a policy at nuget.org."
-            exit 0
+            exit 1
           fi
           current=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$REF_NAME" --jq '.object.sha')
           test "$current" = "$EXPECTED_TAG_OBJECT" || {
@@ -342,12 +318,10 @@ jobs:
 
       # A successful upload is not the same as a package that consumers can restore:
       # nuget.org indexes packages asynchronously. Check the public flat-container
-      # index, which is the feed endpoint the restore client consumes. This remains a
-      # warning on timeout because the upload cannot be undone and an indexing delay
-      # must not make a correct release look failed; the exact missing package IDs are
-      # still visible in the run for follow-up.
+      # index, which is the feed endpoint the restore client consumes. A timeout is a
+      # failed release: a rerun can resume the immutable NuGet upload with --skip-duplicate,
+      # but a GitHub release must not be created until consumers can restore it.
       - name: Verify NuGet public availability
-        if: steps.nuget-login.outputs.NUGET_API_KEY != ''
         env:
           VERSION: ${{ needs.build-release-candidate.outputs.version }}
         run: |
@@ -382,4 +356,30 @@ jobs:
             fi
           done
 
-          echo "::warning::NuGet accepted the upload, but the public flat-container index did not list $VERSION within its documented one-hour validation window. Missing: ${missing[*]}"
+          echo "::error::NuGet accepted the upload, but the public flat-container index did not list $VERSION within its documented one-hour validation window. Missing: ${missing[*]}"
+          exit 1
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build-release-candidate.outputs.version }}
+          REF_NAME: ${{ github.event.client_payload.tag }}
+          KIND: ${{ needs.build-release-candidate.outputs.kind }}
+        run: |
+          # A prerelease label means a pre-release under SemVer. gh does not infer that, so a
+          # tag like 1.0.0-rc.1 would otherwise publish as an ordinary release. The
+          # classification is shared with the (now-removed) prerelease guard so the same
+          # version reads the same way in both places.
+          prerelease=""
+          if [ "$KIND" = "prerelease" ]; then
+            prerelease="--prerelease"
+          fi
+
+          # This job intentionally receives only the immutable candidate artifact, not a checkout.
+          # Give gh the repository explicitly instead of asking it to infer one from a missing .git.
+          gh release create "$REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$REF_NAME" \
+            --notes-file release-notes.md \
+            $prerelease \
+            artifacts/*.nupkg artifacts/sbom.cyclonedx.json
