@@ -1,4 +1,4 @@
-# ADR 0022: Shared schemas receive a library-owned tenant predicate
+# ADR 0022: Reject generic shared-schema SQL
 
 Status: accepted
 Date: 2026-09-02
@@ -11,20 +11,27 @@ another tenant's data. Some products need a shared schema for a very large tenan
 cross-tenant aggregates. That shape is safe only when the tenant selected by the resolved context
 constrains every result the warehouse returns.
 
+## Rejected approach
+
+An outer predicate over a caller-projected tenant column is not an isolation boundary. Caller SQL
+can project a matching constant or parameter under that alias while selecting rows from every
+tenant. The same flaw applies to a caller-projected mapping key. String inspection cannot prove
+the provenance of every tenant-owned relation in arbitrary SQL.
+
 ## Decision
 
-`TenantContext.Location` distinguishes `SchemaPerTenant` from `SharedSchema`. A shared location
-carries a configurable tenant-column name, defaulting to `tenant_id`. Before either a statement or
-an export reaches the Databricks session, the query layer wraps a single SELECT or WITH query and
-applies its own equality predicate against that column. The caller cannot supply the parameter; the
-query layer appends the resolved tenant ID itself. The caller query must project the configured
-tenant column, or the warehouse rejects it instead of returning an unconstrained result.
+LakeWright supports schema-per-tenant locations only. Generic shared-schema contexts, SQL wrappers,
+scope-table strategies, and their dry-run tooling are removed before the 2.0.0 release. Statement
+and export callers always receive catalog and schema from a membership-resolved context.
+
+A future shared-schema design must own the source relations and predicates, or rely on an
+independently enforced server-side policy. It must not accept arbitrary caller SQL as proof of row
+ownership.
 
 ## Consequences
 
 - Schema-per-tenant callers are unchanged.
-- Shared-schema callers must submit a single SELECT or WITH query that projects the configured
-  tenant column. The library appends the bound predicate itself.
-- This protects against accidental omissions and inert parameter references. It does not make a
-  malicious SQL author trusted: source that deliberately fabricates a tenant column is out of scope
-  for a library that accepts caller-authored SQL, so production review still restricts query authors.
+- Existing shared-schema adopters must keep the policy outside the generic LakeWright statement and
+  export APIs until a source-owned design is available.
+- A query with an unprovable tenant predicate fails by design instead of being presented as an
+  enforced library isolation guarantee.

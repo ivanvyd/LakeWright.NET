@@ -68,32 +68,5 @@ public sealed class TenantContext
         return new TenantContext(tenantId, new TenantLocation.SchemaPerTenant(catalog, schema), scopeVersion);
     }
 
-    internal static TenantContext CreateShared(
-        TenantId tenantId,
-        string catalog,
-        string schema,
-        string? scopeVersion = null,
-        string tenantParameter = "tenant_id",
-        string? scopeStrategyName = null)
-    {
-        var context = Create(tenantId, catalog, schema, scopeVersion);
-        if (string.IsNullOrWhiteSpace(tenantParameter)
-            || tenantParameter.Any(character => !(character == '_' || char.IsLetterOrDigit(character))))
-        {
-            throw new ArgumentException("tenantParameter must be a plain SQL parameter identifier.", nameof(tenantParameter));
-        }
-
-        if (scopeStrategyName is not null && (string.IsNullOrWhiteSpace(scopeStrategyName)
-            || scopeStrategyName.Any(character => !(character == '-' || character == '_' || char.IsLetterOrDigit(character)))))
-        {
-            throw new ArgumentException("scopeStrategyName must be a plain strategy identifier.", nameof(scopeStrategyName));
-        }
-
-        return new TenantContext(
-            context.TenantId,
-            new TenantLocation.SharedSchema(context.Catalog, context.Schema, tenantParameter, scopeStrategyName),
-            context.ScopeVersion);
-    }
-
     public override string ToString() => $"{Catalog}.{Schema} ({TenantId})";
 }

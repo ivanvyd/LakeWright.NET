@@ -390,20 +390,17 @@ class ConfidentialIdentifierScannerTests(unittest.TestCase):
         self.assertIn('dotnet nuget push "$primary"', release)
         self.assertIn('dotnet nuget push "$symbols"', release)
         self.assertNotIn('dotnet nuget push "artifacts/*.nupkg"', release)
-        publish_order = [
-            "LakeWright.Core",
-            "LakeWright.Conversations",
-            "LakeWright.Databricks",
-            "LakeWright.Embedding",
-            "LakeWright.Multitenancy",
-            "LakeWright.AI",
-            "LakeWright.AspNetCore",
-        ]
-        for before, after in zip(publish_order, publish_order[1:]):
-            self.assertLess(release.index(before), release.index(after))
+        self.assertIn("Order every packed package for publication", release)
+        self.assertIn("package-publish-order.py artifacts", release)
+        self.assertIn("artifacts/publish-order.txt", release)
+        self.assertIn("new package cannot be packed, indexed, but skipped", release)
         self.assertLess(
+            release.index("Order every packed package for publication"),
+            release.index("Publish to nuget.org"),
+        )
+        self.assertLess(
+            release.index("Publish to nuget.org"),
             release.index("Verify NuGet public availability"),
-            release.index("Create GitHub release"),
         )
         self.assertNotIn("ref: ${{ steps.tag.outputs.commit_sha }}", release)
         self.assertLess(

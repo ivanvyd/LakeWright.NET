@@ -1,5 +1,6 @@
 using LakeWright.AspNetCore;
 using LakeWright.Core.Tenancy;
+using LakeWright.Databricks;
 using LakeWright.Multitenancy;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -158,6 +159,14 @@ public class ExternalResolverTests
         Should.Throw<ArgumentException>(() => contexts.ForTenant(TenantA, "analytics", "tenant_a", "v1|v2"))
             .ParamName.ShouldBe("scopeVersion");
         contexts.ForTenant(TenantA, "analytics", "tenant_a", "v2").ScopeVersion.ShouldBe("v2");
+    }
+
+    [Fact]
+    public void The_public_tenancy_surface_cannot_create_a_shared_schema_context()
+    {
+        typeof(ITenantContextFactory).GetMethod("ForSharedTenant").ShouldBeNull();
+        typeof(TenantLocation).GetNestedType("SharedSchema").ShouldBeNull();
+        typeof(IStatementExecutor).Assembly.GetType("LakeWright.Databricks.TenantScopeMissingException").ShouldBeNull();
     }
 
     [Fact]

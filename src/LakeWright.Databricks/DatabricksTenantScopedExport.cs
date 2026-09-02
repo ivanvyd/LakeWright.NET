@@ -41,7 +41,6 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
     private readonly DatabricksOptions _options;
     private readonly HttpClient _http;
     private readonly ILogger<DatabricksTenantScopedExport> _logger;
-    private readonly ITenantScopeStrategyResolver _scopeStrategies;
     private readonly TimeProvider _time;
     private readonly StatementTerminalPoller _poller;
     private readonly ILakeWrightFeatureGate _features;
@@ -56,7 +55,6 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
         _options = options.Value;
         _http = http;
         _logger = logger;
-        _scopeStrategies = new DefaultTenantScopeStrategyResolver();
         _time = TimeProvider.System;
         _poller = new StatementTerminalPoller(_session, _time);
         _features = new AlwaysOnFeatureGate();
@@ -67,7 +65,6 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
         DatabricksOptions options,
         HttpClient http,
         ILogger<DatabricksTenantScopedExport> logger,
-        ITenantScopeStrategyResolver? scopeStrategies = null,
         TimeProvider? time = null,
         ILakeWrightFeatureGate? features = null)
     {
@@ -75,7 +72,6 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
         _options = options;
         _http = http;
         _logger = logger;
-        _scopeStrategies = scopeStrategies ?? new DefaultTenantScopeStrategyResolver();
         _time = time ?? TimeProvider.System;
         _poller = new StatementTerminalPoller(_session, _time);
         _features = features ?? new AlwaysOnFeatureGate();
@@ -98,16 +94,13 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
         using var activity = LakeWrightDatabricksTelemetry.Source.StartActivity("lakewright.statement.export");
         activity?.SetTag("statement.kind", execution.Kind);
 
-        var scoped = statement.Tenant.Location is TenantLocation.SharedSchema
-            ? statement.ScopedForExecution(_scopeStrategies.Resolve(statement.Tenant))
-            : new ScopedStatementForExecution(statement.Sql, statement.Parameters);
         var request = new SqlStatement
         {
             WarehouseId = _options.WarehouseId,
             Catalog = statement.Tenant.Catalog,
             Schema = statement.Tenant.Schema,
-            Statement = scoped.Sql,
-            Parameters = [.. scoped.Parameters.Select(p => new SqlStatementParameter
+            Statement = statement.Sql,
+            Parameters = [.. statement.Parameters.Select(p => new SqlStatementParameter
             {
                 Name = p.Name,
                 Value = p.Value,

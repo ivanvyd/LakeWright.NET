@@ -8,7 +8,6 @@ specific registration note where the extension intentionally replaces its defaul
 | Extension point | Shipped default | Replace when |
 | --- | --- | --- |
 | `ITenantContextResolver` | none; the host registers its resolver | Always. Resolve membership from the host's identity store and use `ITenantContextFactory` only after authorization. |
-| `ITenantScopeStrategy` | `ProjectedColumnScope` | Shared schemas resolve tenant access through a mapping table, or need another trusted SQL wrapper. Register with `AddLakeWrightTenantScopeStrategy`; the resolver selects the strategy, never a request. |
 | `IScopeVersionSource` | none | A tenant's effective scope can change independently of its tenant id. Use `ScopeVersion.FromMembers` or supply a cached source. |
 | `IWorkspaceTokenCache`, `IEmbedTokenCache` | process-local memory | More than one replica mints embedding tokens. `LakeWright.Caching.Distributed` supplies `IDistributedCache` adapters; add a provider-specific lease only if global cold-miss coalescing is required. |
 | `ILakeWrightFeatureGate` | `AlwaysOnFeatureGate` | A host needs runtime disablement. ASP.NET Core hosts can use `AddLakeWrightFeatureGate`; another host implements the one-method interface. |
