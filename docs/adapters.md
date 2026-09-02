@@ -15,6 +15,7 @@ specific registration note where the extension intentionally replaces its defaul
 | typed HTTP clients | no retry policy | A host needs retry, circuit-breaking, or custom transport. Pass the `Action<IHttpClientBuilder>` registration callback and attach its own policy. |
 | `IEmbedPrecondition` | none | A host requires an additional proof before minting a browser token, such as served-revision verification. |
 | `IPublishedDashboardDefinitionReader` | none | A deployment system keeps the authoritative published dashboard artifact. The public Lakeview endpoint does not supply published serialized SQL. |
+| `IDashboardFilterBindingValidator` | `DashboardFilterBindingValidator` | A portal binds filters to dashboard query parameters. Validate the typed bindings against the authoritative published artifact immediately before publishing. |
 | `IRefreshRunOwnership` | process-local memory | A refresh status endpoint runs on multiple replicas. Persist tenant-to-run ownership before exposing status. |
 | `IDashboardMetadataCache` | short-lived process memory | Operations metadata must be shared across replicas. `AddLakeWrightDistributedDashboardMetadataCache` supplies the distributed adapter. This is a read cache, never an authorization boundary. |
 | `IWarehouseWarmLimiter` | process-local memory | More than one replica must obey one warehouse pre-warm rate. Warming remains disabled unless explicitly enabled. |
