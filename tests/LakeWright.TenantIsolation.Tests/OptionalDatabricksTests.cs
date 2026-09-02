@@ -62,7 +62,9 @@ public sealed class OptionalDatabricksTests
         services.AddLakeWrightDatabricks(Configuration(new()
         {
             ["Databricks:WorkspaceUrl"] = "https://adb-1.azuredatabricks.net",
-            ["Databricks:WarehouseId"] = "abc123"
+            ["Databricks:WarehouseId"] = "abc123",
+            ["Databricks:ClientId"] = "service-principal-id",
+            ["Databricks:ClientSecret"] = "service-principal-secret"
         }));
 
         // Act

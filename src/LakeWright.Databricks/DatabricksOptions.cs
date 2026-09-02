@@ -13,6 +13,17 @@ public sealed class DatabricksOptions
     [Required]
     public string WarehouseId { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Optional service-principal client ID. Set this together with <see cref="ClientSecret"/>
+    /// instead of registering an Azure <c>TokenCredential</c>.
+    /// </summary>
+    public string? ClientId { get; set; }
+
+    /// <summary>
+    /// Optional service-principal secret. Set this together with <see cref="ClientId"/>.
+    /// </summary>
+    public string? ClientSecret { get; set; }
+
     // No Catalog here. It lives on MultitenancyOptions, arrives on every call through
     // TenantContext.Catalog, and a second copy bound to a different config section was inert
     // configuration that a reader would reasonably have set and trusted.

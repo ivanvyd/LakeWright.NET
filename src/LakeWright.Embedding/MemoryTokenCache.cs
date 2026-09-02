@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using LakeWright.Core.Tenancy;
+using LakeWright.Core.Tokens;
 
 namespace LakeWright.Embedding;
 
@@ -28,11 +29,11 @@ namespace LakeWright.Embedding;
 /// </remarks>
 internal sealed class MemoryWorkspaceTokenCache : IWorkspaceTokenCache
 {
-    private readonly MemoryTokenCache<string> _inner;
+    private readonly MemoryTokenCache<string, EmbedToken> _inner;
 
     public MemoryWorkspaceTokenCache(TimeProvider time)
     {
-        _inner = new MemoryTokenCache<string>(time);
+        _inner = new MemoryTokenCache<string, EmbedToken>(time, token => token.ExpiresAt);
     }
 
     public Task<EmbedToken> GetOrAddAsync(
@@ -44,11 +45,11 @@ internal sealed class MemoryWorkspaceTokenCache : IWorkspaceTokenCache
 
 internal sealed class MemoryEmbedTokenCache : IEmbedTokenCache
 {
-    private readonly MemoryTokenCache<EmbedCacheKey> _inner;
+    private readonly MemoryTokenCache<EmbedCacheKey, EmbedToken> _inner;
 
     public MemoryEmbedTokenCache(TimeProvider time)
     {
-        _inner = new MemoryTokenCache<EmbedCacheKey>(time);
+        _inner = new MemoryTokenCache<EmbedCacheKey, EmbedToken>(time, token => token.ExpiresAt);
     }
 
     public Task<EmbedToken> GetOrAddAsync(
@@ -56,60 +57,4 @@ internal sealed class MemoryEmbedTokenCache : IEmbedTokenCache
         Func<CancellationToken, ValueTask<EmbedToken>> factory,
         CancellationToken cancellationToken) =>
         _inner.GetOrAddAsync(key, factory, cancellationToken);
-}
-
-internal sealed class MemoryTokenCache<TKey> where TKey : notnull
-{
-    /// <summary>
-    /// Tokens are evicted a little before the vendor-stated lifetime so the broker never
-    /// serves a token that the vendor has already rejected. 30 seconds is small relative to
-    /// the one-hour lifetime and large relative to clock skew between this process and the
-    /// workspace.
-    /// </summary>
-    private static readonly TimeSpan SafetyMargin = TimeSpan.FromSeconds(30);
-
-    private readonly ConcurrentDictionary<TKey, Entry> _entries = new();
-    private readonly TimeProvider _time;
-
-    public MemoryTokenCache(TimeProvider time)
-    {
-        _time = time;
-    }
-
-    public async Task<EmbedToken> GetOrAddAsync(
-        TKey key,
-        Func<CancellationToken, ValueTask<EmbedToken>> factory,
-        CancellationToken cancellationToken)
-    {
-        var entry = _entries.AddOrUpdate(
-            key,
-            _ => new Entry(new Lazy<Task<EmbedToken>>(() => factory(cancellationToken).AsTask())),
-            (_, existing) => existing);
-
-        // If the entry is past its absolute expiration, the Lazy.Task is already done and
-        // would serve a stale token. Remove it; the next AddOrUpdate installs a fresh
-        // entry. Concurrent callers racing here see either the stale or the fresh entry;
-        // whichever they get, awaiting lazy.Value on the fresh entry kicks the factory
-        // exactly once.
-        if (entry.AbsoluteExpiration <= _time.GetUtcNow())
-        {
-            _entries.TryRemove(new KeyValuePair<TKey, Entry>(key, entry));
-            entry = _entries.AddOrUpdate(
-                key,
-                _ => new Entry(new Lazy<Task<EmbedToken>>(() => factory(cancellationToken).AsTask())),
-                (_, existing) => existing);
-        }
-
-        var token = await entry.Lazy.Value.ConfigureAwait(false);
-        entry.AbsoluteExpiration = token.ExpiresAt - SafetyMargin;
-        return token;
-    }
-
-    private sealed class Entry
-    {
-        public Entry(Lazy<Task<EmbedToken>> lazy) => Lazy = lazy;
-
-        public Lazy<Task<EmbedToken>> Lazy { get; }
-        public DateTimeOffset AbsoluteExpiration { get; set; } = DateTimeOffset.MaxValue;
-    }
 }
