@@ -74,6 +74,7 @@ public static class DashboardRefreshServiceCollectionExtensions
         services.AddSingleton<IDashboardRefresher, DashboardRefresher>();
         services.AddSingleton<IDashboardCacheBuster, DashboardCacheBuster>();
         services.AddSingleton<IDashboardPublishVerifier, DashboardPublishVerifier>();
+        services.TryAddSingleton<IDashboardFilterBindingValidator, DashboardFilterBindingValidator>();
         services.TryAddSingleton<IDashboardMetadataCache>(provider => new MemoryDashboardMetadataCache(provider.GetRequiredService<TimeProvider>()));
         services.TryAddSingleton<IWarehouseWarmLimiter, MemoryWarehouseWarmLimiter>();
         services.AddSingleton<IDashboardMetadataCatalog>(provider => new DashboardMetadataCatalog(

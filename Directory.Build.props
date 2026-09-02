@@ -54,8 +54,17 @@
 
     <!-- The release workflow overrides this from the tag, so a package can never claim a
          version the tag does not; this value is what a local `dotnet pack` produces. -->
-    <VersionPrefix>1.3.0</VersionPrefix>
+    <VersionPrefix>2.0.0</VersionPrefix>
     <Copyright>Copyright (c) LakeWright.NET contributors</Copyright>
+  </PropertyGroup>
+
+  <!-- Every package that was already public at 1.2.1 is compared with that stable NuGet
+       artifact during pack. A new package has no safe baseline until its first stable release;
+       it joins this list in its next minor version. This catches binary compatibility breaks
+       across the net8/net10 assets without maintaining a second, hand-written API inventory. -->
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'LakeWright.Core' Or '$(MSBuildProjectName)' == 'LakeWright.Databricks' Or '$(MSBuildProjectName)' == 'LakeWright.Embedding' Or '$(MSBuildProjectName)' == 'LakeWright.AspNetCore' Or '$(MSBuildProjectName)' == 'LakeWright.Multitenancy' Or '$(MSBuildProjectName)' == 'LakeWright.AI' Or '$(MSBuildProjectName)' == 'LakeWright.Conversations'">
+    <PackageValidationBaselineVersion>1.2.1</PackageValidationBaselineVersion>
+    <EnablePackageValidation Condition="$([System.Version]::Parse('$(VersionPrefix)').Major) == $([System.Version]::Parse('$(PackageValidationBaselineVersion)').Major)">true</EnablePackageValidation>
   </PropertyGroup>
 
   <!-- PackageReadmeFile names the file; it does not put it in the package. Without this, `dotnet

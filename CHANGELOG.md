@@ -8,7 +8,7 @@ note.
 
 ## [Unreleased]
 
-## [1.3.0] — 2026-09-02
+## [2.0.0] — 2026-09-02
 
 ### Changed
 
@@ -19,6 +19,9 @@ note.
   principal key; do not use a display name or email address. The built-in ownership store is
   process-local, so multi-replica applications must replace `IConversationOwnership` with shared
   durable storage before enabling follow-ups.
+  Migrate every caller by supplying the authenticated application's stable opaque principal key.
+  The former overloads cannot safely infer ownership and were removed rather than silently
+  treating all users as one owner.
 
 ### Added
 

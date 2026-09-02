@@ -10,5 +10,11 @@ public abstract record TenantLocation(string Catalog, string Schema)
         string Schema,
         string TenantParameter = "tenant_id",
         string? ScopeStrategyName = null)
-        : TenantLocation(Catalog, Schema);
+        : TenantLocation(Catalog, Schema)
+    {
+        public SharedSchema(string catalog, string schema, string tenantParameter)
+            : this(catalog, schema, tenantParameter, null)
+        {
+        }
+    }
 }

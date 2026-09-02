@@ -15,6 +15,7 @@ Closes #
       isolation suite
 - [ ] Changes architecture or public API? An ADR is included in this pull request
 - [ ] Breaking change? Listed in `CHANGELOG.md` with a migration note
+- [ ] Changes the SQL or HTTP behavior? SemVer impact and the `CHANGELOG.md` entry were reviewed
 - [ ] No unapproved client/customer names, project codenames, environment identifiers, private
       paths, or other confidential context appears in the change, metadata, logs, or artifacts
 - [ ] Commits signed off (`git commit -s`)
