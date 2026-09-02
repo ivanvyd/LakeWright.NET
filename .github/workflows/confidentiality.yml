@@ -23,7 +23,9 @@ on:
 permissions:
   contents: read
   issues: write
-  pull-requests: read
+  # Label invalidation uses the pull-request issue endpoint. Repositories whose
+  # default workflow token is read-only need this explicit trusted-workflow grant.
+  pull-requests: write
 
 jobs:
   confidential-identifiers:
@@ -71,7 +73,7 @@ jobs:
       # the label after this event binds the approval to the current PR/issue
       # state and reruns both trusted and ordinary preflight checks.
       - name: Invalidate stale image review
-        if: github.event_name != 'workflow_dispatch' && github.event_name != 'label' && github.event.action != 'labeled' && github.event.action != 'unlabeled' && !(github.event_name == 'pull_request_target' && github.actor == 'dependabot[bot]') && (contains(github.event.pull_request.labels.*.name, 'confidentiality-image-reviewed') || contains(github.event.issue.labels.*.name, 'confidentiality-image-reviewed'))
+        if: github.event_name != 'workflow_dispatch' && github.event_name != 'label' && github.event.action != 'labeled' && github.event.action != 'unlabeled' && !(github.event_name == 'pull_request_target' && github.actor == 'dependabot[bot]') && !(github.event_name == 'pull_request_review' && github.actor == 'github-advanced-security[bot]' && github.event.review.body == '') && (contains(github.event.pull_request.labels.*.name, 'confidentiality-image-reviewed') || contains(github.event.issue.labels.*.name, 'confidentiality-image-reviewed'))
         env:
           BASE_REPOSITORY: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
@@ -79,7 +81,7 @@ jobs:
         run: gh api --method DELETE "repos/$BASE_REPOSITORY/issues/$ITEM_NUMBER/labels/confidentiality-image-reviewed" --silent
 
       - name: Invalidate stale confidentiality-control review
-        if: github.event_name != 'workflow_dispatch' && github.event_name != 'label' && github.event.action != 'labeled' && github.event.action != 'unlabeled' && !(github.event_name == 'pull_request_target' && github.actor == 'dependabot[bot]') && (contains(github.event.pull_request.labels.*.name, 'confidentiality-control-reviewed') || contains(github.event.issue.labels.*.name, 'confidentiality-control-reviewed'))
+        if: github.event_name != 'workflow_dispatch' && github.event_name != 'label' && github.event.action != 'labeled' && github.event.action != 'unlabeled' && !(github.event_name == 'pull_request_target' && github.actor == 'dependabot[bot]') && !(github.event_name == 'pull_request_review' && github.actor == 'github-advanced-security[bot]' && github.event.review.body == '') && (contains(github.event.pull_request.labels.*.name, 'confidentiality-control-reviewed') || contains(github.event.issue.labels.*.name, 'confidentiality-control-reviewed'))
         env:
           BASE_REPOSITORY: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
@@ -173,7 +175,8 @@ jobs:
             scripts/approved-public-images.sha256 \
             scripts/check-confidential-identifiers.py \
             scripts/check-confidential-identifiers.sh \
-            scripts/test-confidential-identifiers.py)
+            scripts/test-confidential-identifiers.py \
+            scripts/validate-release-tag.py)
           if [ -n "$control_changes" ]; then
             jq -e --arg label confidentiality-control-reviewed '.labels | any(.name == $label)' metadata/pull.json >/dev/null || {
               echo "::error title=Confidentiality control approval required::The repository owner must approve changes to confidentiality enforcement."

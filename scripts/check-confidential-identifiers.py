@@ -23,6 +23,10 @@ MAX_SCAN_WORK_BYTES = 1024 * 1024 * 1024
 ARCHIVE_SUFFIXES = {".nupkg", ".snupkg"}
 RASTER_SUFFIXES = {".gif", ".jpeg", ".jpg", ".png", ".webp"}
 IMAGE_ALLOWLIST = Path(__file__).with_name("approved-public-images.sha256")
+REMOTE_ATTACHMENT_MARKERS = (
+    "https://github.com/" + "user-attachments/",
+    "https://user-images." + "githubusercontent.com/",
+)
 
 
 class ScanError(RuntimeError):
@@ -44,6 +48,10 @@ class ScanBudget:
         self.remaining -= size
         if self.remaining < 0:
             raise ScanError("The cumulative scan work limit was exceeded.")
+
+    def ensure(self, size: int) -> None:
+        if size > self.remaining:
+            raise ScanError("The cumulative scan work limit would be exceeded.")
 
 
 class TermMatcher:
@@ -108,6 +116,13 @@ def image_is_approved(payload: bytes, approved_hashes: frozenset[str]) -> bool:
     if os.environ.get("CONFIDENTIAL_ALLOW_UNREVIEWED_IMAGES") == "1":
         return True
     return hashlib.sha256(payload).hexdigest() in approved_hashes
+
+
+def has_unreviewed_remote_attachment(payload: bytes) -> bool:
+    if os.environ.get("CONFIDENTIAL_ALLOW_UNREVIEWED_IMAGES") == "1":
+        return False
+    text = payload.decode("utf-8", errors="ignore").casefold()
+    return any(marker in text for marker in REMOTE_ATTACHMENT_MARKERS)
 
 
 def path_contains_term(path: str, matcher: TermMatcher) -> bool:
@@ -245,10 +260,17 @@ def scan_revision_range(
         for encoded_path in dict.fromkeys(path for path in changed_paths if path):
             relative = os.fsdecode(encoded_path)
             private_path = path_contains_term(relative, matcher)
+            object_name = f"{commit}:{relative}"
             try:
-                payload = git_output("show", f"{commit}:{relative}")
+                object_size = int(git_output("cat-file", "-s", object_name))
             except ScanError:
                 continue
+            if object_size > MAX_FILE_BYTES:
+                raise ScanError("A historical scan target exceeds the per-file limit.")
+            budget.ensure(object_size * 3)
+            payload = git_output("show", object_name)
+            if has_unreviewed_remote_attachment(payload):
+                findings.add(Finding("unreviewed remote image", relative, private_path))
             if Path(
                 relative
             ).suffix.casefold() in RASTER_SUFFIXES and not image_is_approved(
@@ -283,6 +305,8 @@ def scan_repository(
                 payload, approved_images
             ):
                 findings.add(Finding("unreviewed image", relative, private_path))
+        if has_unreviewed_remote_attachment(payload):
+            findings.add(Finding("unreviewed remote image", relative, private_path))
         if private_path or has_private_content:
             findings.add(Finding("tracked file", relative, private_path))
 
@@ -348,6 +372,12 @@ def scan_archive(
                 if len(payload) > MAX_FILE_BYTES:
                     raise ScanError("A package entry exceeded the per-file scan limit.")
                 entry_path = Path(entry.filename)
+                if has_unreviewed_remote_attachment(payload):
+                    findings.add(
+                        Finding(
+                            "unreviewed remote image", display_path, path_is_private
+                        )
+                    )
                 if (
                     entry_path.suffix.casefold() in RASTER_SUFFIXES
                     and not image_is_approved(payload, approved_images)
@@ -395,6 +425,10 @@ def scan_targets(
                 )
             else:
                 payload = read_file(path)
+                if has_unreviewed_remote_attachment(payload):
+                    findings.add(
+                        Finding("unreviewed remote image", location, private_path)
+                    )
                 if path.suffix.casefold() in RASTER_SUFFIXES and not image_is_approved(
                     payload, approved_images
                 ):
@@ -434,7 +468,7 @@ def report(findings: set[Finding]) -> None:
                 "::error title=Confidential identifier in package::"
                 f"A private denylist term appears in {finding.surface}.{suffix}"
             )
-        elif finding.surface == "unreviewed image":
+        elif finding.surface.startswith("unreviewed"):
             suffix = f" File: {path}." if path is not None else " File path redacted."
             print(
                 "::error title=Public image review required::"
