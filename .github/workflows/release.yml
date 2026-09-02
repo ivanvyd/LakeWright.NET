@@ -271,7 +271,10 @@ jobs:
             prerelease="--prerelease"
           fi
 
+          # This job intentionally receives only the immutable candidate artifact, not a checkout.
+          # Give gh the repository explicitly instead of asking it to infer one from a missing .git.
           gh release create "$REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
             --title "$REF_NAME" \
             --notes-file release-notes.md \
             $prerelease \
