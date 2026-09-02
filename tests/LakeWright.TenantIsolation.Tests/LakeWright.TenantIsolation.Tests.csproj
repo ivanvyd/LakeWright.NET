@@ -32,6 +32,7 @@
     <ProjectReference Include="..\..\src\LakeWright.HealthChecks\LakeWright.HealthChecks.csproj" />
     <ProjectReference Include="..\..\src\LakeWright.Conversations\LakeWright.Conversations.csproj" />
     <ProjectReference Include="..\..\src\LakeWright.Caching.Distributed\LakeWright.Caching.Distributed.csproj" />
+    <ProjectReference Include="..\..\src\LakeWright.Caching.Redis\LakeWright.Caching.Redis.csproj" />
     <ProjectReference Include="..\..\src\LakeWright.Multitenancy\LakeWright.Multitenancy.csproj" />
     <ProjectReference Include="..\..\src\LakeWright.Databricks\LakeWright.Databricks.csproj" />
     <ProjectReference Include="..\..\src\LakeWright.Databricks.RawData\LakeWright.Databricks.RawData.csproj" />

@@ -1377,6 +1377,11 @@
           "OpenTelemetry.Api.ProviderBuilderExtensions": "[1.15.3, 2.0.0)"
         }
       },
+      "Pipelines.Sockets.Unofficial": {
+        "type": "Transitive",
+        "resolved": "2.2.8",
+        "contentHash": "zG2FApP5zxSx6OcdJQLbZDk2AVlN2BNQD6MorwIfV6gVj0RRxWPEp2LXAxqDGZqeNV1Zp0BNPcNaey/GXmTdvQ=="
+      },
       "protobuf-net": {
         "type": "Transitive",
         "resolved": "3.2.52",
@@ -1470,6 +1475,11 @@
           "Microsoft.IdentityModel.JsonWebTokens": "6.34.0",
           "Microsoft.IdentityModel.Tokens": "6.34.0"
         }
+      },
+      "System.IO.Hashing": {
+        "type": "Transitive",
+        "resolved": "10.0.2",
+        "contentHash": "AKJknIFi9O3+rGExxTry188JPvUoZAPcCtS2qdqyFhIzsxQ1Ap94BeGDG0VzVEHakhmRxmJtVih6TsHoghIt/g=="
       },
       "System.Management": {
         "type": "Transitive",
@@ -1697,7 +1707,7 @@
         "type": "Project",
         "dependencies": {
           "Azure.Core": "[1.60.0, )",
-          "LakeWright.Core": "[1.2.1, )",
+          "LakeWright.Core": "[2.0.0, )",
           "Microsoft.Extensions.AI.OpenAI": "[10.9.0, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.11, )",
           "OpenAI": "[2.12.0, )"
@@ -1706,25 +1716,34 @@
       "lakewright.aspnetcore": {
         "type": "Project",
         "dependencies": {
-          "LakeWright.Core": "[1.2.1, )",
-          "LakeWright.Databricks": "[1.2.1, )",
-          "LakeWright.Multitenancy": "[1.2.1, )"
+          "LakeWright.Core": "[2.0.0, )",
+          "LakeWright.Databricks": "[2.0.0, )",
+          "LakeWright.Multitenancy": "[2.0.0, )"
         }
       },
       "lakewright.caching.distributed": {
         "type": "Project",
         "dependencies": {
-          "LakeWright.Core": "[1.2.1, )",
-          "LakeWright.Embedding": "[1.2.1, )",
+          "LakeWright.Core": "[2.0.0, )",
+          "LakeWright.Embedding": "[2.0.0, )",
+          "LakeWright.Embedding.Ops": "[2.0.0, )",
           "Microsoft.Extensions.Caching.Abstractions": "[10.0.11, )",
           "Microsoft.Extensions.DependencyInjection": "[10.0.11, )"
+        }
+      },
+      "lakewright.caching.redis": {
+        "type": "Project",
+        "dependencies": {
+          "LakeWright.Conversations": "[2.0.0, )",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.11, )",
+          "StackExchange.Redis": "[2.12.14, )"
         }
       },
       "lakewright.conversations": {
         "type": "Project",
         "dependencies": {
           "Azure.Core": "[1.60.0, )",
-          "LakeWright.Core": "[1.2.1, )",
+          "LakeWright.Core": "[2.0.0, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.11, )",
           "Microsoft.Extensions.Http": "[10.0.11, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.11, )",
@@ -1740,7 +1759,7 @@
       "lakewright.databasemaintenance.core": {
         "type": "Project",
         "dependencies": {
-          "LakeWright.Multitenancy": "[1.2.1, )",
+          "LakeWright.Multitenancy": "[2.0.0, )",
           "Microsoft.EntityFrameworkCore": "[10.0.11, )"
         }
       },
@@ -1748,7 +1767,7 @@
         "type": "Project",
         "dependencies": {
           "Azure.Core": "[1.60.0, )",
-          "LakeWright.Core": "[1.2.1, )",
+          "LakeWright.Core": "[2.0.0, )",
           "Microsoft.Azure.Databricks.Client": "[2.9.3, )",
           "Microsoft.Extensions.Configuration.Abstractions": "[10.0.11, )",
           "Microsoft.Extensions.Http": "[10.0.11, )",
@@ -1761,15 +1780,15 @@
       "lakewright.databricks.rawdata": {
         "type": "Project",
         "dependencies": {
-          "LakeWright.Core": "[1.2.1, )",
-          "LakeWright.Databricks": "[1.2.1, )",
+          "LakeWright.Core": "[2.0.0, )",
+          "LakeWright.Databricks": "[2.0.0, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.11, )"
         }
       },
       "lakewright.embedding": {
         "type": "Project",
         "dependencies": {
-          "LakeWright.Core": "[1.2.1, )",
+          "LakeWright.Core": "[2.0.0, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.11, )",
           "Microsoft.Extensions.Http": "[10.0.11, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.11, )",
@@ -1779,8 +1798,8 @@
       "lakewright.embedding.ops": {
         "type": "Project",
         "dependencies": {
-          "LakeWright.Core": "[1.2.1, )",
-          "LakeWright.Embedding": "[1.2.1, )",
+          "LakeWright.Core": "[2.0.0, )",
+          "LakeWright.Embedding": "[2.0.0, )",
           "Microsoft.Extensions.Configuration.Abstractions": "[10.0.11, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.11, )",
           "Microsoft.Extensions.Http": "[10.0.11, )",
@@ -1791,8 +1810,8 @@
       "lakewright.healthchecks": {
         "type": "Project",
         "dependencies": {
-          "LakeWright.Databricks": "[1.2.1, )",
-          "LakeWright.Embedding": "[1.2.1, )",
+          "LakeWright.Databricks": "[2.0.0, )",
+          "LakeWright.Embedding": "[2.0.0, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.11, )",
           "Microsoft.Extensions.Diagnostics.HealthChecks": "[10.0.11, )"
         }
@@ -1800,7 +1819,7 @@
       "lakewright.multitenancy": {
         "type": "Project",
         "dependencies": {
-          "LakeWright.Core": "[1.2.1, )",
+          "LakeWright.Core": "[2.0.0, )",
           "Microsoft.EntityFrameworkCore": "[10.0.11, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.11, )",
           "Microsoft.Extensions.Hosting.Abstractions": "[10.0.11, )",
@@ -1813,7 +1832,7 @@
         "type": "Project",
         "dependencies": {
           "Azure.Core": "[1.60.0, )",
-          "LakeWright.AspNetCore": "[1.2.1, )",
+          "LakeWright.AspNetCore": "[2.0.0, )",
           "Microsoft.AspNetCore.OpenApi": "[10.0.11, )",
           "Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore": "[10.0.11, )",
           "OpenTelemetry.Exporter.OpenTelemetryProtocol": "[1.18.0, )",
@@ -2053,6 +2072,17 @@
         "dependencies": {
           "BouncyCastle.Cryptography": "2.7.0",
           "Microsoft.Extensions.Logging.Abstractions": "8.0.3"
+        }
+      },
+      "StackExchange.Redis": {
+        "type": "CentralTransitive",
+        "requested": "[2.12.14, )",
+        "resolved": "2.12.14",
+        "contentHash": "QiAQg40OP4Owem6/PjIbjEKq2+uIeQYeZ1TCMUnx/QvKugOPxOfC96wjlnBjWHi4Wq9pv9+fDlXGT06XkRZ6Ig==",
+        "dependencies": {
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.0",
+          "Pipelines.Sockets.Unofficial": "2.2.8",
+          "System.IO.Hashing": "10.0.2"
         }
       }
     }

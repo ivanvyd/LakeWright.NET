@@ -244,6 +244,12 @@ scope makes earlier viewer tokens unreachable on every replica. Generic `IDistri
 atomic lock primitive; the package collapses concurrent requests within each process, while a host
 that needs global cold-miss coalescing must supply its cache provider's lease mechanism.
 
+For Genie conversation continuation, listing, or deletion across replicas, install
+`LakeWright.Caching.Redis`, register a shared `IConnectionMultiplexer`, then call
+`AddLakeWrightRedisConversationOwnership()`. This is deliberately a Redis-specific adapter:
+generic `IDistributedCache` cannot atomically claim a conversation or enumerate an owner's
+conversations. Claims use Redis `SET NX`, so a foreign replica cannot overwrite an owner.
+
 ## Starting work safely from a client
 
 `POST /organizations/{organizationId}/operations` accepts an `Idempotency-Key` header of up to 200

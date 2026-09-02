@@ -15,13 +15,10 @@ note.
 - `LakeWright.Conversations` now requires an opaque application owner key for `AskAsync` and
   `ContinueAsync`. The library records ownership only after a conversation is created, refuses
   unrecorded or foreign-owner continuation and deletion before any workspace call, and exposes
-  owner-filtered `ListAsync` and `DeleteAsync`. Migrate callers by passing their stable internal
-  principal key; do not use a display name or email address. The built-in ownership store is
-  process-local, so multi-replica applications must replace `IConversationOwnership` with shared
-  durable storage before enabling follow-ups.
-  Migrate every caller by supplying the authenticated application's stable opaque principal key.
-  The former overloads cannot safely infer ownership and were removed rather than silently
-  treating all users as one owner.
+  owner-filtered `ListAsync` and `DeleteAsync`. Migrate every caller by passing the authenticated
+  application's stable opaque principal key; do not use a display name or email address. The
+  former overloads cannot safely infer ownership and were removed rather than silently treating
+  all users as one owner.
 
 ### Added
 
@@ -84,6 +81,10 @@ note.
 - New opt-in `LakeWright.Caching.Distributed` supplies `IDistributedCache` implementations for
   workspace and viewer token caches. Keys are hashed, entries have token-derived absolute expiry
   with jitter, and tenant eviction advances a shared generation marker.
+
+- New opt-in `LakeWright.Caching.Redis` supplies immutable, Redis-backed conversation ownership
+  across replicas. It claims a conversation with `SET NX`, records an owner-specific membership
+  set for safe listing, and hashes conversation and owner identifiers in Redis keys.
 
 - Dashboard token minting now emits a duration histogram and cache lookup counter, plus one
   Information log with dashboard id, cache states, elapsed time, and a truncated SHA-256 viewer
