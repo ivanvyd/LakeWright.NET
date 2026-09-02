@@ -86,14 +86,18 @@ Add the public key at <https://github.com/settings/keys> under **GPG keys**.
    checks out and scans that commit, derives the version, builds, tests, packs, generates a CycloneDX
    SBOM, and extracts the release notes in a read-only job. A separate publication job downloads
    only that immutable same-run artifact, attests build provenance, rechecks that the tag did not
-   move, creates the GitHub release, and publishes to nuget.org last — because that is the only step
-   that cannot be undone. Tagged build hooks never execute with release or OIDC permissions.
+   move, publishes to nuget.org, and waits until every package appears in NuGet's public
+   flat-container index. Only then does it create the GitHub release. A timeout is a failed release:
+   re-run the same immutable publication after NuGet becomes available; do not create a release that
+   claims a version consumers cannot restore. Tagged build hooks never execute with release or OIDC
+   permissions.
 
 ## If a release goes wrong
 
-Everything up to the nuget.org push is reversible: delete the tag and the GitHub release, fix, and
-tag again. After the push it is not. nuget.org allows a package to be *unlisted* but never deleted,
-and a version number, once used, is used forever.
+Before the nuget.org push, delete the tag, fix the release, and tag again. After the push it is not
+reversible: nuget.org allows a package to be *unlisted* but never deleted, and a version number,
+once used, is used forever. A GitHub release is created only after the public restore check passes,
+so an indexing timeout leaves no release to delete; re-run the same immutable publication instead.
 
 ```bash
 git push --delete origin v0.1.2-preview.1
