@@ -8,6 +8,20 @@ note.
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-09-02
+
+### Added
+
+- `LakeWright.Databricks` and `LakeWright.Conversations` now ship net8.0 assets. The stock net8
+  consumer resolves `IStatementExecutor` and executes a shared-schema tenant-scoped statement
+  against a loopback workspace, while CI verifies its package graph has no persistence dependency.
+
+### Changed
+
+- `AddLakeWrightDatabricks` is now the `LakeWright.Databricks` extension, so a worker or stock
+  net8 consumer does not need the ASP.NET Core package. The former static ASP.NET Core entry point
+  remains as an obsolete compatibility forwarder for existing compiled callers.
+
 ## [1.1.2] — 2026-09-02
 
 ### Security

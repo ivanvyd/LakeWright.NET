@@ -5,12 +5,12 @@ What has been run against a real system, what has only been read in documentatio
 Anything not listed as **Verified** should be treated as unverified regardless of how confident the
 surrounding prose sounds.
 
-Last updated 2026-09-01 for the 1.1.1 release. The complete local suite, package consumer and load
-harness were rerun. Docker, HTTP and browser verification then passed against the reviewed merge.
-Databricks CLI authenticated to the active development workspace; bundle validation and the
-non-mutating plan passed. CI independently validated the bundle with setup-cli 1.14.1. The currency
-path is implemented and locally verified, but its system-table read remains blocked because the
-verification identity lacks `USE SCHEMA` on `system.billing`.
+Last updated 2026-09-02 after the net8 package-floor verification. The complete local suite,
+package consumer and load harness were rerun. Docker, HTTP and browser verification then passed
+against the reviewed merge. Databricks CLI authenticated to the active development workspace;
+bundle validation and the non-mutating plan passed. CI independently validated the bundle with
+setup-cli 1.14.1. The currency path is implemented and locally verified, but its system-table read
+remains blocked because the verification identity lacks `USE SCHEMA` on `system.billing`.
 A `Documented` row is not promoted to `Verified` by a stable version number; the matrix
 records the work that has been done, not a claim about future work.
 
@@ -45,10 +45,11 @@ The commands, results and cleanup evidence are in the
 |---|---|---|
 | `LakeWright.Core` | net8.0, net10.0 | Local Release builds verified on 2026-09-02. |
 | `LakeWright.Embedding` | net8.0, net10.0 | Local Release builds and the stock net8 `tests/consumer-floor` application verified on 2026-09-02. CI packs the candidate, installs it into that application, and rejects persistence dependencies from its net8 assets. |
-| `LakeWright.Databricks` | net10.0 | The current Azure Core dependency resolves hosting abstractions 10.x, so it cannot satisfy the net8 extensions floor without an incompatible dependency graph. This package is intentionally not represented as net8 compatible. |
-| `LakeWright.Conversations` | net10.0 | Uses the same Azure Core graph and is intentionally not represented as net8 compatible. |
+| `LakeWright.Databricks` | net8.0, net10.0 | The net8 asset pins Azure.Core 1.44.1, while net10 retains the current Azure.Core line. The stock consumer resolves the public executor and runs a shared-schema tenant-scoped statement against a loopback workspace. |
+| `LakeWright.Conversations` | net8.0, net10.0 | Local Release builds verified on 2026-09-02. Its REST path carries no SQL or persistence dependency. |
 
-The consumer-floor result is a compatibility boundary, not a claim that every package supports net8.
+The consumer-floor result is a compatibility boundary. It covers the public Embedding and
+Databricks package path, not every package surface.
 
 ### 2026-09-01 release revalidation
 

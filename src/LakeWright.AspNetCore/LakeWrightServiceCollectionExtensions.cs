@@ -1,4 +1,3 @@
-using Azure.Core;
 using LakeWright.Core.Cost;
 using LakeWright.Core.Jobs;
 using LakeWright.Core.Tenancy;
@@ -9,11 +8,9 @@ using LakeWright.Multitenancy.Model;
 using LakeWright.Multitenancy.Operations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.Azure.Databricks.Client;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 
 namespace LakeWright.AspNetCore;
 
@@ -30,7 +27,7 @@ public static class LakeWrightServiceCollectionExtensions
     ///
     /// It also does not require Databricks. Tenancy, authorization and the operations API run
     /// against PostgreSQL alone, which is what lets a contributor work on them with no cloud
-    /// account. Add <see cref="AddLakeWrightDatabricks"/> when you want queries and jobs.
+    /// account. Add <see cref="DatabricksServiceCollectionExtensions.AddLakeWrightDatabricks"/> when you want queries and jobs.
     /// </remarks>
     public static IServiceCollection AddLakeWright(
         this IServiceCollection services,
@@ -73,79 +70,19 @@ public static class LakeWrightServiceCollectionExtensions
         return services;
     }
 
-    /// <summary>
-    /// Registers the Databricks clients.
-    /// </summary>
+    /// <summary>Compatibility forwarding entry point for Databricks registration.</summary>
     /// <remarks>
-    /// Separate from <see cref="AddLakeWright"/> so the application starts without a workspace.
-    /// Folding it in made <c>WorkspaceUrl</c> and <c>WarehouseId</c> required at startup, which
-    /// broke the promise that a contributor needs no cloud account — found by running the sample
-    /// rather than by reading it.
-    ///
-    /// Supply a <see cref="TokenCredential"/>. On Azure that is <c>DefaultAzureCredential</c>
-    /// backed by a managed identity, which Databricks accepts with no stored secret (ADR 0006).
-    /// Alternatively, configure both <see cref="DatabricksOptions.ClientId"/> and
-    /// <see cref="DatabricksOptions.ClientSecret"/> for a workspace service principal.
+    /// This is intentionally not an extension method. New applications import
+    /// <c>LakeWright.Databricks</c> and use its extension so the net8 consumer floor does not
+    /// need ASP.NET Core. Keeping this static entry point preserves existing compiled callers.
     /// </remarks>
+    [Obsolete(
+        "Import LakeWright.Databricks and call its AddLakeWrightDatabricks extension method.",
+        DiagnosticId = "LW0001")]
     public static IServiceCollection AddLakeWrightDatabricks(
-        this IServiceCollection services,
-        IConfiguration configuration)
-    {
-        ArgumentNullException.ThrowIfNull(services);
-        ArgumentNullException.ThrowIfNull(configuration);
-
-        var hasTokenCredential = services.Any(descriptor => descriptor.ServiceType == typeof(TokenCredential));
-
-        services.AddOptions<DatabricksOptions>()
-            .Bind(configuration.GetSection(DatabricksOptions.SectionName))
-            .ValidateDataAnnotations()
-            .Validate(
-                options =>
-                {
-                    var hasClientId = !string.IsNullOrWhiteSpace(options.ClientId);
-                    var hasClientSecret = !string.IsNullOrWhiteSpace(options.ClientSecret);
-                    return hasClientId == hasClientSecret &&
-                        (hasTokenCredential || hasClientId) &&
-                        !(hasTokenCredential && hasClientId);
-                },
-                "Configure either a TokenCredential or a client ID and secret.")
-            .ValidateOnStart();
-
-        services.TryAddSingletonTimeProvider();
-        services.AddHttpClient("LakeWright.Databricks.Credentials", (provider, client) =>
-        {
-            var options = provider.GetRequiredService<IOptions<DatabricksOptions>>().Value;
-            client.BaseAddress = new Uri(options.WorkspaceUrl.TrimEnd('/') + "/", UriKind.Absolute);
-        });
-        services.AddSingleton<ServicePrincipalDatabricksCredential>(provider =>
-            new ServicePrincipalDatabricksCredential(
-                provider.GetRequiredService<IHttpClientFactory>().CreateClient("LakeWright.Databricks.Credentials"),
-                provider.GetRequiredService<IOptions<DatabricksOptions>>(),
-                provider.GetRequiredService<TimeProvider>()));
-        services.AddSingleton<IDatabricksCredential>(provider =>
-        {
-            var options = provider.GetRequiredService<IOptions<DatabricksOptions>>().Value;
-            return !string.IsNullOrWhiteSpace(options.ClientId)
-                ? provider.GetRequiredService<ServicePrincipalDatabricksCredential>()
-                : new TokenCredentialDatabricksCredential(provider.GetRequiredService<TokenCredential>());
-        });
-
-        services.AddSingleton(provider =>
-        {
-            var options = provider.GetRequiredService<IOptions<DatabricksOptions>>().Value;
-            var credential = new DatabricksTokenCredential(
-                provider.GetRequiredService<IDatabricksCredential>(),
-                provider.GetRequiredService<TimeProvider>());
-            return DatabricksClient.CreateClient(options.WorkspaceUrl, credential);
-        });
-
-        services.AddScoped<ITenantSchemaProvisioner, DatabricksSchemaProvisioner>();
-        services.AddScoped<IStatementExecutor, DatabricksStatementExecutor>();
-        services.AddHttpClient<ITenantScopedExport, DatabricksTenantScopedExport>();
-        services.AddScoped<IJobSubmitter, DatabricksJobSubmitter>();
-
-        return services;
-    }
+        IServiceCollection services,
+        IConfiguration configuration) =>
+        DatabricksServiceCollectionExtensions.AddLakeWrightDatabricks(services, configuration);
 
     /// <summary>Runs the operation worker in this process.</summary>
     /// <remarks>
@@ -200,7 +137,7 @@ public static class LakeWrightServiceCollectionExtensions
     /// Replaces proxy attribution with priced usage from Databricks billing system tables.
     /// </summary>
     /// <remarks>
-    /// Call after <see cref="AddLakeWright"/> and <see cref="AddLakeWrightDatabricks"/>. The
+    /// Call after <see cref="AddLakeWright"/> and <see cref="DatabricksServiceCollectionExtensions.AddLakeWrightDatabricks"/>. The
     /// workspace identity needs <c>USE</c> and <c>SELECT</c> access to
     /// <c>system.billing.usage</c> and <c>system.billing.list_prices</c>. The configured workspace
     /// id is always included in the billing query; job-run ids are first selected from the

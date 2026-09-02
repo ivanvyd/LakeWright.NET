@@ -8,9 +8,19 @@
   <ItemGroup Label="Databricks">
     <!-- Verified against a live workspace in docs/planning/spike-01-statement-execution.md:
          parameterised statements, EXTERNAL_LINKS and ARROW_STREAM all work. -->
-    <PackageVersion Include="Azure.Core" Version="1.60.0" />
     <PackageVersion Include="Azure.Identity" Version="1.21.0" />
     <PackageVersion Include="Microsoft.Azure.Databricks.Client" Version="2.9.3" />
+  </ItemGroup>
+
+  <ItemGroup Label="Azure SDK (net10.0)" Condition="'$(TargetFramework)' == 'net10.0'">
+    <PackageVersion Include="Azure.Core" Version="1.60.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Azure SDK (net8.0 floor)" Condition="'$(TargetFramework)' == 'net8.0'">
+    <!-- The Databricks client ships a net8.0 asset against Azure.Core 1.44.1. Newer Azure Core
+         versions pull Extensions 10, which cannot form a stock net8 consumer graph. Azure
+         Identity stays a net10-only dependency in this repository. -->
+    <PackageVersion Include="Azure.Core" Version="1.44.1" />
   </ItemGroup>
 
   <ItemGroup Label="Persistence">
@@ -44,17 +54,23 @@
   </ItemGroup>
 
   <ItemGroup Label="Extensions (net10.0)" Condition="'$(TargetFramework)' == 'net10.0'">
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Options.DataAnnotations" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
   </ItemGroup>
 
   <ItemGroup Label="Extensions (net8.0 floor)" Condition="'$(TargetFramework)' == 'net8.0'">
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="8.0.0" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
     <PackageVersion Include="Microsoft.Extensions.Http" Version="8.0.1" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="8.0.2" />
+    <PackageVersion Include="Microsoft.Extensions.Options.DataAnnotations" Version="8.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="8.0.0" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.3" />
   </ItemGroup>

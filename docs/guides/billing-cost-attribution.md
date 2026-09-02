@@ -21,6 +21,8 @@ empty while recent records are still being delivered.
 ## Registration
 
 ```csharp
+using LakeWright.Databricks;
+
 builder.Services.AddLakeWright(builder.Configuration);
 builder.Services.AddLakeWrightDatabricks(builder.Configuration);
 builder.Services.AddLakeWrightBillingCostAttribution(builder.Configuration);
