@@ -21,6 +21,32 @@ Before opening a pull request or publishing a package, inspect both the human-wr
 the generated artifacts. A harmless-looking XML comment can become public API documentation inside
 a package, and a private identifier in a commit message remains visible even after the file changes.
 
+Only the repository owner can approve an exception. Obtain that approval in writing through a
+private channel before creating a public branch, issue, or pull request. The approval must name the
+exact value and public surfaces it covers. Record only that scoped approval exists in public
+metadata; do not copy the private context there. The repository owner updates the private CI
+configuration when an approved disclosure requires it. Contributors must not weaken or bypass the
+confidentiality check.
+
+Raster images require a separate visual review because text can be embedded in pixels. Existing
+public images are approved by exact SHA-256 hash in `scripts/approved-public-images.sha256`. A new
+or changed image must be inspected at full resolution, added to that file, and accompanied by the
+`confidentiality-image-reviewed` pull-request label applied by the repository owner. Applying the
+label records that the bytes were reviewed; it does not approve disclosure of any real identifier.
+The workflow removes that label whenever the pull request or issue changes, including new comments,
+so every approval applies only to the public state the owner actually inspected. Images embedded in
+GitHub discussion are blocked by the same owner-review label rather than fetched by a secret-bearing
+runner.
+
+Changes to the scanner, its private-policy allowlist, or any workflow that enforces confidentiality
+also require the repository owner to apply `confidentiality-control-reviewed`. The trusted workflow
+removes that label on every subsequent content change. This keeps a previously approved control
+revision from authorizing its own replacement.
+
+The confidentiality preflight runs before build, test, or documentation scripts so candidate
+source cannot first disclose an identifier through public CI output. Code from external forks is
+scanned as data by a trusted workflow and is not executed in the repository's CI context.
+
 ## Running it
 
 You do not need a Databricks account to work on this. You do need Docker, because the isolation
@@ -122,6 +148,11 @@ Pull requests from forks run build, tests and `bundle validate` in schema-only m
 receive repository secrets, so jobs needing Databricks credentials are skipped rather than failed. A
 maintainer runs those before merge. This is deliberate: a workflow that hands secrets to fork code is
 an exfiltration path, not a convenience.
+
+The confidentiality check is the narrow exception: a trusted scanner from the default branch reads
+fork source and pull-request metadata as data. It never runs fork scripts, restores packages, builds
+code, or grants a write token. The private denylist therefore remains unavailable to the submitted
+code while the required check can still block a disclosure before merge.
 
 ## Security
 

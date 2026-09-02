@@ -10,3 +10,10 @@ b29c803efe619b5702a6b60955b8cdbcf32dc4801c43b2f54c6f87f17ca93324  docs/images/si
 e3083dd73a10147ee555d5f57f0cc1586a170de9623e6741fcd968cfa89a3f70  docs/images/signalboard-dashboard.png
 b99def2fe3d18a47ced9f7dd45b41f42d6e331bf6bd704ec5a6a4097b4fca94e  docs/images/signalboard-mobile.png
 f12ac730148219bfcf071d4ad4c8d62c4ae1377b4edb6a921d4f8c85a695272c  docs/images/signalboard-viewer-denied.png
+79c8c56a4a330311c1e6d6453e4e5f6ebdab86343b1fabeb16dd267c2b51a5f0  .codex/checklists/v1.1.0-whole-app-regression/2026-09-02-01-home.png
+1a534c9a2a416c24c2a1ecc70d32fb7340f2b792241adca4aae79b41c3488c5c  .codex/checklists/v1.1.0-whole-app-regression/2026-09-02-02-signin.png
+fbd6fcf89b3e1397b117cc49a4053066e25cbcd785f49ac4ecfb4c0b3ff214d8  .codex/checklists/v1.1.0-whole-app-regression/2026-09-02-03-dashboard-admin.png
+7ceeaaa79edd5c2c8ff23803fdbe76f17a3fb93355fd150a25eea4080296c4c9  .codex/checklists/v1.1.0-whole-app-regression/2026-09-02-04-dashboard-dark.png
+009fb2b8f751d3f30345989019b85f3dc58cbacbc139fd9c9f31d80d79a512aa  .codex/checklists/v1.1.0-whole-app-regression/2026-09-02-05-dashboard-mobile.png
+d25fc44f8b73caf3c13260f837a4a6aaec66f7eff482e903fbdd88d3c6e3e3b3  .codex/checklists/v1.1.0-whole-app-regression/2026-09-02-06-dashboard-viewer.png
+462c50f7ad7513b06dc2abcaa824c1d221d43e9c71e29d7d4527c81292483eb7  .codex/checklists/v1.1.0-whole-app-regression/2026-09-02-07-dashboard-other-tenant.png

@@ -1,29 +1,39 @@
 name: Release
 
 on:
-  push:
-    tags: ['v*']
+  # repository_dispatch always loads this workflow from the default branch.
+  # A branch copy cannot grant itself release permissions or bypass the gates.
+  repository_dispatch:
+    types: [release]
 
 permissions:
   contents: read
 
 jobs:
-  release:
+  build-release-candidate:
+    # Creating a repository_dispatch event requires write access. Release authority is narrower:
+    # only the repository owner's event is allowed to acquire write and OIDC permissions.
+    if: github.actor == github.repository_owner
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: candidate
     # A release that hangs holds a runner for six hours without publishing.
     timeout-minutes: 30
     permissions:
-      contents: write      # create the GitHub release
-      id-token: write      # OIDC for provenance attestation
-      attestations: write
+      contents: read
+    outputs:
+      commit_sha: ${{ steps.tag.outputs.commit_sha }}
+      kind: ${{ steps.kind.outputs.value }}
+      tag_object_sha: ${{ steps.tag.outputs.tag_object_sha }}
+      version: ${{ steps.version.outputs.value }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Check out the trusted release gate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          fetch-depth: 0   # SourceLink and version derivation need history
-
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
-        with:
-          global-json-file: global.json
+          ref: ${{ github.event.repository.default_branch }}
+          path: trusted
+          persist-credentials: false
 
       # A release tag says "this exact commit is what we published". Unsigned, that claim rests on
       # nobody having pushed a tag they should not have — and tag-push rights are usually wider than
@@ -37,10 +47,14 @@ jobs:
       # Lightweight tags are refused before that: they are a pointer with no object to sign, so
       # `git tag v1.0.0` cannot be signed at all. It must be `git tag -s`.
       - name: Refuse an unsigned tag
+        id: tag
+        working-directory: ${{ github.workspace }}
         env:
           GH_TOKEN: ${{ github.token }}
-          REF_NAME: ${{ github.ref_name }}
+          REF_NAME: ${{ github.event.client_payload.tag }}
         run: |
+          set -euo pipefail
+          python3 "$GITHUB_WORKSPACE/trusted/scripts/validate-release-tag.py" "$REF_NAME"
           ref=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$REF_NAME")
           type=$(printf '%s' "$ref" | python3 -c "import json,sys; print(json.load(sys.stdin)['object']['type'])")
           sha=$(printf '%s' "$ref" | python3 -c "import json,sys; print(json.load(sys.stdin)['object']['sha'])")
@@ -50,20 +64,58 @@ jobs:
             exit 1
           fi
 
-          v=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$sha" \
-                --jq '.verification.verified, .verification.reason' | paste -sd' ' -)
+          tag_object=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$sha")
+          printf '%s' "$tag_object" > "$RUNNER_TEMP/verified-tag-object.json"
+          v=$(printf '%s' "$tag_object" | jq -r '.verification.verified, .verification.reason' | paste -sd' ' -)
           verified=${v%% *}; reason=${v##* }
           if [ "$verified" != "true" ]; then
             echo "::error::$REF_NAME is not a verified signed tag (reason: $reason). See docs/guides/releasing.md"
             exit 1
           fi
+          target_type=$(printf '%s' "$tag_object" | jq -r '.object.type')
+          commit_sha=$(printf '%s' "$tag_object" | jq -r '.object.sha')
+          test "$target_type" = "commit"
+          [[ "$commit_sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "tag_object_sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "commit_sha=$commit_sha" >> "$GITHUB_OUTPUT"
           echo "$REF_NAME is signed and verified by GitHub."
+
+      # Only after GitHub authenticates the annotated tag do we fetch its tree.
+      # The scanner still comes from the default branch; tagged code is data until
+      # the private confidentiality gate has passed.
+      - name: Fetch the verified release candidate as data
+        working-directory: ${{ github.workspace }}
+        env:
+          COMMIT_SHA: ${{ steps.tag.outputs.commit_sha }}
+        run: |
+          mkdir candidate
+          git -C candidate init --quiet
+          git -C candidate remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
+          git -C candidate fetch --no-tags origin "$COMMIT_SHA"
+          git -C candidate checkout --detach --quiet "$COMMIT_SHA"
+
+      - name: Test the trusted confidentiality scanner
+        working-directory: trusted
+        run: python3 scripts/test-confidential-identifiers.py
+      - name: Scan verified release source and history before executing it
+        env:
+          CONFIDENTIAL_GIT_RANGE: HEAD^..HEAD
+          OSS_CONFIDENTIAL_TERMS_B64: ${{ secrets.OSS_CONFIDENTIAL_TERMS_B64 }}
+        run: |
+          set -euo pipefail
+          python3 ../trusted/scripts/check-confidential-identifiers.py "$RUNNER_TEMP/verified-tag-object.json"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: candidate/global.json
 
       # The tag is the single source of the version. Deriving it here rather than reading
       # VersionPrefix means a package can never claim a version the tag does not.
       - name: Derive version from the tag
         id: version
-        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        env:
+          REF_NAME: ${{ github.event.client_payload.tag }}
+        run: echo "value=${REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       # ADR 0019: a stable tag is no longer refused. The compat promise for 1.x is a
       # SemVer minor + CHANGELOG migration note on any breaking change; the prerelease
@@ -79,11 +131,6 @@ jobs:
             *-*) echo "value=prerelease" >> "$GITHUB_OUTPUT" ;;
             *)   echo "value=stable"    >> "$GITHUB_OUTPUT" ;;
           esac
-
-      - name: Scan source for confidential identifiers
-        env:
-          OSS_CONFIDENTIAL_TERMS_B64: ${{ secrets.OSS_CONFIDENTIAL_TERMS_B64 }}
-        run: bash scripts/check-confidential-identifiers.sh
 
       - run: dotnet restore --locked-mode
       - name: Build
@@ -104,11 +151,6 @@ jobs:
           count=$(find artifacts -name '*.nupkg' | wc -l)
           echo "packed $count package(s)"
           test "$count" -gt 0
-
-      - name: Scan packages for confidential identifiers
-        env:
-          OSS_CONFIDENTIAL_TERMS_B64: ${{ secrets.OSS_CONFIDENTIAL_TERMS_B64 }}
-        run: bash scripts/check-confidential-identifiers.sh artifacts
 
       # CycloneDX over the solution: one tool, matches the NuGet dependency graph.
       # actions/attest accepts either CycloneDX or SPDX, so this does not lock out
@@ -132,18 +174,6 @@ jobs:
           echo "SBOM lists $components component(s)"
           test "$components" -gt 0
 
-      # Provenance is only meaningful because Directory.Build.props sets
-      # Deterministic and ContinuousIntegrationBuild: the artifact can be rebuilt
-      # and compared.
-      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
-        with:
-          subject-path: 'artifacts/*.nupkg'
-
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: release-artifacts
-          path: artifacts/
-
       # The whole CHANGELOG was attached to every release, so each one repeated all the history
       # before it — and a tag pushed before its heading is renamed publishes notes that open with
       # "## [Unreleased]". This takes the section for the version being tagged, and fails when
@@ -164,12 +194,73 @@ jobs:
             exit 1
           }
 
+      # Run once, after every publishable file exists. The scanner checks tracked source, the tag
+      # commit, binary package content and entry names, symbol packages, the SBOM, and release notes.
+      # A missing or empty private denylist is an error, never a skipped release gate.
+      - name: Scan every public release surface for confidential identifiers
+        env:
+          OSS_CONFIDENTIAL_TERMS_B64: ${{ secrets.OSS_CONFIDENTIAL_TERMS_B64 }}
+        run: python3 ../trusted/scripts/check-confidential-identifiers.py artifacts release-notes.md
+
+      # This immutable same-run artifact is the only input to the privileged publication job.
+      # Candidate code never executes in that job.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: verified-release-candidate
+          path: |
+            candidate/artifacts/
+            candidate/release-notes.md
+
+  publish:
+    needs: build-release-candidate
+    if: github.actor == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: candidate
+    permissions:
+      contents: write      # create the GitHub release
+      id-token: write      # OIDC for provenance attestation and NuGet trusted publishing
+      attestations: write
+    steps:
+      - name: Download the verified same-run release candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: verified-release-candidate
+          path: candidate
+
+      - name: Confirm the publication input is complete
+        run: |
+          test -s release-notes.md
+          test -s artifacts/sbom.cyclonedx.json
+          count=$(find artifacts -name '*.nupkg' | wc -l)
+          echo "publishing $count package(s)"
+          test "$count" -gt 0
+
+      # Provenance is meaningful because Directory.Build.props makes the packages deterministic.
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        with:
+          subject-path: 'candidate/artifacts/*.nupkg'
+
+      - name: Confirm the verified tag has not moved before release creation
+        env:
+          EXPECTED_TAG_OBJECT: ${{ needs.build-release-candidate.outputs.tag_object_sha }}
+          GH_TOKEN: ${{ github.token }}
+          REF_NAME: ${{ github.event.client_payload.tag }}
+        run: |
+          current=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$REF_NAME" --jq '.object.sha')
+          test "$current" = "$EXPECTED_TAG_OBJECT" || {
+            echo "::error::$REF_NAME moved after signature verification."
+            exit 1
+          }
+
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.value }}
-          REF_NAME: ${{ github.ref_name }}
-          KIND: ${{ steps.kind.outputs.value }}
+          VERSION: ${{ needs.build-release-candidate.outputs.version }}
+          REF_NAME: ${{ github.event.client_payload.tag }}
+          KIND: ${{ needs.build-release-candidate.outputs.kind }}
         run: |
           # A prerelease label means a pre-release under SemVer. gh does not infer that, so a
           # tag like 1.0.0-rc.1 would otherwise publish as an ordinary release. The
@@ -212,7 +303,10 @@ jobs:
 
       - name: Publish to nuget.org
         env:
+          EXPECTED_TAG_OBJECT: ${{ needs.build-release-candidate.outputs.tag_object_sha }}
+          GH_TOKEN: ${{ github.token }}
           NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+          REF_NAME: ${{ github.event.client_payload.tag }}
         run: |
           if [ -z "$NUGET_API_KEY" ]; then
             # A warning rather than a log line: an unconfigured or lapsed trusted-publishing policy
@@ -223,6 +317,11 @@ jobs:
             echo "::warning::Set the NUGET_USER repository variable and add a policy at nuget.org."
             exit 0
           fi
+          current=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$REF_NAME" --jq '.object.sha')
+          test "$current" = "$EXPECTED_TAG_OBJECT" || {
+            echo "::error::$REF_NAME moved after signature verification."
+            exit 1
+          }
           dotnet nuget push "artifacts/*.nupkg" \
             --api-key "$NUGET_API_KEY" \
             --source https://api.nuget.org/v3/index.json \

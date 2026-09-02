@@ -1,7 +1,8 @@
 # Releasing
 
 A release is a signed tag. Everything else — building, packing, attesting, publishing to nuget.org
-and creating the GitHub release — happens in `.github/workflows/release.yml` when that tag arrives.
+and creating the GitHub release — happens in `.github/workflows/release.yml` when a maintainer
+sends the repository's default-branch-only release event for that tag.
 
 ## Why the tag is signed
 
@@ -60,12 +61,17 @@ Add the public key at <https://github.com/settings/keys> under **GPG keys**.
    *exactly* and fails when there is not one — notes for the wrong version are worse than a failed
    release. Land that through a pull request.
 
-2. **Tag it, signed and annotated:**
+2. **Tag it, signed and annotated.** Only the repository owner can send the release event; other
+   writers cannot grant a release job its publication permissions.
 
    ```bash
    git switch main && git pull
    git tag -s v1.0.0 -m "v1.0.0"
    git push origin v1.0.0
+   gh api repos/ivanvyd/LakeWright.NET/dispatches \
+     --method POST \
+     -f event_type=release \
+     -F 'client_payload[tag]=v1.0.0'
    ```
 
    The version follows SemVer. A tag with a hyphen is published as a GitHub prerelease and to
@@ -75,10 +81,13 @@ Add the public key at <https://github.com/settings/keys> under **GPG keys**.
    for refusing stable tags; [ADR 0019](../decisions/0019-stable-1-0-0.md) is the rationale
    for no longer refusing them.
 
-3. **Watch the run.** In order it verifies the signature, derives the version from the tag,
-   builds, tests, packs, generates a CycloneDX SBOM, attests build provenance, extracts the
-   release notes, creates the GitHub release, and publishes to nuget.org last — because that
-   is the only step that cannot be undone.
+3. **Watch the repository-dispatch run.** GitHub loads this event's workflow and confidentiality
+   scanner only from the default branch. In order it verifies and pins the tag object and commit,
+   checks out and scans that commit, derives the version, builds, tests, packs, generates a CycloneDX
+   SBOM, and extracts the release notes in a read-only job. A separate publication job downloads
+   only that immutable same-run artifact, attests build provenance, rechecks that the tag did not
+   move, creates the GitHub release, and publishes to nuget.org last — because that is the only step
+   that cannot be undone. Tagged build hooks never execute with release or OIDC permissions.
 
 ## If a release goes wrong
 

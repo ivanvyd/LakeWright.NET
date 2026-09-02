@@ -151,11 +151,15 @@ Publishing to nuget.org stores no credential: trusted publishing exchanges a Git
 a key valid for one hour, against a policy bound to this owner, repository and workflow file. There
 is no long-lived key to steal from the runner or from repository secrets.
 
-**Accepted residual:** a tag push is the trigger, so anyone who can push a `v*` tag can publish
-under this project's identity, and anyone who can change `release.yml` on the default branch can
-change what gets published. Tag-derived values are passed to shell steps as environment variables
-rather than interpolated into the script text, which closes the injection path that would otherwise
-have turned a tag name into arbitrary code inside that job.
+**Accepted residual:** anyone who can change `release.yml` on the default branch can change what
+gets published. A tag push alone cannot start a release: a maintainer must send a repository event
+that GitHub handles only with the default-branch workflow. That workflow verifies and pins the
+annotated tag object and commit before fetching or executing the tagged tree, then rejects a tag
+that moves before either publication boundary. Tag-derived values are passed to shell steps as
+environment variables rather than interpolated into script text, closing the tag-name injection
+path inside the job. Tagged code executes only in a read-only build job; the separate privileged
+publication job consumes the immutable same-run artifact and never checks out or executes tagged
+source.
 
 ## What is out of scope
 
