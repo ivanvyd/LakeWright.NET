@@ -64,7 +64,13 @@ public sealed class DatabricksTelemetryTests
         measurements.Select(measurement => measurement.Name).ShouldContain("lakewright.statements.warehouse_wait");
         measurements.ShouldAllBe(measurement => measurement.Tags.Keys.All(
             key => !key.Contains("tenant", StringComparison.OrdinalIgnoreCase)));
-        measurements.ShouldAllBe(measurement => HasReportKind(measurement));
+        // MeterListener observes every concurrent test that records to this process-wide meter.
+        // Assert the measurements produced by this statement, rather than incorrectly requiring
+        // unrelated tests to use this test's statement kind.
+        var reportMeasurements = measurements.Where(HasReportKind).ToArray();
+        reportMeasurements.Select(measurement => measurement.Name).ShouldContain("lakewright.statements.duration");
+        reportMeasurements.Select(measurement => measurement.Name).ShouldContain("lakewright.statements.outcomes");
+        reportMeasurements.Select(measurement => measurement.Name).ShouldContain("lakewright.statements.warehouse_wait");
     }
 
     private static Instrument Instrument(string fieldName) =>
