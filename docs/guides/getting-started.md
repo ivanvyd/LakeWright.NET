@@ -151,6 +151,22 @@ adds an `IPublishedDashboardDefinitionReader` for an authoritative published art
 `PublishedRevisionEmbedPrecondition` with the token broker only when that reader is present; it
 then fails minting closed until `DashboardPublishGate` passes on the proved served definition.
 
+### Raw-data grids
+
+`LakeWright.Databricks.RawData` turns a trusted `RawDataSource` definition into one
+tenant-scoped, parameterized inline statement. A request cannot choose a view, physical column,
+SQL operator text, or sort fragment: those are validated against the source's allow-listed fields.
+Malformed values, excessive filters, values, offsets, and page sizes throw `ValidationException`
+before a warehouse call, which a host maps to HTTP 400. Register the scoped service after
+`AddLakeWrightDatabricks`:
+
+```csharp
+builder.Services.AddLakeWrightRawData(options => options.MaximumPageSize = 250);
+```
+
+The `Export` request flag is intentionally not accepted by `QueryAsync`; use the raw-data export
+pipeline once it is configured rather than accidentally treating a paged grid query as a file export.
+
 ## Configuration
 
 ```json

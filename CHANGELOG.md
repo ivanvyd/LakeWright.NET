@@ -37,6 +37,11 @@ note.
   endpoint does not expose serialized dashboard SQL. `PublishedRevisionEmbedPrecondition` fails
   closed when that proof is unavailable or the published definition fails the publish gate.
 
+- New `LakeWright.Databricks.RawData` supplies declarative raw-data sources and a scoped query
+  service. It renders only allow-listed view and column identifiers, binds every filter and paging
+  value as a typed statement parameter, escapes text search wildcards, and rejects invalid input
+  before it can become a warehouse error.
+
 - `GenieAnswerSanitizer` removes model-supplied HTML and neutralizes markdown links by default.
   Hosts may opt in to exact HTTPS allow-list entries when their renderer is prepared to render
   those links.

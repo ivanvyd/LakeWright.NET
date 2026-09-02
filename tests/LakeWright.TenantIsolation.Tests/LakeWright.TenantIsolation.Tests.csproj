@@ -33,6 +33,7 @@
     <ProjectReference Include="..\..\src\LakeWright.Caching.Distributed\LakeWright.Caching.Distributed.csproj" />
     <ProjectReference Include="..\..\src\LakeWright.Multitenancy\LakeWright.Multitenancy.csproj" />
     <ProjectReference Include="..\..\src\LakeWright.Databricks\LakeWright.Databricks.csproj" />
+    <ProjectReference Include="..\..\src\LakeWright.Databricks.RawData\LakeWright.Databricks.RawData.csproj" />
     <ProjectReference Include="..\..\src\LakeWright.AspNetCore\LakeWright.AspNetCore.csproj" />
     <ProjectReference Include="..\..\tools\LakeWright.DatabaseMaintenance.Core\LakeWright.DatabaseMaintenance.Core.csproj" />
     <!-- The sample is a second route into tenant data, so it is tested, not just built. -->
