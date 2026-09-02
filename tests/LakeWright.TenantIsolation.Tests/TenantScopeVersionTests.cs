@@ -92,6 +92,19 @@ public class TenantScopeVersionTests
     }
 
     [Fact]
+    public void ScopeVersion_from_members_is_order_independent_and_claim_safe()
+    {
+        var first = ScopeVersion.FromMembers(["entity-b", "entity-a", "entity-a"]);
+        var second = ScopeVersion.FromMembers(["entity-a", "entity-b"]);
+
+        first.ShouldBe(second);
+        first.Length.ShouldBe(12);
+        first.ShouldNotContain('|');
+        first.ShouldNotContain(':');
+        first.ShouldNotContain('~');
+    }
+
+    [Fact]
     public async Task Broker_composes_external_value_with_tilde_delimiter_when_version_is_present()
     {
         // Arrange — a tenant whose scope version is the md5 of their scope rows. Hexadecimal and

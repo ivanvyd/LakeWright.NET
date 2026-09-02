@@ -108,6 +108,11 @@ Embedding failures are typed for HTTP mapping: `TransportException` usually maps
 `TenantScopeMissingException` to 400. Do not expose the workspace response excerpt directly to a
 viewer; it is for server-side diagnostics.
 
+When an adopter changes a tenant's effective scope, compute a new `ScopeVersion`, persist it with
+the resolved tenant data, and call `IEmbedTokenCache.EvictTenant(tenantId)`. The changed version
+alters `external_value`, which bypasses the vendor result cache; eviction removes this process's
+old viewer-token entries. An iframe that is already rendered keeps its prior data until reload.
+
 `TokenCredential` rather than a string, because Entra tokens expire within the hour and the
 credential is what knows how to get another one. An earlier version took a `GetToken()` string,
 which was read once at startup and left every Databricks call failing 401 a little later with

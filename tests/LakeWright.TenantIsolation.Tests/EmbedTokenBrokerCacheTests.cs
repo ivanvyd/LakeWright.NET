@@ -120,6 +120,32 @@ public class EmbedTokenBrokerCacheTests : IDisposable
     }
 
     [Fact]
+    public async Task Evicting_a_tenant_removes_all_of_its_cached_embed_tokens()
+    {
+        StubExchange();
+        var time = new FakeTimeProvider();
+        var embedCache = new MemoryEmbedTokenCache(time);
+        var broker = new DashboardTokenBroker(
+            new HttpClient { BaseAddress = new Uri(_workspace.Urls[0] + "/") },
+            Options.Create(new DashboardEmbeddingOptions
+            {
+                WorkspaceUrl = _workspace.Urls[0],
+                ClientId = "sp-id",
+                ClientSecret = "sp-secret",
+            }),
+            time,
+            new MemoryWorkspaceTokenCache(time),
+            embedCache);
+
+        await broker.IssueAsync(Tenant(AcmeId), "dash-1", "viewer-7", TestContext.Current.CancellationToken);
+        var requestsAfterFirst = _workspace.LogEntries.Count;
+        embedCache.EvictTenant(AcmeId);
+        await broker.IssueAsync(Tenant(AcmeId), "dash-1", "viewer-7", TestContext.Current.CancellationToken);
+
+        _workspace.LogEntries.Count.ShouldBeGreaterThan(requestsAfterFirst);
+    }
+
+    [Fact]
     public async Task The_workspace_token_is_shared_across_tenants_dashboards_and_viewers()
     {
         // Arrange — the workspace cache is keyed on ClientId only, so the second call
