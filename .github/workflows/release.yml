@@ -215,7 +215,9 @@ jobs:
     needs: build-release-candidate
     if: github.actor == github.repository_owner
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # NuGet can acknowledge an upload before its public flat-container index has
+    # caught up. Leave time to verify that a clean consumer can discover it.
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: candidate
@@ -336,3 +338,43 @@ jobs:
           if grep -qi 'already exists\|conflict' push.log; then
             echo "::warning::At least one package already existed on nuget.org and was not republished."
           fi
+
+      # A successful upload is not the same as a package that consumers can restore:
+      # nuget.org indexes packages asynchronously. Check the public flat-container
+      # index, which is the feed endpoint the restore client consumes. This remains a
+      # warning on timeout because the upload cannot be undone and an indexing delay
+      # must not make a correct release look failed; the exact missing package IDs are
+      # still visible in the run for follow-up.
+      - name: Verify NuGet public availability
+        if: steps.nuget-login.outputs.NUGET_API_KEY != ''
+        env:
+          VERSION: ${{ needs.build-release-candidate.outputs.version }}
+        run: |
+          set -euo pipefail
+          packages=()
+          while IFS= read -r package; do
+            packages+=("${package%.$VERSION.nupkg}")
+          done < <(find artifacts -maxdepth 1 -type f -name '*.nupkg' -printf '%f\n' | sort)
+
+          for attempt in $(seq 1 10); do
+            missing=()
+            for package in "${packages[@]}"; do
+              package_id=${package,,}
+              index="https://api.nuget.org/v3-flatcontainer/$package_id/index.json"
+              if ! curl --fail --silent --show-error "$index" | \
+                python3 -c 'import json, sys; raise SystemExit(0 if sys.argv[1] in json.load(sys.stdin).get("versions", []) else 1)' \
+                  "$VERSION"; then
+                missing+=("$package")
+              fi
+            done
+
+            if [ "${#missing[@]}" -eq 0 ]; then
+              echo "All ${#packages[@]} packages are publicly available from nuget.org."
+              exit 0
+            fi
+
+            echo "Attempt $attempt: waiting for NuGet indexing of: ${missing[*]}"
+            sleep 60
+          done
+
+          echo "::warning::NuGet accepted the upload, but the public flat-container index did not list $VERSION within ten minutes. Missing: ${missing[*]}"
