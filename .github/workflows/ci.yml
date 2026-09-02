@@ -2,6 +2,7 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
   push:
     branches: [main]
 
@@ -18,7 +19,90 @@ concurrency:
 # against a one-minute baseline, and had to be cancelled by hand. These caps are generous
 # multiples of the observed times, so they fire on a hang and never on a slow runner.
 jobs:
+  # No candidate code executes until its current tree and every newly public
+  # revision have passed the private denylist. External forks are scanned by the
+  # trusted Confidentiality workflow and do not execute code in this workflow.
+  confidentiality-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Explain external-fork isolation
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && github.actor != 'dependabot[bot]'
+        run: echo "External fork code is not executed; the trusted Confidentiality workflow scans it as data."
+      - name: Check out candidate source as data
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || github.actor == 'dependabot[bot]'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          path: candidate
+      - name: Check out the trusted scanner
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || github.actor == 'dependabot[bot]'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.repository.default_branch || github.event.before }}
+          path: trusted
+          persist-credentials: false
+      - name: Verify repository-owner image review
+        id: image-review
+        if: github.event_name == 'pull_request' && github.event.action != 'synchronize' && (github.event.pull_request.head.repo.full_name == github.repository || github.actor == 'dependabot[bot]') && contains(github.event.pull_request.labels.*.name, 'confidentiality-image-reviewed')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          gh api --method GET "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/timeline" -f per_page=100 -f page=1 > timeline.json
+          count=$(jq 'length' timeline.json)
+          if [ "$count" -eq 100 ]; then
+            gh api --method GET "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/timeline" -f per_page=100 -f page=2 > timeline-page-2.json
+            if [ "$(jq 'length' timeline-page-2.json)" -ne 0 ]; then
+              echo "::error title=Metadata budget exceeded::The pull request has more than 100 timeline events."
+              exit 1
+            fi
+          fi
+          jq -e --arg label confidentiality-image-reviewed --arg owner "$REPOSITORY_OWNER" '
+            [.[] | select((.event == "labeled" or .event == "unlabeled") and .label.name == $label)]
+            | last
+            | select(.event == "labeled" and .actor.login == $owner)
+          ' timeline.json >/dev/null || {
+            echo "::error title=Invalid image-review approval::Only the repository owner may apply the image-review approval label."
+            exit 1
+          }
+          echo "allow_unreviewed_images=1" >> "$GITHUB_OUTPUT"
+      - name: Test the confidentiality scanner
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || github.actor == 'dependabot[bot]'
+        working-directory: trusted
+        run: python3 scripts/test-confidential-identifiers.py
+      - name: Scan source and every newly public revision
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || github.actor == 'dependabot[bot]'
+        working-directory: candidate
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          # Pushes are merge results whose owner-only raster approval was enforced
+          # on the required pull-request checks. Main has no direct-push bypass.
+          CONFIDENTIAL_ALLOW_UNREVIEWED_IMAGES: ${{ github.event_name == 'push' && '1' || steps.image-review.outputs.allow_unreviewed_images }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.sha }}
+          OSS_CONFIDENTIAL_TERMS_B64: ${{ secrets.OSS_CONFIDENTIAL_TERMS_B64 }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            export CONFIDENTIAL_GIT_RANGE="$BASE_SHA..$HEAD_SHA"
+          elif [[ "$BEFORE_SHA" =~ ^0+$ ]]; then
+            export CONFIDENTIAL_GIT_RANGE="HEAD^..HEAD"
+          else
+            export CONFIDENTIAL_GIT_RANGE="$BEFORE_SHA..$HEAD_SHA"
+          fi
+          python3 ../trusted/scripts/check-confidential-identifiers.py
+      - name: Test candidate scanner without private configuration
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || github.actor == 'dependabot[bot]'
+        working-directory: candidate
+        run: python3 scripts/test-confidential-identifiers.py
+
   build:
+    needs: confidentiality-preflight
+    if: needs.confidentiality-preflight.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || github.actor == 'dependabot[bot]')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -50,6 +134,8 @@ jobs:
           echo "no moderate-or-higher advisories"
 
   test:
+    needs: confidentiality-preflight
+    if: needs.confidentiality-preflight.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || github.actor == 'dependabot[bot]')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -74,24 +160,30 @@ jobs:
           path: TestResults/
 
   docs:
+    needs: confidentiality-preflight
+    if: always() && needs.confidentiality-preflight.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Scan for confidential identifiers
-        env:
-          OSS_CONFIDENTIAL_TERMS_B64: ${{ secrets.OSS_CONFIDENTIAL_TERMS_B64 }}
-        run: bash scripts/check-confidential-identifiers.sh
-      - run: bash scripts/check-doc-links.sh
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || github.actor == 'dependabot[bot]'
+      - name: Explain external-fork documentation isolation
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && github.actor != 'dependabot[bot]'
+        run: echo "External fork scripts are not executed; the trusted Confidentiality workflow scans the change as data."
+      - if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || github.actor == 'dependabot[bot]'
+        run: bash scripts/check-doc-links.sh
       # Links rot first; claims rot quietly. A re-read on 2026-08-05 found six claims describing
       # a repository that had moved on without them, two in the compliance mapping an assessor
       # reads first and one in the threat model. Review found the sixth after this check was
       # written and passing, which is why its rules match the subject rather than the sentence.
-      - run: bash scripts/check-doc-claims.sh
+      - if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || github.actor == 'dependabot[bot]'
+        run: bash scripts/check-doc-claims.sh
 
   # Its own required check, so a skipped or filtered-out isolation suite fails
   # the build instead of passing quietly inside the general test job.
   tenant-isolation:
+    needs: confidentiality-preflight
+    if: needs.confidentiality-preflight.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || github.actor == 'dependabot[bot]')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -102,6 +194,8 @@ jobs:
       - run: dotnet test -c Release --filter "Category=TenantIsolation"
 
   bundle:
+    needs: confidentiality-preflight
+    if: needs.confidentiality-preflight.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || github.actor == 'dependabot[bot]')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

@@ -17,9 +17,42 @@ import zlib
 
 
 SCRIPT = Path(__file__).with_name("check-confidential-identifiers.py")
+RELEASE_TAG_SCRIPT = Path(__file__).with_name("validate-release-tag.py")
+WORKFLOWS = SCRIPT.parent.parent / ".github" / "workflows"
 
 
 class ConfidentialIdentifierScannerTests(unittest.TestCase):
+    def test_release_tag_validation(self) -> None:
+        valid = (
+            "v0.1.0",
+            "v1.2.3-preview.1",
+            "v1.2.3+build-01",
+            "v1.2.3-preview.1+build-01",
+        )
+        invalid = (
+            "1.2.3",
+            "v01.2.3",
+            "v1.2",
+            "v1.2.3-01",
+            "v1.2.3-",
+        )
+        for value in valid:
+            result = subprocess.run(
+                [sys.executable, str(RELEASE_TAG_SCRIPT), value],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(0, result.returncode, value)
+        for value in invalid:
+            result = subprocess.run(
+                [sys.executable, str(RELEASE_TAG_SCRIPT), value],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(1, result.returncode, value)
+
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.repo = Path(self.temp_dir.name) / "repo"
@@ -155,6 +188,19 @@ class ConfidentialIdentifierScannerTests(unittest.TestCase):
         self.assertIn("commit content", result.stdout.casefold())
         self.assert_term_is_redacted(result)
 
+    def test_rejects_oversized_historical_blob_before_materializing(self) -> None:
+        path = self.repo / "oversized.bin"
+        with path.open("wb") as stream:
+            stream.truncate(128 * 1024 * 1024 + 1)
+        self._commit("add oversized transient content")
+        path.unlink()
+        self._commit("remove oversized transient content")
+
+        result = self._run(terms=[self.term], git_range="HEAD~2..HEAD")
+
+        self.assertEqual(2, result.returncode)
+        self.assertIn("per-file limit", result.stdout.casefold())
+
     def test_scans_archive_entry_names(self) -> None:
         artifact_dir = Path(self.temp_dir.name) / "artifacts"
         artifact_dir.mkdir()
@@ -267,6 +313,24 @@ class ConfidentialIdentifierScannerTests(unittest.TestCase):
         self.assertEqual(1, result.returncode)
         self.assertIn("image review required", result.stdout.casefold())
 
+    def test_remote_discussion_attachment_requires_owner_review(self) -> None:
+        metadata = Path(self.temp_dir.name) / "comment.json"
+        metadata.write_text(
+            '{"body":"https://github.com/' + 'user-attachments/assets/example"}',
+            encoding="utf-8",
+        )
+
+        blocked = self._run(terms=[self.term], targets=(metadata,))
+        approved = self._run(
+            terms=[self.term],
+            targets=(metadata,),
+            allow_unreviewed_images=True,
+        )
+
+        self.assertEqual(1, blocked.returncode)
+        self.assertIn("image review required", blocked.stdout.casefold())
+        self.assertEqual(0, approved.returncode, approved.stdout + approved.stderr)
+
     def test_clean_repository_and_artifacts_pass(self) -> None:
         artifact_dir = Path(self.temp_dir.name) / "artifacts"
         artifact_dir.mkdir()
@@ -288,6 +352,38 @@ class ConfidentialIdentifierScannerTests(unittest.TestCase):
 
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         self.assertLess(elapsed, 5.0)
+
+    def test_workflows_cover_public_metadata_and_preflight_execution(self) -> None:
+        confidentiality = (WORKFLOWS / "confidentiality.yml").read_text(
+            encoding="utf-8"
+        )
+        ci = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
+        release = (WORKFLOWS / "release.yml").read_text(encoding="utf-8")
+
+        self.assertIn("  issues:\n", confidentiality)
+        self.assertIn(
+            "types: [opened, edited, reopened, labeled, unlabeled]", confidentiality
+        )
+        self.assertIn("issues/$ISSUE_NUMBER/comments", confidentiality)
+        self.assertIn("Metadata budget exceeded", confidentiality)
+        self.assertIn("confidentiality-control-reviewed", confidentiality)
+        self.assertIn("needs: confidentiality-preflight", ci)
+        self.assertIn("pull_request:\n    types:", ci)
+        self.assertIn("github.event.before", ci)
+        self.assertIn("  repository_dispatch:\n", release)
+        self.assertNotIn("  workflow_dispatch:\n", release)
+        self.assertIn("if: github.actor == github.repository_owner", release)
+        self.assertIn("trusted/scripts/validate-release-tag.py", release)
+        self.assertLess(
+            release.index("Refuse an unsigned tag"),
+            release.index("Scan verified release source and history"),
+        )
+        self.assertLess(
+            release.index(
+                "Scan verified release source and history before executing it"
+            ),
+            release.index("actions/setup-dotnet"),
+        )
 
 
 if __name__ == "__main__":
