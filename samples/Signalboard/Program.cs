@@ -1,5 +1,6 @@
 using Azure.Core;
 using LakeWright.AspNetCore;
+using LakeWright.Databricks;
 using LakeWright.Multitenancy;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;

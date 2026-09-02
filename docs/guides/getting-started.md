@@ -35,6 +35,9 @@ If it passes, your environment is correct.
 ## Wire it into an application
 
 ```csharp
+using LakeWright.AspNetCore;
+using LakeWright.Databricks;
+
 builder.Services
     .AddAuthentication(/* your identity provider */)
     .AddOpenIdConnect(/* ... */);

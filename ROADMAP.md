@@ -29,16 +29,12 @@ records what was executed, and this one records what is intended.
 The table above is work someone chose not to do yet. This is the other kind: things nobody has
 measured, so the honest answer to "is it right?" is that we do not know.
 
-- **Most of the test suite cannot run in CI.** The full suite is 148 cases across 150 test
-  methods (measured 2026-08-29, including the four new `CostAttributionTests` and one
-  `TelemetryTenantGuardTests` from this milestone). CI runs 148 of them and reaches **85.4% of
-  the lines in the shipped libraries** as of 2026-08-06; the new tests and the cost-attribution
-  implementation are excluded from that figure because the coverage report has not been re-run.
-  The Databricks integration is still exercised by `Category=Live` tests that need a workspace
-  and cost money. So a green CI run says a great deal about tenancy and isolation, and much less
-  about the Databricks client wrappers — `LakeWright.Databricks` is 50.8% covered by the full
-  suite and 6.6% by the part CI runs. The gap is not untested code; it is code CI is not allowed
-  to test.
+- **Live-workspace tests cannot run in CI.** The non-live coverage collection was rerun on
+  2026-09-02: shipped libraries reached **84.7%** line coverage, with
+  `LakeWright.Databricks` at 68.1% and `LakeWright.Conversations` at 87.0%. The remaining
+  `Category=Live` Databricks tests need a workspace and cost money. A green CI run therefore
+  strongly supports tenancy and the package floor, but it does not replace a live workspace
+  exercise of the SDK wrappers.
 - **No independent human has read this code.** Every pull request has been opened and merged by the
   maintainer with zero approvals. The reviews have been thorough and adversarial, and they have all
   been briefed by the person whose work they reviewed, who then chose what to act on.

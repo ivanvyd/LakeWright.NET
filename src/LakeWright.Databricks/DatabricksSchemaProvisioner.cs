@@ -26,6 +26,8 @@ public sealed partial class DatabricksSchemaProvisioner(
     IOptions<DatabricksOptions> options,
     ILogger<DatabricksSchemaProvisioner> logger) : ITenantSchemaProvisioner
 {
+    private readonly ILogger _logger = logger;
+
     public Task CreateAsync(string catalog, string schema, CancellationToken cancellationToken) =>
         // IF NOT EXISTS because provisioning is retried after a partial failure, and a create that
         // throws on an existing schema turns a recoverable state into a stuck one.
@@ -59,7 +61,7 @@ public sealed partial class DatabricksSchemaProvisioner(
 
         if (state != StatementExecutionState.SUCCEEDED)
         {
-            LogFailed(catalog, schema, state?.ToString() ?? "unknown");
+            LogFailed(_logger, catalog, schema, state?.ToString() ?? "unknown");
 
             // Thrown rather than returned. Every other Databricks call in this library translates
             // a failure into an outcome the caller decides about, because a failed query is a
@@ -72,5 +74,5 @@ public sealed partial class DatabricksSchemaProvisioner(
     }
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Schema DDL for {Catalog}.{Schema} ended in {State}")]
-    private partial void LogFailed(string catalog, string schema, string state);
+    private static partial void LogFailed(ILogger logger, string catalog, string schema, string state);
 }
