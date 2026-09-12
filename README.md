@@ -20,7 +20,9 @@ identities you can run locally.
 > tier (tenant middleware, role policies, the operations API with client idempotency), the audit
 > trail, the Declarative Automation Bundle, telemetry instruments, and the Signalboard sample —
 > two organizations, three people, a Blazor dashboard and the same API from a terminal.
-> Still open: cost budgets in currency, an observability export, and a reference deployment. The
+> Opt-in OpenTelemetry export wiring and an Azure reference deployment template are included.
+> Currency billing integration is implemented locally; its live system-table read and the first
+> reference deployment remain unverified. Currency budgets remain open. The
 > milestones are in [ROADMAP.md](ROADMAP.md), and
 > [docs/compatibility.md](docs/compatibility.md) records exactly what has been verified against a
 > live workspace and what has not.
@@ -114,8 +116,13 @@ docs/                         see docs/README.md
 `LakeWright.Multitenancy` does not reference `LakeWright.Databricks`, so adopting the tenancy tier
 alone does not drag in the Databricks client. A test enforces that rather than a convention.
 
-Still to come: an observability export, per-tenant cost attribution in currency, and a reference
-deployment.
+The sample includes opt-in OpenTelemetry export wiring. Currency attribution has a billing-reader
+implementation, and Azure deployment has Bicep templates and a workflow. Their live verification
+boundaries are recorded in [the compatibility matrix](docs/compatibility.md).
+
+Current stable release: [v2.0.0](https://github.com/ivanvyd/LakeWright.NET/releases/tag/v2.0.0).
+The source tree may contain changes for a later candidate; published packages retain the behavior
+documented in their release evidence.
 
 ## Documentation
 

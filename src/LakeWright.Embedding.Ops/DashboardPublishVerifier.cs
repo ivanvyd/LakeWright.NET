@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using LakeWright.Core;
 using LakeWright.Core.Features;
@@ -26,8 +28,9 @@ public interface IDashboardPublishVerifier
 }
 
 /// <summary>
-/// Reads an authoritative serialized *published* dashboard definition. Implementations may read a
-/// deployment artifact or another supported system of record, but must not return the mutable draft.
+/// Reads an authoritative serialized <em>published</em> dashboard definition. Implementations may
+/// read a deployment artifact or another supported system of record, but must not return the
+/// mutable draft.
 /// </summary>
 public interface IPublishedDashboardDefinitionReader
 {
@@ -35,12 +38,42 @@ public interface IPublishedDashboardDefinitionReader
     Task<string?> ReadAsync(string dashboardId, CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// Reads a source-owned assertion that every tenant-owned relation in a served dashboard revision
+/// is constrained by the viewer's external value.
+/// </summary>
+/// <remarks>
+/// Arbitrary SQL cannot be proven tenant-safe by token matching. Implement this over a controlled
+/// query-template compiler, an authoritative parsed-query/lineage check, or an equivalent
+/// deployment-time verifier. The assertion is accepted only when its dashboard id, served revision,
+/// and SHA-256 digest match the separately supplied served definition.
+/// </remarks>
+public interface IPublishedDashboardIsolationEvidenceReader
+{
+    /// <summary>Returns evidence for the supplied dashboard's served revision, or null if it cannot be proven.</summary>
+    Task<PublishedDashboardIsolationEvidence?> ReadAsync(
+        string dashboardId,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>Revision-bound evidence from a trusted, source-owned isolation verifier.</summary>
+public sealed record PublishedDashboardIsolationEvidence(
+    string DashboardId,
+    DateTimeOffset PublishedRevisionCreatedAt,
+    string SerializedDashboardSha256,
+    bool TenantRelationsConstrained,
+    string Reason);
+
 /// <summary>Result of attempting to prove that a served dashboard remains tenant-safe.</summary>
 public sealed record PublishedRevisionVerification(
     bool Verifiable,
     bool Verified,
     string Reason,
-    DashboardPublishGateVerdict? PublishGate);
+    DashboardPublishGateVerdict? PublishGate)
+{
+    /// <summary>Revision-bound source-owned evidence used for a successful strict verification.</summary>
+    public PublishedDashboardIsolationEvidence? IsolationEvidence { get; init; }
+}
 
 /// <summary>Controls the bounded cache used for draft-versus-published comparisons.</summary>
 public sealed class DashboardPublishVerifierOptions
@@ -57,13 +90,46 @@ public sealed class DashboardPublishVerifierOptions
     }
 }
 
-/// <summary>Optional strict broker precondition that refuses a mint until served-revision verification passes.</summary>
-public sealed class PublishedRevisionEmbedPrecondition(IDashboardPublishVerifier verifier) : IEmbedPrecondition
+/// <summary>Strict broker precondition that requires assignment plus a verified served revision.</summary>
+public sealed class PublishedRevisionEmbedPrecondition : IEmbedPrecondition
 {
+    private readonly IDashboardPublishVerifier _verifier;
+    private readonly ITenantDashboardAssignment? _assignments;
+
+    /// <summary>
+    /// Retained for source compatibility. It fails closed because strict embedding also requires a
+    /// host-owned tenant-to-dashboard assignment resolver.
+    /// </summary>
+    public PublishedRevisionEmbedPrecondition(IDashboardPublishVerifier verifier)
+    {
+        _verifier = verifier ?? throw new ArgumentNullException(nameof(verifier));
+    }
+
+    /// <summary>Creates the strict precondition with the host's assignment resolver.</summary>
+    public PublishedRevisionEmbedPrecondition(
+        IDashboardPublishVerifier verifier,
+        ITenantDashboardAssignment assignments)
+    {
+        _verifier = verifier ?? throw new ArgumentNullException(nameof(verifier));
+        _assignments = assignments ?? throw new ArgumentNullException(nameof(assignments));
+    }
+
     public async Task EnsureSatisfiedAsync(TenantContext tenant, string dashboardId, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(tenant);
-        var result = await verifier.VerifyServedRevisionAsync(dashboardId, cancellationToken).ConfigureAwait(false);
+        ArgumentException.ThrowIfNullOrWhiteSpace(dashboardId);
+        if (_assignments is null)
+        {
+            throw new PublishedDashboardNotVerifiedException(
+                "No tenant-to-dashboard assignment resolver is configured for strict embedding.");
+        }
+        if (!await _assignments.IsAssignedAsync(tenant, dashboardId, cancellationToken).ConfigureAwait(false))
+        {
+            throw new PublishedDashboardNotVerifiedException(
+                "The requested dashboard is not assigned to the resolved tenant.");
+        }
+
+        var result = await _verifier.VerifyServedRevisionAsync(dashboardId, cancellationToken).ConfigureAwait(false);
         if (!result.Verified)
         {
             throw new PublishedDashboardNotVerifiedException(result.Reason);
@@ -85,7 +151,8 @@ internal sealed class DashboardPublishVerifier(
     IOptions<DashboardPublishVerifierOptions> options,
     TimeProvider timeProvider,
     ILakeWrightFeatureGate features,
-    IPublishedDashboardDefinitionReader? servedDefinitionReader = null) : IDashboardPublishVerifier
+    IPublishedDashboardDefinitionReader? servedDefinitionReader = null,
+    IPublishedDashboardIsolationEvidenceReader? isolationEvidenceReader = null) : IDashboardPublishVerifier
 {
     private readonly DashboardPublishVerifierOptions _options = options.Value;
     private readonly ConcurrentDictionary<string, (bool HasChanges, DateTimeOffset ExpiresAt)> _changes = new(StringComparer.Ordinal);
@@ -113,12 +180,12 @@ internal sealed class DashboardPublishVerifier(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dashboardId);
         features.EnsureEnabled(LakeWrightFeatures.Operations);
-        if (servedDefinitionReader is null)
+        if (servedDefinitionReader is null || isolationEvidenceReader is null)
         {
             return new PublishedRevisionVerification(
                 Verifiable: false,
                 Verified: false,
-                "No published-dashboard definition reader is registered. The Lakeview published endpoint exposes revision metadata but not serialized dashboard SQL.",
+                "A served-dashboard definition reader and source-owned isolation-evidence reader are both required. The Lakeview published endpoint exposes revision metadata but not serialized dashboard SQL.",
                 null);
         }
 
@@ -128,10 +195,70 @@ internal sealed class DashboardPublishVerifier(
             return new PublishedRevisionVerification(false, false, "The published-dashboard definition reader could not prove a served definition.", null);
         }
 
-        var gate = DashboardPublishGate.InspectDashboard(serialized);
-        return gate.Passed
-            ? new PublishedRevisionVerification(true, true, string.Empty, gate)
-            : new PublishedRevisionVerification(true, false, gate.Reason, gate);
+        var lint = DashboardMarkerLint.InspectDashboard(serialized);
+        if (!lint.Passed)
+        {
+            return new PublishedRevisionVerification(
+                true,
+                false,
+                "The served dashboard has no executable external-value marker in every dataset.",
+                lint);
+        }
+
+        var evidence = await isolationEvidenceReader.ReadAsync(dashboardId, cancellationToken).ConfigureAwait(false);
+        if (evidence is null)
+        {
+            return new PublishedRevisionVerification(true, false, "The source-owned isolation verifier could not prove the served dashboard revision.", lint);
+        }
+        if (!string.Equals(evidence.DashboardId, dashboardId, StringComparison.Ordinal))
+        {
+            return new PublishedRevisionVerification(true, false, "The isolation evidence belongs to a different dashboard.", lint);
+        }
+
+        var publishedAt = await api.GetPublishedRevisionAsync(dashboardId, cancellationToken).ConfigureAwait(false);
+        if (publishedAt is null || evidence.PublishedRevisionCreatedAt != publishedAt.Value)
+        {
+            return new PublishedRevisionVerification(true, false, "The isolation evidence is not bound to the current served revision.", lint);
+        }
+        if (!MatchesDigest(serialized, evidence.SerializedDashboardSha256))
+        {
+            return new PublishedRevisionVerification(true, false, "The isolation evidence does not match the served dashboard definition.", lint);
+        }
+        if (!evidence.TenantRelationsConstrained)
+        {
+            return new PublishedRevisionVerification(true, false,
+                string.IsNullOrWhiteSpace(evidence.Reason)
+                    ? "The source-owned verifier could not prove that every tenant-owned relation is constrained."
+                    : evidence.Reason,
+                lint)
+            {
+                IsolationEvidence = evidence,
+            };
+        }
+
+        return new PublishedRevisionVerification(true, true, string.Empty, lint)
+        {
+            IsolationEvidence = evidence,
+        };
+    }
+
+    private static bool MatchesDigest(string serialized, string expectedHex)
+    {
+        if (expectedHex.Length != 64)
+        {
+            return false;
+        }
+
+        try
+        {
+            var expected = Convert.FromHexString(expectedHex);
+            var actual = SHA256.HashData(Encoding.UTF8.GetBytes(serialized));
+            return CryptographicOperations.FixedTimeEquals(expected, actual);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
     }
 }
 

@@ -57,6 +57,7 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
         };
         execution.Validate();
         var startedAt = _time.GetUtcNow();
+        using var deadline = new StatementDeadline(_time, execution.TotalBudget, cancellationToken);
         var request = new SqlStatement
         {
             WarehouseId = _options.WarehouseId,
@@ -94,10 +95,11 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
         activity?.SetTag("statement.kind", execution.Kind);
         try
         {
-            var outcome = await _session.ExecuteAsync(request, statement.Tenant.TenantId, cancellationToken);
+            var outcome = await deadline.RunAsync(token => _session.ExecuteAsync(request, statement.Tenant.TenantId, token)).ConfigureAwait(false);
             outcome = execution.OnWaitTimeout == SqlStatementOnWaitTimeout.CONTINUE
-                ? await _poller.PollAsync(statement.Tenant, outcome, startedAt, execution, cancellationToken).ConfigureAwait(false)
+                ? await deadline.RunAsync(token => _poller.PollAsync(statement.Tenant, outcome, startedAt, execution, token)).ConfigureAwait(false)
                 : outcome;
+            outcome = await deadline.RunAsync(token => StatementResultReader.CompleteInlineAsync(_session, outcome, token)).ConfigureAwait(false);
             RecordOutcome(outcome, execution.Kind, startedAt);
             return outcome;
         }
@@ -118,7 +120,12 @@ public sealed class DatabricksStatementExecutor : IStatementExecutor
         _features.EnsureEnabled(LakeWrightFeatures.Statements);
         ArgumentNullException.ThrowIfNull(tenant);
 
-        return await _session.GetAsync(tenant.TenantId, statementId, cancellationToken);
+        var execution = _options.Statement ?? new StatementOptions();
+        execution.Validate();
+        using var deadline = new StatementDeadline(_time, execution.TotalBudget, cancellationToken);
+        deadline.Observe(new StatementOutcome.Pending(statementId));
+        var outcome = await deadline.RunAsync(token => _session.GetAsync(tenant.TenantId, statementId, token)).ConfigureAwait(false);
+        return await deadline.RunAsync(token => StatementResultReader.CompleteInlineAsync(_session, outcome, token)).ConfigureAwait(false);
     }
 
     public Task CancelAsync(

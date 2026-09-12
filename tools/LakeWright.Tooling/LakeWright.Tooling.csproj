@@ -8,6 +8,9 @@
     <Description>Local verification commands for LakeWright.NET consumers.</Description>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="../../tests/consumer-floor/Program.cs" LogicalName="ConsumerFloor.Program.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\src\LakeWright.Databricks\LakeWright.Databricks.csproj" />
     <ProjectReference Include="..\..\src\LakeWright.Embedding\LakeWright.Embedding.csproj" />
   </ItemGroup>

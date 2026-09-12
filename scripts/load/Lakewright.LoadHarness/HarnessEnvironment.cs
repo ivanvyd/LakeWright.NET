@@ -25,6 +25,7 @@ public sealed class HarnessEnvironment : IAsyncDisposable
 {
     private readonly PostgreSqlContainer _postgres;
     private readonly WebApplicationFactory<SampleProgram> _factory;
+    private readonly int _effectivePostgresMaxConnections;
 
     /// <summary>
     /// The IDs of the seeded tenants, in order. The harness drives traffic at tenants[0].
@@ -35,16 +36,19 @@ public sealed class HarnessEnvironment : IAsyncDisposable
     private HarnessEnvironment(
         PostgreSqlContainer postgres,
         WebApplicationFactory<SampleProgram> factory,
-        IReadOnlyList<Guid> seededTenantIds)
+        IReadOnlyList<Guid> seededTenantIds,
+        int effectivePostgresMaxConnections)
     {
         _postgres = postgres;
         _factory = factory;
         SeededTenantIds = seededTenantIds;
+        _effectivePostgresMaxConnections = effectivePostgresMaxConnections;
     }
 
     /// <summary>The connection string for the running Postgres container.</summary>
     public NpgsqlConnectionStringBuilder PostgresConnectionString =>
         new(_postgres.GetConnectionString());
+    public int EffectivePostgresMaxConnections => _effectivePostgresMaxConnections;
 
     /// <summary>The HTTP client that talks to the in-process host.</summary>
     public HttpClient Client => _factory.CreateClient();
@@ -55,10 +59,9 @@ public sealed class HarnessEnvironment : IAsyncDisposable
     public static async Task<HarnessEnvironment> CreateAsync(HarnessOptions options)
     {
         var postgres = new PostgreSqlBuilder(options.PostgresImage)
-            // ADR 0015: max_connections = 200 on production Postgres; the harness mirrors that
-            // here so the pool-utilisation SLO gate measures real headroom, not a configured
-            // default that is too small to be meaningful.
-            .WithEnvironment("POSTGRES_MAX_CONNECTIONS", options.PostgresMaxConnections.ToString())
+            // postgres accepts server settings after the image entry point; POSTGRES_MAX_CONNECTIONS
+            // is not an official image setting and would otherwise be silently ignored.
+            .WithCommand("-c", $"max_connections={options.PostgresMaxConnections}")
             // Pin the testcontainer's default database to `postgres` so the harness's seed
             // and the host's LakeWrightDbContext point at the same schema. The testcontainer
             // image's default POSTGRES_DB is `test` (matching the image's tag), which would
@@ -68,7 +71,24 @@ public sealed class HarnessEnvironment : IAsyncDisposable
             .Build();
         await postgres.StartAsync();
 
-        var connectionString = postgres.GetConnectionString();
+        var connectionBuilder = new NpgsqlConnectionStringBuilder(postgres.GetConnectionString())
+        {
+            Database = "postgres",
+            MaxPoolSize = options.PostgresPoolSize
+        };
+        var connectionString = connectionBuilder.ConnectionString;
+        int effectiveMaxConnections;
+        await using (var verify = new NpgsqlConnection(connectionString))
+        {
+            await verify.OpenAsync();
+            await using var command = verify.CreateCommand();
+            command.CommandText = "SHOW max_connections;";
+            effectiveMaxConnections = int.Parse((string)(await command.ExecuteScalarAsync())!);
+        }
+        if (effectiveMaxConnections != options.PostgresMaxConnections)
+        {
+            throw new InvalidOperationException($"Postgres reported max_connections={effectiveMaxConnections}; expected {options.PostgresMaxConnections}.");
+        }
 
         // pgcrypto is required for the model's gen_random_uuid() calls. EnsureCreatedAsync
         // does not create extensions; without this, the schema creation below fails on a fresh
@@ -100,11 +120,13 @@ public sealed class HarnessEnvironment : IAsyncDisposable
                     {
                         ["ConnectionStrings:Lakewright"] = connectionString,
                         ["Multitenancy:Catalog"] = "analytics",
+                        ["Databricks:WorkspaceUrl"] = "",
+                        ["Lakewright:OpenTelemetry:Enabled"] = "false",
                     });
                 });
             });
 
-        return new HarnessEnvironment(postgres, factory, seed.TenantIds);
+        return new HarnessEnvironment(postgres, factory, seed.TenantIds, effectiveMaxConnections);
     }
 
     public async ValueTask DisposeAsync()

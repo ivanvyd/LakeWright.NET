@@ -12,8 +12,10 @@ specific registration note where the extension intentionally replaces its defaul
 | `IWorkspaceTokenCache`, `IEmbedTokenCache` | process-local memory | More than one replica mints embedding tokens. `LakeWright.Caching.Distributed` supplies `IDistributedCache` adapters; add a provider-specific lease only if global cold-miss coalescing is required. |
 | `ILakeWrightFeatureGate` | `AlwaysOnFeatureGate` | A host needs runtime disablement. ASP.NET Core hosts can use `AddLakeWrightFeatureGate`; another host implements the one-method interface. |
 | typed HTTP clients | no retry policy | A host needs retry, circuit-breaking, or custom transport. Pass the `Action<IHttpClientBuilder>` registration callback and attach its own policy. |
-| `IEmbedPrecondition` | none | A host requires an additional proof before minting a browser token, such as served-revision verification. |
+| `IEmbedPrecondition` | none | A browser token endpoint needs strict assignment and served-revision isolation proof before minting. |
+| `ITenantDashboardAssignment` | none | Always for a host-exposed embed endpoint. Resolve tenant-to-dashboard assignment from trusted application data, never a workspace catalog or browser input. |
 | `IPublishedDashboardDefinitionReader` | none | A deployment system keeps the authoritative published dashboard artifact. The public Lakeview endpoint does not supply published serialized SQL. |
+| `IPublishedDashboardIsolationEvidenceReader` | none | A source-owned compiler, lineage policy, or deployment verifier can prove every tenant-owned relation is constrained and bind that proof to the served revision and definition hash. |
 | `IDashboardFilterBindingValidator` | `DashboardFilterBindingValidator` | A portal binds filters to dashboard query parameters. Validate the typed bindings against the authoritative published artifact immediately before publishing. |
 | `IRefreshRunOwnership` | process-local memory | A refresh status endpoint runs on multiple replicas. Persist tenant-to-run ownership before exposing status. |
 | `IDashboardMetadataCache` | short-lived process memory | Operations metadata must be shared across replicas. `AddLakeWrightDistributedDashboardMetadataCache` supplies the distributed adapter. This is a read cache, never an authorization boundary. |

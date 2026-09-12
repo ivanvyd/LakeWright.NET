@@ -18,6 +18,9 @@ internal interface IDatabricksStatementSession
         CancellationToken cancellationToken);
 
     Task CancelAsync(string statementId, CancellationToken cancellationToken);
+
+    Task<StatementExecutionResultChunk> GetChunkAsync(string statementId, int chunkIndex, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("This statement session does not support result continuation.");
 }
 
 /// <summary>
@@ -80,6 +83,9 @@ internal sealed partial class DatabricksStatementSession(
     public Task CancelAsync(string statementId, CancellationToken cancellationToken) =>
         client.SQL.StatementExecution.Cancel(statementId, cancellationToken);
 
+    public Task<StatementExecutionResultChunk> GetChunkAsync(string statementId, int chunkIndex, CancellationToken cancellationToken) =>
+        client.SQL.StatementExecution.GetResultChunk(statementId, chunkIndex, cancellationToken);
+
     private StatementOutcome Translate(StatementExecution response, TenantId tenantId)
     {
         var state = response.Status?.State;
@@ -113,23 +119,43 @@ internal sealed partial class DatabricksStatementSession(
 
     private static StatementOutcome Succeeded(StatementExecution response)
     {
+        if (response.Manifest?.Truncated == true)
+        {
+            return new StatementOutcome.Failure("RESULT_TRUNCATED", "The warehouse truncated the result.", response.StatementId, false)
+            {
+                IsTruncated = true,
+            };
+        }
         var columns = response.Manifest?.Schema?.Columns?.Select(c => c.Name).ToArray() ?? [];
         var totalRows = response.Manifest?.TotalRowCount ?? 0;
-        var links = response.Result?.ExternalLinks?.ToArray() ?? [];
-        if (links.Length > 0)
+        if (totalRows < 0 || response.Manifest?.TotalChunkCount < 0
+            || ((totalRows > 0 || response.Manifest?.TotalChunkCount > 0) && response.Result is null))
         {
+            return new StatementOutcome.Failure("RESULT_INCOMPLETE", "The warehouse omitted the result data.", response.StatementId, false);
+        }
+        var links = response.Result?.ExternalLinks?.ToArray() ?? [];
+        var totalChunks = response.Manifest?.TotalChunkCount is > 0 ? response.Manifest.TotalChunkCount : (int?)null;
+        if (links.Length > 0 || response.Manifest?.Format is StatementFormat.ARROW_STREAM or StatementFormat.CSV)
+        {
+            var chunks = response.Result is { } result ? StatementResultReader.ExternalChunks(result) : [];
             return new StatementOutcome.LargeResult(
                 columns,
-                [.. links.Select(l => new Uri(l.ExternalLink))],
+                [.. chunks.Select(chunk => chunk.Link)],
                 totalRows,
-                response.StatementId);
+                response.StatementId)
+            {
+                Chunks = chunks,
+                TotalChunkCount = totalChunks,
+            };
         }
 
-        var rows = response.Result?.DataArray?
-            .Select(IReadOnlyList<string?> (r) => r.ToArray())
-            .ToArray() ?? [];
-
-        return new StatementOutcome.Success(columns, rows, totalRows, response.StatementId);
+        // The completion reader validates and collects the chunk rows before either public
+        // executor or billing consumer sees them; avoid retaining a second copy here.
+        return new StatementOutcome.Success(columns, [], totalRows, response.StatementId)
+        {
+            FirstChunk = response.Result,
+            TotalChunkCount = totalChunks,
+        };
     }
 
     private static bool IsTransient(StatementExecutionErrorCode? code) => code switch

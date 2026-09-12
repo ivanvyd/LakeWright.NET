@@ -91,7 +91,7 @@
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
     <PackageVersion Include="Shouldly" Version="4.3.0" />
     <PackageVersion Include="NSubstitute" Version="6.2.0" />
-    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.14.0" />
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.15.0" />
     <!-- Pinned above the transitive SSH.NET version resolved by Testcontainers. Older versions are
          GHSA-q939-rpr3-3284 (high): ScpClient's recursive download writes wherever a malicious
          server's filenames point. Patched in 2026.0.0. Keep the direct pin until Testcontainers

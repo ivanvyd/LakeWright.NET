@@ -15,7 +15,7 @@ The compatibility matrix records, in the Known Gaps section, that "no reference 
 
 **Production hardening is named in the docstring, not built.** A VNet integration, a private endpoint on PostgreSQL, a custom domain, Key Vault for the database password, and federated credentials for the managed identity are each one-line additions at the right place in `main.bicep`, and each is omitted. Shipping a reference deploy that hides them teaches the wrong shape: a deploy that does not use a private endpoint is a deploy that ships a public database, and the rest of the architecture is a footnote next to that. The companion docstring in `main.bicep` and the prose in `docs/guides/deploying-azure.md` say so.
 
-**The CI workflow `deploy-azure.yml` validates on every PR, deploys on a manual gate.** It uses `azure/login@v2` with OIDC rather than a stored secret, mirroring the package-publish workflow. Secrets live in repository or environment secrets; the workflow reads them by name and never logs them.
+**The CI workflow `deploy-azure.yml` validates on every PR, deploys on a manual gate.** It uses `azure/login@v3` with OIDC rather than a stored secret, mirroring the package-publish workflow. Secrets live in repository or environment secrets; the workflow reads them by name and never logs them.
 
 ## Consequences
 

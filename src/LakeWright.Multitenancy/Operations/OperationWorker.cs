@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using LakeWright.Core.Jobs;
 using LakeWright.Core.Tenancy;
@@ -28,6 +29,7 @@ public sealed partial class OperationWorker(
     private readonly OperationWorkerOptions _options = options.Value;
     private readonly MultitenancyOptions _tenancy = tenancy.Value;
     private readonly ILogger<OperationWorker> _logger = logger;
+    private readonly ConcurrentDictionary<Guid, byte> _activeOperationIds = [];
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Operation {OperationId} for tenant {TenantId} submitted as run {RunId}")]
     private partial void LogSubmitted(Guid operationId, TenantId tenantId, long runId);
@@ -46,37 +48,61 @@ public sealed partial class OperationWorker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        while (!stoppingToken.IsCancellationRequested)
+        var active = new List<Task<bool>>();
+        var preferReconciliation = false;
+        try
         {
-            bool didWork;
-            try
+            while (!stoppingToken.IsCancellationRequested)
             {
-                didWork = await RunOnceAsync(stoppingToken);
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                return;
-            }
-            catch (Exception ex)
-            {
-                // A failed iteration must not kill the worker: the queue would silently stop
-                // draining and nothing would say so.
-                LogIterationFailed(ex);
-                didWork = false;
-            }
+                active.RemoveAll(task => task.IsCompleted);
+                while (active.Count < _options.MaxConcurrentOperations && !stoppingToken.IsCancellationRequested)
+                {
+                    active.Add(RunOnceLoggedAsync(preferReconciliation, stoppingToken));
+                    preferReconciliation = !preferReconciliation;
+                }
+                if (active.Count == 0)
+                {
+                    await Task.Delay(_options.IdleDelay, timeProvider, stoppingToken);
+                    continue;
+                }
 
-            if (!didWork)
-            {
-                await Task.Delay(_options.IdleDelay, timeProvider, stoppingToken);
+                // Refill as soon as a productive poll completes. If every claim found no work,
+                // back off instead of treating each already-completed task as another wakeup.
+                var completed = await Task.WhenAny(active);
+                var didWork = await completed;
+                active.RemoveAll(task => task.IsCompleted);
+                if (!didWork)
+                {
+                    await Task.Delay(_options.IdleDelay, timeProvider, stoppingToken);
+                }
             }
         }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Shutdown still drains the supervised children below.
+        }
+        finally
+        {
+            try { await Task.WhenAll(active); }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                // Child iterations receive the same token and exit with worker shutdown.
+            }
+        }
+    }
+
+    private async Task<bool> RunOnceLoggedAsync(bool preferReconciliation, CancellationToken cancellationToken)
+    {
+        try { return await RunOnceAsync(cancellationToken, preferReconciliation); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return false; }
+        catch (Exception ex) { LogIterationFailed(ex); return false; }
     }
 
     /// <summary>
     /// One unit of work. Returns true if anything was done, so the caller knows whether to idle.
     /// </summary>
     /// <remarks>Internal so tests can drive a single iteration instead of racing a loop.</remarks>
-    internal async Task<bool> RunOnceAsync(CancellationToken cancellationToken)
+    internal async Task<bool> RunOnceAsync(CancellationToken cancellationToken, bool preferReconciliation = false)
     {
         // A scope per iteration: this is a singleton and DbContext is scoped, so a captured
         // context would be shared across every operation for the lifetime of the process.
@@ -84,19 +110,53 @@ public sealed partial class OperationWorker(
         var store = scope.ServiceProvider.GetRequiredService<OperationStore>();
         var submitter = scope.ServiceProvider.GetRequiredService<IJobSubmitter>();
 
-        if (await store.ClaimNextAsync(_options.MaxInFlightPerTenant, cancellationToken) is { } claimed)
+        if (!preferReconciliation
+            && await store.ClaimNextAsync(_options.MaxInFlightPerTenant, cancellationToken) is { } claimed)
         {
-            await SubmitAndPollAsync(store, submitter, claimed, isReconciliation: false, cancellationToken);
-            return true;
+            return await RunClaimedAsync(store, submitter, claimed, isReconciliation: false, cancellationToken);
         }
 
         if (await store.ClaimOrphanForReconciliationAsync(_options.ReconciliationGracePeriod, cancellationToken) is { } orphan)
         {
-            await ReconcileAsync(store, submitter, orphan, cancellationToken);
-            return true;
+            return await RunClaimedAsync(store, submitter, orphan, isReconciliation: true, cancellationToken);
+        }
+
+        if (preferReconciliation
+            && await store.ClaimNextAsync(_options.MaxInFlightPerTenant, cancellationToken) is { } pending)
+        {
+            return await RunClaimedAsync(store, submitter, pending, isReconciliation: false, cancellationToken);
         }
 
         return false;
+    }
+
+    private async Task<bool> RunClaimedAsync(
+        OperationStore store,
+        IJobSubmitter submitter,
+        Operation operation,
+        bool isReconciliation,
+        CancellationToken cancellationToken)
+    {
+        if (!_activeOperationIds.TryAdd(operation.Id, 0))
+        {
+            return false;
+        }
+        try
+        {
+            if (isReconciliation)
+            {
+                await ReconcileAsync(store, submitter, operation, cancellationToken);
+            }
+            else
+            {
+                await SubmitAndPollAsync(store, submitter, operation, isReconciliation: false, cancellationToken);
+            }
+            return true;
+        }
+        finally
+        {
+            _activeOperationIds.TryRemove(operation.Id, out _);
+        }
     }
 
     /// <summary>
@@ -218,6 +278,7 @@ public sealed partial class OperationWorker(
 
         while (!cancellationToken.IsCancellationRequested)
         {
+            await store.RenewClaimAsync(operation.OrganizationId, operation.Id, cancellationToken);
             if (timeProvider.GetUtcNow() >= deadline)
             {
                 // Stop the run before recording the failure. Marking it failed only stops this

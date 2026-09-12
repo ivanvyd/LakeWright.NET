@@ -1,8 +1,11 @@
-# ADR 0025: A publish gate for `__aibi_external_value`
+# ADR 0025: Marker lint for `__aibi_external_value`
 
 ## Status
 
-Accepted. 2026-08-30.
+Superseded in part by [ADR 0028](0028-revision-bound-dashboard-isolation-evidence.md). 2026-09-12.
+
+The tokenizer remains accepted as a marker lint. Its earlier implication that marker presence could
+prove tenant filtering is superseded.
 
 ## Context
 
@@ -20,7 +23,7 @@ treat the contents of a string literal as code.
 
 ## Decision
 
-`LakeWright.Embedding.DashboardPublishGate` is a small, dependency-free
+`LakeWright.Embedding.DashboardMarkerLint` is a small, dependency-free
 static class that exposes three methods:
 
 - `Inspect(string? datasetSql)` — runs against one dataset. Returns a
@@ -54,14 +57,14 @@ only when:
 
 ## What this closes and what it does not
 
-This closes the reproduced string-literal bypass and the comment
-forms of the same trick. It does not, and is not intended to, defeat a
+This closes the reproduced string-literal bypass and the comment forms of the same trick for a
+marker-presence lint. It does not, and is not intended to, defeat a
 board that reconstructs the marker by concatenation (`'__aibi_' ||
 'external_value'`). Such a board is genuinely unscoped; the gate
 correctly refuses it. Closing that case is the warehouse's
-`parsed_query` job, not this one's. The contract with callers is
-explicit: this is a defense-in-depth check, not a proof of
-correctness.
+`parsed_query` job, not this one's. The contract with callers is explicit: this is linting, not a
+proof of row ownership, tenant filtering, or publish safety. A source-owned revision-bound verifier
+is required for those properties; see ADR 0028.
 
 Empty, whitespace, or `null` input fails closed. A board with no
 datasets fails closed. The gate is pure (no I/O, no clock), so it is
@@ -69,9 +72,8 @@ trivial to call from a publish pipeline, a unit test, or a CI hook.
 
 ## Consequences
 
-- A library consumer that runs every candidate dashboard through the
-  gate before publishing gets a tested safety net that does not contain
-  the bypass.
+- A library consumer that runs every candidate dashboard through the lint gets useful author
+  feedback, but must not use the result to approve publishing or token minting.
 - The gate's output is a structured verdict (offsets, reason), so a
   CI integration can log the exact byte offset of each reference for
   audit and review.

@@ -4,37 +4,34 @@ using LakeWright.Core.Sql;
 namespace LakeWright.Embedding;
 
 /// <summary>
-/// A small, well-tested check that a dashboard's datasets reference <c>__aibi_external_value</c>
-/// in a way that actually filters rows, before a tenant is allowed to embed it.
+/// A small, well-tested lint that reports executable references to
+/// <c>__aibi_external_value</c> in a dashboard definition.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The vendor's <c>__aibi_external_value</c> pattern works only when the column flows from a
-/// claim through a SQL filter that actually constrains the dataset. A board that mentions the
-/// column inside a string literal — <c>WHERE col = '__aibi_external_value'</c> — passes a
-/// substring search but ships unscoped, and any tenant that opens it sees every row. The gap
-/// analysis calls this out as the highest-value safety feature the library lacks (gap §3.4).
+/// A board that mentions the column inside a string literal —
+/// <c>WHERE col = '__aibi_external_value'</c> — must not pass a simple substring check.
 /// </para>
 /// <para>
-/// The check is a tokenizer that tracks three string states — single-quoted, line comment,
-/// block comment — and reports the marker only when it appears in code. That is enough to
-/// close the reproduced string-literal bypass. It is <em>not</em> an AST walk: a board that
-/// reconstructs the marker by concatenation (<c>'__aibi_' || 'external_value'</c>) is
-/// genuinely unscoped and the gate will refuse it. Closing that case is the warehouse's
-/// <c>parsed_query</c> job, not this one's; see ADR 0025.
+/// The tokenizer tracks string and comment state and reports the marker only when it appears in
+/// code. It intentionally does not prove row ownership: a projection, tautology, unused CTE, or
+/// one branch of a union can contain the marker while still returning another tenant's rows.
+/// Use a source-owned, revision-bound isolation verifier before minting a browser token. This
+/// lint remains useful for author feedback and deployment diagnostics.
 /// </para>
 /// </remarks>
-public static class DashboardPublishGate
+public static class DashboardMarkerLint
 {
     /// <summary>
-    /// The claim column the embed broker sets. The gate accepts this exact identifier,
+    /// The claim column the embed broker sets. The linter accepts this exact identifier,
     /// case-insensitively, with no leading or trailing characters other than SQL
     /// identifier delimiters.
     /// </summary>
     public const string ExternalValueColumn = "__aibi_external_value";
 
     /// <summary>
-    /// Inspect one dataset and report whether it filters on <c>__aibi_external_value</c>.
+    /// Inspect one dataset and report whether it contains an executable
+    /// <c>__aibi_external_value</c> marker.
     /// </summary>
     /// <param name="datasetSql">The dataset's SQL text. May be multi-line.</param>
     /// <returns>
@@ -86,12 +83,11 @@ public static class DashboardPublishGate
     }
 
     /// <summary>
-    /// Inspects every dataset in a serialized Lakeview dashboard definition.
+    /// Inspects every dataset in a serialized Lakeview dashboard definition for the marker.
     /// </summary>
     /// <remarks>
-    /// A dashboard is publishable only when every dataset contains an executable reference to
-    /// <see cref="ExternalValueColumn"/>. Invalid JSON, a missing dataset array, and datasets with
-    /// empty SQL fail closed because none of those shapes prove tenant filtering.
+    /// Invalid JSON, a missing dataset array, and datasets with empty SQL fail this lint. A pass
+    /// only proves marker presence; it is not a publish or tenant-isolation decision.
     /// </remarks>
     public static DashboardPublishGateVerdict InspectDashboard(string? serializedDashboard)
     {
@@ -162,7 +158,29 @@ public static class DashboardPublishGate
 }
 
 /// <summary>
-/// The result of a <see cref="DashboardPublishGate.Inspect"/> call.
+/// Legacy name for <see cref="DashboardMarkerLint"/>.
+/// </summary>
+/// <remarks>
+/// This API is retained for source compatibility. Its verdict is marker linting only and must not
+/// be used to assert that a dashboard filters tenant-owned rows or to authorize token minting.
+/// </remarks>
+public static class DashboardPublishGate
+{
+    /// <inheritdoc cref="DashboardMarkerLint.ExternalValueColumn"/>
+    public const string ExternalValueColumn = DashboardMarkerLint.ExternalValueColumn;
+
+    /// <inheritdoc cref="DashboardMarkerLint.Inspect"/>
+    public static PublishGateVerdict Inspect(string? datasetSql) => DashboardMarkerLint.Inspect(datasetSql);
+
+    /// <inheritdoc cref="DashboardMarkerLint.InspectAll"/>
+    public static PublishGateVerdict InspectAll(IReadOnlyList<string> datasetSqls) => DashboardMarkerLint.InspectAll(datasetSqls);
+
+    /// <inheritdoc cref="DashboardMarkerLint.InspectDashboard"/>
+    public static DashboardPublishGateVerdict InspectDashboard(string? serializedDashboard) => DashboardMarkerLint.InspectDashboard(serializedDashboard);
+}
+
+/// <summary>
+/// The result of a <see cref="DashboardMarkerLint.Inspect"/> call.
 /// </summary>
 /// <param name="Passed">True when at least one out-of-string reference was found.</param>
 /// <param name="Reason">

@@ -57,13 +57,20 @@ public sealed class GenieConversations : IGenieConversations
         _features.EnsureEnabled(LakeWrightFeatures.Conversations);
         ArgumentException.ThrowIfNullOrWhiteSpace(ownerKey);
         var space = ResolveSpace(tenant);
-        var answer = await SendAsync(
+        using var deadline = new ResponseDeadline(_time, _options.ResponseTimeout, cancellationToken);
+        var accepted = await StartAsync(
             space,
             $"api/2.0/genie/spaces/{space}/start-conversation",
             new { content = question },
-            cancellationToken).ConfigureAwait(false);
-        await _ownership.RecordAsync(answer.ConversationId, ownerKey, cancellationToken).ConfigureAwait(false);
-        return answer;
+            deadline).ConfigureAwait(false);
+
+        // Once the workspace has accepted a conversation, persist its owner before observing a
+        // caller cancellation or starting a poll. Otherwise an accepted id can become invisible
+        // and cannot be resumed safely. A store outage is surfaced to the caller; it is never
+        // converted into a successful but unusable conversation.
+        await RecordAcceptedConversationAsync(accepted, ownerKey).ConfigureAwait(false);
+        return await PollAsync(space, accepted.ConversationId, accepted.MessageId, deadline, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async Task<GenieAnswer> ContinueAsync(
@@ -76,11 +83,14 @@ public sealed class GenieConversations : IGenieConversations
         _features.EnsureEnabled(LakeWrightFeatures.Conversations);
         await EnsureOwnerAsync(conversationId, ownerKey, cancellationToken).ConfigureAwait(false);
         var space = ResolveSpace(tenant);
-        return await SendAsync(
+        using var deadline = new ResponseDeadline(_time, _options.ResponseTimeout, cancellationToken);
+        var accepted = await StartAsync(
             space,
             $"api/2.0/genie/spaces/{space}/conversations/{Uri.EscapeDataString(conversationId)}/messages",
             new { content = question },
-            cancellationToken).ConfigureAwait(false);
+            deadline).ConfigureAwait(false);
+        return await PollAsync(space, accepted.ConversationId, accepted.MessageId, deadline, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public ValueTask<IReadOnlyList<string>> ListAsync(string ownerKey, CancellationToken cancellationToken = default)
@@ -129,75 +139,188 @@ public sealed class GenieConversations : IGenieConversations
         }
     }
 
-    private async Task<GenieAnswer> SendAsync(
+    private async Task<AcceptedMessage> StartAsync(
         string space,
         string path,
         object body,
-        CancellationToken cancellationToken)
+        ResponseDeadline deadline)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, path)
+        try
         {
-            Content = JsonContent.Create(body),
-        };
-        await AuthenticateAsync(request, cancellationToken).ConfigureAwait(false);
+            deadline.ThrowIfExpired();
+            using var request = new HttpRequestMessage(HttpMethod.Post, path)
+            {
+                Content = JsonContent.Create(body),
+            };
+            await AuthenticateAsync(request, deadline.Token).ConfigureAwait(false);
+            deadline.ThrowIfExpired();
 
-        using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
-        await ThrowIfFailedAsync(response, cancellationToken).ConfigureAwait(false);
+            using var response = await _http.SendAsync(request, deadline.Token).ConfigureAwait(false);
+            deadline.ThrowIfExpired();
+            await ThrowIfFailedAsync(response, deadline.Token).ConfigureAwait(false);
 
-        using var started = JsonDocument.Parse(
-            await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+            using var started = JsonDocument.Parse(
+                await response.Content.ReadAsStringAsync(deadline.Token).ConfigureAwait(false));
+            deadline.ThrowIfExpired();
 
-        var conversationId = ReadString(started.RootElement, "conversation_id")
-            ?? throw new InvalidOperationException("Genie returned no conversation_id.");
-        var messageId = ReadString(started.RootElement, "message_id")
-            ?? throw new InvalidOperationException("Genie returned no message_id.");
+            var conversationId = ReadString(started.RootElement, "conversation_id")
+                ?? throw new InvalidOperationException("Genie returned no conversation_id.");
+            var messageId = ReadString(started.RootElement, "message_id")
+                ?? throw new InvalidOperationException("Genie returned no message_id.");
 
-        return await PollAsync(space, conversationId, messageId, cancellationToken).ConfigureAwait(false);
+            return new AcceptedMessage(conversationId, messageId);
+        }
+        catch (OperationCanceledException) when (deadline.IsExpired)
+        {
+            throw new GenieResponseTimeoutException();
+        }
     }
 
     private async Task<GenieAnswer> PollAsync(
         string space,
         string conversationId,
         string messageId,
+        ResponseDeadline deadline,
         CancellationToken cancellationToken)
     {
-        var deadline = _time.GetUtcNow().Add(_options.ResponseTimeout);
         var delay = FirstPollDelay;
 
         while (true)
         {
-            using var request = new HttpRequestMessage(
-                HttpMethod.Get,
-                $"api/2.0/genie/spaces/{space}/conversations/{Uri.EscapeDataString(conversationId)}" +
-                $"/messages/{Uri.EscapeDataString(messageId)}");
-            await AuthenticateAsync(request, cancellationToken).ConfigureAwait(false);
-
-            using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
-            await ThrowIfFailedAsync(response, cancellationToken).ConfigureAwait(false);
-
-            using var message = JsonDocument.Parse(
-                await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
-
-            var outcome = MapStatus(ReadString(message.RootElement, "status"));
-            if (outcome != GenieOutcome.Unknown || IsTerminalUnknown(message.RootElement))
+            cancellationToken.ThrowIfCancellationRequested();
+            if (deadline.IsExpired)
             {
-                var (text, sql) = ReadAttachments(message.RootElement);
-                return new GenieAnswer(conversationId, messageId, outcome, text, sql);
+                return TimedOut(conversationId, messageId);
             }
 
-            if (_time.GetUtcNow() >= deadline)
+            try
             {
-                var (text, sql) = ReadAttachments(message.RootElement);
-                return new GenieAnswer(conversationId, messageId, GenieOutcome.TimedOut, text, sql);
+                using var request = new HttpRequestMessage(
+                    HttpMethod.Get,
+                    $"api/2.0/genie/spaces/{space}/conversations/{Uri.EscapeDataString(conversationId)}" +
+                    $"/messages/{Uri.EscapeDataString(messageId)}");
+                await AuthenticateAsync(request, deadline.Token).ConfigureAwait(false);
+                deadline.ThrowIfExpired();
+
+                using var response = await _http.SendAsync(request, deadline.Token).ConfigureAwait(false);
+                deadline.ThrowIfExpired();
+                await ThrowIfFailedAsync(response, deadline.Token).ConfigureAwait(false);
+
+                using var message = JsonDocument.Parse(
+                    await response.Content.ReadAsStringAsync(deadline.Token).ConfigureAwait(false));
+                cancellationToken.ThrowIfCancellationRequested();
+                if (deadline.IsExpired)
+                {
+                    return TimedOut(conversationId, messageId);
+                }
+
+                var outcome = MapStatus(ReadString(message.RootElement, "status"));
+                if (outcome != GenieOutcome.Unknown || IsTerminalUnknown(message.RootElement))
+                {
+                    var (text, sql) = ReadAttachments(message.RootElement);
+                    return new GenieAnswer(conversationId, messageId, outcome, text, sql);
+                }
+            }
+            catch (OperationCanceledException) when (deadline.IsExpired)
+            {
+                return TimedOut(conversationId, messageId);
+            }
+            catch (GenieResponseTimeoutException)
+            {
+                return TimedOut(conversationId, messageId);
             }
 
-            await Task.Delay(delay, _time, cancellationToken).ConfigureAwait(false);
+            var remaining = deadline.Remaining;
+            if (remaining <= TimeSpan.Zero)
+            {
+                return TimedOut(conversationId, messageId);
+            }
+
+            try
+            {
+                await Task.Delay(delay <= remaining ? delay : remaining, _time, deadline.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (deadline.IsExpired)
+            {
+                return TimedOut(conversationId, messageId);
+            }
 
             // Backoff to a ceiling: a question answered in two seconds should not wait a minute,
             // and one still running after five should not be asked about every second.
             delay = delay < MaxPollDelay
                 ? TimeSpan.FromTicks(Math.Min(delay.Ticks * 2, MaxPollDelay.Ticks))
                 : MaxPollDelay;
+        }
+    }
+
+    private async Task RecordAcceptedConversationAsync(AcceptedMessage accepted, string ownerKey)
+    {
+        // The caller token is deliberately excluded: acceptance has happened and cancellation
+        // must not make the id orphaned. The independent bounded deadline still prevents a failed
+        // ownership backend from holding the request forever.
+        using var persistenceDeadline = new ResponseDeadline(_time, _options.ResponseTimeout, CancellationToken.None);
+        try
+        {
+            await _ownership.RecordAsync(accepted.ConversationId, ownerKey, persistenceDeadline.Token).ConfigureAwait(false);
+            persistenceDeadline.ThrowIfExpired();
+        }
+        catch (ConversationOwnershipException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            throw new ConversationOwnershipPersistenceException(accepted.ConversationId, accepted.MessageId, exception);
+        }
+    }
+
+    private static GenieAnswer TimedOut(string conversationId, string messageId) =>
+        new(conversationId, messageId, GenieOutcome.TimedOut, null, null);
+
+    private sealed record AcceptedMessage(string ConversationId, string MessageId);
+
+    private sealed class ResponseDeadline : IDisposable
+    {
+        private readonly TimeProvider _time;
+        private readonly DateTimeOffset _expiresAt;
+        private readonly CancellationToken _callerCancellation;
+        private readonly CancellationTokenSource _cancellation;
+        private readonly ITimer _timer;
+
+        public ResponseDeadline(TimeProvider time, TimeSpan timeout, CancellationToken callerCancellation)
+        {
+            if (timeout <= TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(nameof(timeout), "Genie response timeout must be positive.");
+            }
+
+            _time = time;
+            _expiresAt = time.GetUtcNow().Add(timeout);
+            _callerCancellation = callerCancellation;
+            _cancellation = CancellationTokenSource.CreateLinkedTokenSource(callerCancellation);
+            _timer = time.CreateTimer(static state => ((CancellationTokenSource)state!).Cancel(), _cancellation, timeout, Timeout.InfiniteTimeSpan);
+        }
+
+        public CancellationToken Token => _cancellation.Token;
+
+        public bool IsExpired => !_callerCancellation.IsCancellationRequested && _time.GetUtcNow() >= _expiresAt;
+
+        public TimeSpan Remaining => _expiresAt - _time.GetUtcNow();
+
+        public void ThrowIfExpired()
+        {
+            if (IsExpired)
+            {
+                throw new GenieResponseTimeoutException();
+            }
+
+            Token.ThrowIfCancellationRequested();
+        }
+
+        public void Dispose()
+        {
+            _timer.Dispose();
+            _cancellation.Dispose();
         }
     }
 

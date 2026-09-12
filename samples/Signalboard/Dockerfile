@@ -15,6 +15,13 @@ WORKDIR /src
 COPY global.json Directory.Build.props Directory.Packages.props LakeWright.slnx ./
 COPY src/ src/
 COPY samples/Signalboard/ samples/Signalboard/
+# The landing links these reviewed documentation captures into the sample's static web assets.
+# Copy only that public runtime input: copying the repository would hide an accidental dependency
+# on local or unrelated files in the image build.
+COPY docs/images/lakewright-social-preview.png docs/images/lakewright-social-preview.png
+COPY docs/images/signalboard-dashboard.png docs/images/signalboard-dashboard.png
+COPY docs/images/signalboard-viewer-denied.png docs/images/signalboard-viewer-denied.png
+COPY docs/images/signalboard-other-tenant.png docs/images/signalboard-other-tenant.png
 
 # Locked mode, for the same reason CI uses it: a transitive package must not change silently
 # between the build that was reviewed and the image that ships.

@@ -10,26 +10,62 @@ public sealed record Verdict
     public required double OperationsPostP99Ms { get; init; }
     public required double ErrorRateOperationsPost { get; init; }
     public required int OperationsPostCount { get; init; }
+    public required int OperationsPostSuccess { get; init; }
     public required double CostGetP50Ms { get; init; }
     public required double CostGetP95Ms { get; init; }
     public required double CostGetP99Ms { get; init; }
     public required double ErrorRateCostGet { get; init; }
     public required int CostGetCount { get; init; }
-    public required int PeakPostgresConnections { get; init; }
-    public required double PeakPostgresConnectionUtilisation { get; init; }
+    public required int CostGetSuccess { get; init; }
+    public required int? PeakPostgresConnections { get; init; }
+    public required double? PeakPostgresConnectionUtilisation { get; init; }
     public required double CombinedErrorRate { get; init; }
+    public required double AchievedRate { get; init; }
+    public required double ActualRateRatio { get; init; }
+    public required int DroppedRequests { get; init; }
 
     public required double OperationsPostP99SloMs { get; init; }
     public required double CostGetP99SloMs { get; init; }
     public required double ErrorRateSlo { get; init; }
     public required double PoolUtilisationSlo { get; init; }
 
+    public required double MinimumAchievedRate { get; init; }
+    public required int MinimumSamplesPerEndpoint { get; init; }
+    public bool ThroughputPassed => AchievedRate >= MinimumAchievedRate && ActualRateRatio >= MinimumAchievedRate;
+    public bool AccountingPassed =>
+        ScheduledRequestsAreClassified() &&
+        CompletedRequestsMatchEndpointSamples() &&
+        FailedRequestsMatchEndpointSamples() &&
+        IssuedRequestsMatchFinalState() &&
+        CensoredRequests == 0;
+    public bool SamplesPassed => OperationsPostCount >= MinimumSamplesPerEndpoint && CostGetCount >= MinimumSamplesPerEndpoint;
     public bool OperationsPostP99Passed => OperationsPostP99Ms < OperationsPostP99SloMs;
     public bool CostGetP99Passed => CostGetP99Ms < CostGetP99SloMs;
     public bool ErrorRatePassed => CombinedErrorRate < ErrorRateSlo;
-    public bool PoolPassed => PeakPostgresConnectionUtilisation < PoolUtilisationSlo;
+    public bool PoolEvaluated => PeakPostgresConnectionUtilisation is not null;
+    public bool? PoolPassed => PeakPostgresConnectionUtilisation is { } utilisation
+        ? utilisation < PoolUtilisationSlo
+        : null;
 
-    public bool AllGatesPassed => OperationsPostP99Passed && CostGetP99Passed && ErrorRatePassed && PoolPassed;
+    public bool PoolCoveragePassed => !DatabaseSamplingRequired || (DatabaseSamplerSamples > 0 && DatabaseSamplerFailures == 0 && PoolPassed == true);
+    public bool AllGatesPassed => OperationsPostP99Passed && CostGetP99Passed && ErrorRatePassed && ThroughputPassed && SamplesPassed && AccountingPassed && PoolCoveragePassed;
+
+    private bool ScheduledRequestsAreClassified() => ScheduledRequests == CompletedRequests + DroppedRequests + CensoredRequests;
+    private bool CompletedRequestsMatchEndpointSamples() => CompletedRequests == OperationsPostCount + CostGetCount;
+    private bool FailedRequestsMatchEndpointSamples() => FailedRequests == OperationsPostCount - OperationsPostSuccess + CostGetCount - CostGetSuccess;
+    private bool IssuedRequestsMatchFinalState() => IssuedRequests == CompletedRequests + InFlightAtDeadline
+        && CensoredRequests == InFlightAtDeadline + QueuedAtDeadline;
+
+    public required int ScheduledRequests { get; init; }
+    public required int IssuedRequests { get; init; }
+    public required int CompletedRequests { get; init; }
+    public required int FailedRequests { get; init; }
+    public required int CensoredRequests { get; init; }
+    public required int InFlightAtDeadline { get; init; }
+    public required int QueuedAtDeadline { get; init; }
+    public required int DatabaseSamplerSamples { get; init; }
+    public required int DatabaseSamplerFailures { get; init; }
+    public required bool DatabaseSamplingRequired { get; init; }
 }
 
 /// <summary>
@@ -52,13 +88,15 @@ public static class SloGate
         var costErr = m.CostGetCount == 0
             ? 1.0
             : 1.0 - ((double)m.CostGetSuccess / m.CostGetCount);
-        var total = m.OperationsPostCount + m.CostGetCount;
+        var total = m.ScheduledRequests;
         var combinedErr = total == 0
             ? 1.0
-            : (opsErr * m.OperationsPostCount + costErr * m.CostGetCount) / total;
-        var poolUtil = o.PostgresMaxConnections == 0
-            ? 0
-            : (double)m.PeakPostgresConnections / o.PostgresMaxConnections;
+            : (m.FailedRequests + m.DroppedRequests) / (double)total;
+        double? poolUtil = m.PeakPostgresConnections is not { } peak
+            ? null
+            : o.PostgresMaxConnections == 0
+                ? 0
+                : (double)peak / o.PostgresMaxConnections;
 
         return new Verdict
         {
@@ -67,14 +105,31 @@ public static class SloGate
             OperationsPostP99Ms = opsP99,
             ErrorRateOperationsPost = opsErr,
             OperationsPostCount = m.OperationsPostCount,
+            OperationsPostSuccess = m.OperationsPostSuccess,
             CostGetP50Ms = costP50,
             CostGetP95Ms = costP95,
             CostGetP99Ms = costP99,
             ErrorRateCostGet = costErr,
             CostGetCount = m.CostGetCount,
+            CostGetSuccess = m.CostGetSuccess,
             PeakPostgresConnections = m.PeakPostgresConnections,
             PeakPostgresConnectionUtilisation = poolUtil,
             CombinedErrorRate = combinedErr,
+            AchievedRate = total == 0 ? 0 : (double)m.CompletedRequests / total,
+            ActualRateRatio = o.RequestsPerSecond == 0 ? 0 : m.ActualRps / o.RequestsPerSecond,
+            DroppedRequests = m.DroppedRequests,
+            ScheduledRequests = m.ScheduledRequests,
+            IssuedRequests = m.IssuedRequests,
+            CompletedRequests = m.CompletedRequests,
+            FailedRequests = m.FailedRequests,
+            CensoredRequests = m.CensoredRequests,
+            InFlightAtDeadline = m.InFlightAtDeadline,
+            QueuedAtDeadline = m.QueuedAtDeadline,
+            DatabaseSamplerSamples = m.DatabaseSamplerSamples,
+            DatabaseSamplerFailures = m.DatabaseSamplerFailures,
+            DatabaseSamplingRequired = o.DatabaseSamplingRequired,
+            MinimumAchievedRate = o.MinimumAchievedRate,
+            MinimumSamplesPerEndpoint = o.MinimumSamplesPerEndpoint,
             OperationsPostP99SloMs = o.OperationsPostP99SloMs,
             CostGetP99SloMs = o.CostGetP99SloMs,
             ErrorRateSlo = o.ErrorRateSlo,

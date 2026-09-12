@@ -46,6 +46,15 @@ public sealed class RawDataExportServiceTests
         {
             await foreach (var _ in service.StreamCsvAsync(Tenant(), "owner-1", start.OperationId, TestContext.Current.CancellationToken)) { }
         });
+        await Should.ThrowAsync<UnauthorizedAccessException>(async () =>
+        {
+            await foreach (var _ in service.StreamCsvAsync(tenant, "different-owner", start.OperationId, TestContext.Current.CancellationToken)) { }
+        });
+        await Should.ThrowAsync<UnauthorizedAccessException>(async () =>
+        {
+            await foreach (var _ in service.StreamCsvAsync(tenant, "owner-1", "missing-operation", TestContext.Current.CancellationToken)) { }
+        });
+        stream.Calls.ShouldBe(1);
     }
 
     private static RawDataExportService Service(FakeExecutor executor, FakeExport export, RawDataOptions options) => new(

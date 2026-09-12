@@ -7,6 +7,12 @@ public sealed class OperationWorkerOptions
     /// <summary>How long to wait after finding nothing to do.</summary>
     public TimeSpan IdleDelay { get; set; } = TimeSpan.FromSeconds(5);
 
+    /// <summary>
+    /// Maximum operations this process may submit and poll at once.
+    /// The database claim remains the cross-replica and per-tenant authority.
+    /// </summary>
+    public int MaxConcurrentOperations { get; set; } = 4;
+
     /// <summary>First polling interval. Doubles up to <see cref="MaxPollInterval"/>, with jitter.</summary>
     public TimeSpan InitialPollInterval { get; set; } = TimeSpan.FromSeconds(2);
 

@@ -61,6 +61,7 @@ var passed = token.AccessToken == "floor-token" &&
 
 if (!passed)
 {
+    Console.Error.WriteLine($"Consumer fixture rejected the response; statement outcome: {outcome.GetType().Name}.");
     return 3;
 }
 
@@ -166,7 +167,7 @@ internal sealed class FloorSqlServer : IDisposable
             root.GetProperty("statement").GetString() == "SELECT id FROM widgets" &&
             parameters.GetArrayLength() == 0;
 
-        var body = Encoding.UTF8.GetBytes("""{"statement_id":"floor-statement","status":{"state":"SUCCEEDED"},"manifest":{"schema":{"columns":[{"name":"id"}]},"total_row_count":1},"result":{"data_array":[["one"]]}}""");
+        var body = Encoding.UTF8.GetBytes("""{"statement_id":"floor-statement","status":{"state":"SUCCEEDED"},"manifest":{"schema":{"columns":[{"name":"id"}]},"total_row_count":1,"total_chunk_count":1},"result":{"chunk_index":0,"row_offset":0,"row_count":1,"data_array":[["one"]]}}""");
         context.Response.ContentType = "application/json";
         context.Response.ContentLength64 = body.Length;
         await context.Response.OutputStream.WriteAsync(body);

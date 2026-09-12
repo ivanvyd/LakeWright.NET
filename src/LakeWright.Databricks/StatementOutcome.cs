@@ -34,7 +34,12 @@ public abstract record StatementOutcome
         IReadOnlyList<string> ColumnNames,
         IReadOnlyList<IReadOnlyList<string?>> Rows,
         long TotalRowCount,
-        string StatementId) : StatementOutcome;
+        string StatementId) : StatementOutcome
+    {
+        internal Microsoft.Azure.Databricks.Client.Models.StatementExecutionResultChunk? FirstChunk { get; init; }
+
+        internal int? TotalChunkCount { get; init; }
+    }
 
     /// <summary>
     /// The statement succeeded and its rows are in external storage, not here.
@@ -45,14 +50,22 @@ public abstract record StatementOutcome
     ///
     /// Fetch <paramref name="Links"/> with a plain HTTP client and **no Authorization header**:
     /// they are presigned, and Azure blob rejects a request carrying both a SAS and an
-    /// Authorization header with HTTP 400. Chunk reads are destructive — the statement closes when
-    /// the last chunk is read, and links expire an hour after success.
+    /// Authorization header with HTTP 400. Links expire at their supplied expiration time (normally
+    /// within fifteen minutes); chunks can be resolved again. Links contains only the initial page.
+    /// Use <see cref="ITenantScopedExport"/> for a complete, validated streaming export.
     /// </remarks>
     public sealed record LargeResult(
         IReadOnlyList<string> ColumnNames,
         IReadOnlyList<Uri> Links,
         long TotalRowCount,
-        string StatementId) : StatementOutcome;
+        string StatementId) : StatementOutcome
+    {
+        /// <summary>Metadata for the initial external-link page, including continuation and expiry.</summary>
+        public IReadOnlyList<ExternalResultChunk> Chunks { get; init; } = [];
+
+        /// <summary>Total chunks advertised by the manifest, when supplied.</summary>
+        public int? TotalChunkCount { get; init; }
+    }
 
     /// <summary>
     /// The statement ran and failed, or the request was rejected. <paramref name="ErrorCode"/> is
@@ -66,6 +79,9 @@ public abstract record StatementOutcome
     {
         /// <summary>HTTP status for request-level failures, when the provider supplied one.</summary>
         public HttpStatusCode? StatusCode { get; init; }
+
+        /// <summary>The server explicitly truncated the result; no complete result is available.</summary>
+        public bool IsTruncated { get; init; }
     }
 
     /// <summary>

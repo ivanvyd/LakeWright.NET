@@ -33,7 +33,11 @@ public sealed class RawDataService(IStatementExecutor statements, RawDataOptions
         return outcome switch
         {
             StatementOutcome.Success success => new RawDataPage(
-                source.Fields.Select(field => new RawDataColumn(field.Name, field.DisplayName, field.Kind)).ToArray(),
+                source.Fields.Select(field => new RawDataColumn(field.Name, field.DisplayName, field.Kind)
+                {
+                    Precision = field.Precision,
+                    Scale = field.Scale,
+                }).ToArray(),
                 success.Rows,
                 success.TotalRowCount),
             StatementOutcome.Failure failure => throw new RawDataWarehouseException(failure.ErrorCode),
@@ -200,7 +204,9 @@ internal sealed class RawDataStatementBuilder
     private static StatementParameter ParseParameter(RawDataField field, string name, string value) => field.Kind switch
     {
         RawDataKind.Text => StatementParameter.String(name, value),
-        RawDataKind.Number when double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) => StatementParameter.Double(name, number),
+        RawDataKind.Number when double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) && double.IsFinite(number) => StatementParameter.Double(name, number),
+        RawDataKind.WholeNumber when long.TryParse(value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var integer) => StatementParameter.BigInt(name, integer),
+        RawDataKind.FixedPoint => ExactDecimalParameter.Create(field, name, value),
         RawDataKind.Date when DateOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date) => StatementParameter.Date(name, date),
         RawDataKind.Boolean when TryBoolean(value, out var boolean) => StatementParameter.Boolean(name, boolean),
         RawDataKind.YesNo when TryBoolean(value, out var yesNo) => StatementParameter.Boolean(name, yesNo),

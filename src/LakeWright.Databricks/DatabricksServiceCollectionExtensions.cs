@@ -76,7 +76,8 @@ public static class DatabricksServiceCollectionExtensions
             provider.GetRequiredService<IOptions<DatabricksOptions>>().Value,
             provider.GetRequiredService<TimeProvider>(),
             provider.GetRequiredService<ILakeWrightFeatureGate>()));
-        services.AddHttpClient("LakeWright.Databricks.Export");
+        // Default HttpClient loggers include the request URI, which contains the result credential.
+        services.AddHttpClient("LakeWright.Databricks.Export").RemoveAllLoggers();
         services.AddScoped<ITenantScopedExport>(provider => new DatabricksTenantScopedExport(
             new DatabricksStatementSession(
                 provider.GetRequiredService<Microsoft.Azure.Databricks.Client.DatabricksClient>(),

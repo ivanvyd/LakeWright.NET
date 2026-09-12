@@ -14,7 +14,10 @@ public sealed class StatementOptions
     /// <summary>Delay between terminal-state polls after the server returns a pending statement.</summary>
     public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(1);
 
-    /// <summary>Overall local budget for initial submission and subsequent polls.</summary>
+    /// <summary>
+    /// Overall local budget for submission, polls, and result reads. For an export it starts on
+    /// first enumeration and includes time spent by the consumer between rows.
+    /// </summary>
     public TimeSpan TotalBudget { get; set; } = TimeSpan.FromMinutes(5);
 
     /// <summary>Where completed rows are returned.</summary>
@@ -33,12 +36,31 @@ public sealed class StatementOptions
             throw new ArgumentOutOfRangeException(nameof(PollInterval), "PollInterval must be positive.");
         }
 
-        if (TotalBudget <= TimeSpan.Zero)
+        if (TotalBudget <= TimeSpan.Zero || TotalBudget.TotalMilliseconds > uint.MaxValue - 1)
         {
-            throw new ArgumentOutOfRangeException(nameof(TotalBudget), "TotalBudget must be positive.");
+            throw new ArgumentOutOfRangeException(nameof(TotalBudget), "TotalBudget must be positive and fit a cancellation timer.");
         }
 
         ArgumentException.ThrowIfNullOrWhiteSpace(WaitTimeout);
         ArgumentException.ThrowIfNullOrWhiteSpace(Kind);
+        if (!WaitTimeout.EndsWith('s')
+            || !int.TryParse(WaitTimeout.AsSpan(0, WaitTimeout.Length - 1),
+                System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var seconds)
+            || (seconds != 0 && (seconds < 5 || seconds > 50)))
+        {
+            throw new ArgumentException("WaitTimeout must be 0s or an integer from 5s through 50s.", nameof(WaitTimeout));
+        }
+        if (InlineRowLimit < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(InlineRowLimit));
+        }
+        if (Disposition is not (SqlStatementDisposition.INLINE or SqlStatementDisposition.EXTERNAL_LINKS))
+        {
+            throw new ArgumentOutOfRangeException(nameof(Disposition));
+        }
+        if (OnWaitTimeout is not (SqlStatementOnWaitTimeout.CONTINUE or SqlStatementOnWaitTimeout.CANCEL))
+        {
+            throw new ArgumentOutOfRangeException(nameof(OnWaitTimeout));
+        }
     }
 }

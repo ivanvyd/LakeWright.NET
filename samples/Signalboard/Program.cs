@@ -67,8 +67,10 @@ var app = builder.Build();
 await app.Services.SeedDemoTenantsAsync();
 
 app.UseStaticFiles();
-app.UseAntiforgery();
 app.UseAuthentication();
+// The dashboard's sign-out token is bound to its signed-in user. Authentication must therefore
+// run before antiforgery validation, or a valid Alice token is checked as anonymous and rejected.
+app.UseAntiforgery();
 app.UseLakeWrightTenancy();
 app.UseAuthorization();
 

@@ -46,10 +46,18 @@ The whole product risk. Four ways in, and the controls against each:
 | Code builds a query without a tenant | `TenantScopedStatement` cannot be constructed without a `TenantContext` | `StatementScopingTests` |
 | Code forges a tenant context | `TenantContextFactory` is `internal`, visible only to the resolver assembly | `A_tenant_context_cannot_be_manufactured_from_outside` |
 | A statement id is used to read results | `OperationStore` binds the id to its tenant; no lookup by id alone | `OperationOwnershipTests` |
+| A dashboard token is requested for an unassigned or unproven board | Strict embedding checks host assignment and revision-bound, source-owned isolation evidence before token exchange | `DashboardPublishVerifierTests` |
 
 **Accepted residual:** Unity Catalog does not enforce this. With a shared service principal its row
 filters are a no-op (ADR 0002), so the application tier is the only control. There is no second line
 of defence, which is why the isolation suite is a required check and why it is demonstrated failing.
+
+**Embedding boundary:** `DashboardMarkerLint` detects an executable claim marker but does not prove
+row ownership. A host that exposes `IDashboardTokenBroker` must compose
+`PublishedRevisionEmbedPrecondition` with its `ITenantDashboardAssignment`, served-definition
+reader, and source-owned revision-bound isolation evidence. Without that composition, the token
+broker is only a token-exchange primitive and the host owns both dashboard assignment and SQL
+isolation. See ADR 0028.
 
 ### T2. SQL injection into a Databricks statement
 

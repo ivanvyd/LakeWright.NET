@@ -63,8 +63,7 @@ To run something rather than test it, start the sample. It needs Docker and noth
 
 ```bash
 cd samples/Signalboard
-docker compose up -d postgres
-dotnet run
+docker compose up --build
 ```
 
 `docker compose up` on its own builds and runs the application too, which is the path to check
@@ -103,8 +102,9 @@ mv tests/tmp__ tests/LakeWright.TenantIsolation.Tests
 
 A fresh clone is unaffected, which is why CI never sees this.
 
-Tests tagged `Category=Live` need a real workspace and create real resources. None exist yet; the
-live verification done so far is recorded in [docs/compatibility.md](docs/compatibility.md).
+Tests tagged `Category=Live` exist and need a real workspace; some create billable resources.
+They are excluded by the non-live command above. Live verification already performed is recorded
+in [docs/compatibility.md](docs/compatibility.md).
 
 ## Standards the build enforces
 

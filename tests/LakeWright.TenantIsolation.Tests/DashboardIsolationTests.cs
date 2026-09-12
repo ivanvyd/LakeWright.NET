@@ -48,11 +48,34 @@ public sealed class DashboardIsolationTests(PostgresFixture postgres) : IAsyncLi
         AllowAutoRedirect = false
     });
 
+    private static async Task<FormUrlEncodedContent> AntiforgeryFormAsync(
+        HttpClient browser,
+        Uri page,
+        IEnumerable<KeyValuePair<string, string>> values,
+        CancellationToken ct)
+    {
+        var html = await browser.GetStringAsync(page, ct);
+        var token = Regex.Match(
+            html,
+            "<input[^>]+name=\"__RequestVerificationToken\"[^>]+value=\"(?<token>[^\"]+)\"[^>]*>",
+            RegexOptions.CultureInvariant).Groups["token"].Value;
+
+        token.ShouldNotBeEmpty("the server-rendered form must include an antiforgery token");
+
+        return new FormUrlEncodedContent(values.Append(
+            new KeyValuePair<string, string>("__RequestVerificationToken", WebUtility.HtmlDecode(token))));
+    }
+
     private static async Task SignInAsync(HttpClient browser, string principalId, CancellationToken ct)
     {
+        var form = await AntiforgeryFormAsync(
+            browser,
+            new Uri("/signin", UriKind.Relative),
+            [new KeyValuePair<string, string>("principal", principalId)],
+            ct);
         var response = await browser.PostAsync(
             new Uri("/signin", UriKind.Relative),
-            new FormUrlEncodedContent([new KeyValuePair<string, string>("principal", principalId)]),
+            form,
             ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Redirect);
@@ -161,13 +184,70 @@ public sealed class DashboardIsolationTests(PostgresFixture postgres) : IAsyncLi
         // Act
         var response = await browser.PostAsync(
             new Uri("/signin", UriKind.Relative),
-            new FormUrlEncodedContent([new KeyValuePair<string, string>("principal", "demo|intruder")]),
+            await AntiforgeryFormAsync(
+                browser,
+                new Uri("/signin", UriKind.Relative),
+                [new KeyValuePair<string, string>("principal", "demo|intruder")],
+                ct),
             ct);
 
         var dashboard = await browser.GetAsync(new Uri("/operations", UriKind.Relative), ct);
 
         // Assert — sent back to the sign-in page, and still not signed in.
         response.Headers.Location?.OriginalString.ShouldContain("/signin");
+        dashboard.StatusCode.ShouldBe(HttpStatusCode.Redirect);
+    }
+
+    [Fact]
+    public async Task Sign_in_rejects_a_post_without_its_antiforgery_token()
+    {
+        // Arrange — the demo still issues real cookies, so its HTML form must not accept a
+        // cross-site POST that omits the paired cookie/form token.
+        var ct = TestContext.Current.CancellationToken;
+        var browser = Browser();
+
+        // Act
+        var response = await browser.PostAsync(
+            new Uri("/signin", UriKind.Relative),
+            new FormUrlEncodedContent([new KeyValuePair<string, string>("principal", DemoTenants.Alice)]),
+            ct);
+        var dashboard = await browser.GetAsync(new Uri("/operations", UriKind.Relative), ct);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        dashboard.StatusCode.ShouldBe(HttpStatusCode.Redirect);
+    }
+
+    [Fact]
+    public async Task Sign_out_requires_antiforgery_and_ends_the_browser_session()
+    {
+        // Arrange
+        var ct = TestContext.Current.CancellationToken;
+        var browser = Browser();
+        await SignInAsync(browser, DemoTenants.Alice, ct);
+
+        // Act — a cross-origin-shaped form post with no token leaves the session intact. Then the
+        // layout's real sign-out form posts its paired token from the authenticated dashboard.
+        var missingToken = new HttpRequestMessage(HttpMethod.Post, new Uri("/signout", UriKind.Relative))
+        {
+            Content = new FormUrlEncodedContent([])
+        };
+        missingToken.Headers.Add("Origin", "https://untrusted.example");
+        var rejected = await browser.SendAsync(missingToken, ct);
+        var response = await browser.PostAsync(
+            new Uri("/signout", UriKind.Relative),
+            await AntiforgeryFormAsync(
+                browser,
+                new Uri("/operations", UriKind.Relative),
+                [],
+                ct),
+            ct);
+        var dashboard = await browser.GetAsync(new Uri("/operations", UriKind.Relative), ct);
+
+        // Assert
+        rejected.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        response.StatusCode.ShouldBe(HttpStatusCode.Redirect);
+        response.Headers.Location?.OriginalString.ShouldBe("/");
         dashboard.StatusCode.ShouldBe(HttpStatusCode.Redirect);
     }
 

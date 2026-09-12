@@ -122,13 +122,13 @@ public static class DemoAuthenticationExtensions
                 DemoTenants.PrincipalFor(principal));
 
             return Results.Redirect("/operations");
-        }).AllowAnonymous().DisableAntiforgery();
+        }).AllowAnonymous();
 
-        routes.MapPost("/signout", async (HttpContext http) =>
+        routes.MapPost("/signout", async (HttpContext http, [FromForm] IFormCollection form) =>
         {
             await http.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             return Results.Redirect("/");
-        }).AllowAnonymous().DisableAntiforgery();
+        }).AllowAnonymous();
 
         return routes;
     }

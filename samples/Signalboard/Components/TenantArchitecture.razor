@@ -1,0 +1,40 @@
+<div class="scene-wrap">
+    <div class="tenant-scene" data-motion-scene role="img" aria-label="One .NET application uses LakeWright to resolve membership before reaching two separate tenant schemas on shared Databricks compute.">
+        <div class="scene-orbit orbit-one" aria-hidden="true"></div>
+        <div class="scene-orbit orbit-two" aria-hidden="true"></div>
+        <div class="scene-label"><span class="live-dot"></span> ONE APP. A SCHEMA PER TENANT.</div>
+        <div class="app-platform">
+            <div class="platform-icon"><BrandMark /></div>
+            <div><span class="platform-overline">YOUR APPLICATION</span><strong>Your customers sign in here.</strong><small>ASP.NET Core <i>+</i> LakeWright</small></div>
+
+        </div>
+        <div class="membership-chip"><span aria-hidden="true">✓</span> Membership resolved</div>
+        <svg class="scene-connections" viewBox="0 0 560 490" fill="none" aria-hidden="true">
+            <path class="connection" d="M280 195v40Q280 250 262 250H147Q130 250 130 267v27M280 235q0 15 18 15h115q17 0 17 17v27" />
+            <circle class="connection-pulse" cx="280" cy="220" r="4" />
+            <circle cx="130" cy="287" r="4" /><circle cx="430" cy="287" r="4" />
+        </svg>
+        <div class="tenant-islands">
+            <div class="tenant-island tenant-acme">
+                <div class="island-top"><span class="tenant-avatar">A</span><div><strong>Acme</strong><span>Tenant data</span></div><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="5" y="8" width="10" height="9" rx="2" /><path d="M7 8V5a3 3 0 0 1 6 0v3" /></svg></div>
+                <div class="data-stack"><span></span><span></span><span></span></div>
+                <div class="schema-label"><span class="schema-dot"></span><code>schema: acme</code></div>
+            </div>
+            <div class="tenant-island tenant-globex">
+                <div class="island-top"><span class="tenant-avatar">G</span><div><strong>Globex</strong><span>Tenant data</span></div><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="5" y="8" width="10" height="9" rx="2" /><path d="M7 8V5a3 3 0 0 1 6 0v3" /></svg></div>
+                <div class="data-stack"><span></span><span></span><span></span></div>
+                <div class="schema-label"><span class="schema-dot"></span><code>schema: globex</code></div>
+            </div>
+        </div>
+        <div class="compute-base"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m3 7 9-4 9 4-9 4-9-4Zm0 5 9 4 9-4M3 17l9 4 9-4" /></svg><strong>Databricks</strong><span>Shared compute. Separate schemas.</span></div>
+    </div>
+    <div class="scene-controls">
+        <button type="button" class="motion-replay" data-motion-replay aria-label="Replay the tenant architecture animation">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10a8 8 0 1 1 1 7M4 4v6h6" /></svg> Replay flow
+        </button>
+        <button type="button" class="motion-replay" data-ambient-toggle aria-label="Pause background motion" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path class="pause-glyph" d="M8 5v14M16 5v14" /><path class="play-glyph" d="m8 5 11 7-11 7V5Z" /></svg>
+            <span data-ambient-label>Pause motion</span>
+        </button>
+    </div>
+</div>

@@ -9,8 +9,8 @@ public interface IGenieConversations
 {
     /// <summary>Starts a conversation in the agent <paramref name="tenant"/> is mapped to.</summary>
     /// <remarks>
-    /// The returned conversation is recorded for <paramref name="ownerKey"/> only after the
-    /// workspace has accepted it. Use an opaque, stable application-principal key.
+    /// Once the workspace accepts a conversation, its ownership is persisted for
+    /// <paramref name="ownerKey"/> before polling. Use an opaque, stable application-principal key.
     /// </remarks>
     Task<GenieAnswer> AskAsync(
         TenantContext tenant,
@@ -69,4 +69,17 @@ public enum GenieOutcome
     Cancelled = 3,
     /// <summary>Still running when the caller's patience, or <c>ResponseTimeout</c>, ran out.</summary>
     TimedOut = 4,
+}
+
+/// <summary>The local response deadline elapsed before a conversation identity was received.</summary>
+/// <remarks>Remote acceptance is unknown: Databricks may still have created a conversation.</remarks>
+public sealed class GenieResponseTimeoutException() : TimeoutException("The Genie response deadline elapsed before a conversation identity was received; remote acceptance is unknown.");
+
+/// <summary>An accepted conversation could not be safely recorded for its owner.</summary>
+/// <remarks>The identifiers support trusted recovery; they do not authorize continuation by themselves.</remarks>
+public sealed class ConversationOwnershipPersistenceException(string conversationId, string messageId, Exception innerException)
+    : InvalidOperationException("Genie accepted a conversation but ownership could not be persisted.", innerException)
+{
+    public string ConversationId { get; } = conversationId;
+    public string MessageId { get; } = messageId;
 }

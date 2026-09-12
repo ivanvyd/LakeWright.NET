@@ -63,6 +63,12 @@ public sealed class RawDataField
     /// <summary>The field's accepted value type.</summary>
     public required RawDataKind Kind { get; init; }
 
+    /// <summary>Required for FixedPoint fields: total digits, from 1 to 38.</summary>
+    public int? Precision { get; init; }
+
+    /// <summary>Required for FixedPoint fields: fractional digits, from 0 to Precision.</summary>
+    public int? Scale { get; init; }
+
     /// <summary>Whether requests may filter this field.</summary>
     public bool Filterable { get; init; }
 
@@ -74,6 +80,21 @@ public sealed class RawDataField
         RawDataSqlIdentifier.Validate(Name, nameof(Name));
         RawDataSqlIdentifier.Validate(Column, nameof(Column));
         ArgumentException.ThrowIfNullOrWhiteSpace(DisplayName);
+        if (!Enum.IsDefined(Kind))
+        {
+            throw new ValidationException("The raw-data field kind is not supported.");
+        }
+        if (Kind == RawDataKind.FixedPoint)
+        {
+            if (Precision is not (>= 1 and <= 38) || Scale is null || Scale < 0 || Scale > Precision)
+            {
+                throw new ValidationException("Decimal fields require precision 1-38 and scale 0-precision.");
+            }
+        }
+        else if (Precision is not null || Scale is not null)
+        {
+            throw new ValidationException("Precision and scale apply only to Decimal fields.");
+        }
     }
 }
 
@@ -85,6 +106,10 @@ public enum RawDataKind
     Date,
     Boolean,
     YesNo,
+    /// <summary>Exact signed 64-bit integer, bound as BIGINT.</summary>
+    WholeNumber,
+    /// <summary>Exact fixed-point value using the trusted field precision and scale.</summary>
+    FixedPoint,
 }
 
 /// <summary>A client request to filter, sort, and page an allow-listed source.</summary>
@@ -169,7 +194,11 @@ public sealed record RawDataPage(
     long TotalRowCount);
 
 /// <summary>One source-defined output column.</summary>
-public sealed record RawDataColumn(string Name, string DisplayName, RawDataKind Kind);
+public sealed record RawDataColumn(string Name, string DisplayName, RawDataKind Kind)
+{
+    public int? Precision { get; init; }
+    public int? Scale { get; init; }
+}
 
 /// <summary>Starts tenant-owned CSV exports without ever exposing a warehouse statement id.</summary>
 public interface IRawDataExportService

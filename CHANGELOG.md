@@ -8,6 +8,42 @@ note.
 
 ## [Unreleased]
 
+## [2.1.0] — 2026-09-12
+
+### Security
+
+- Dashboard marker checks now describe only marker presence. Strict embed authorization requires
+  an explicit tenant-to-dashboard assignment and trusted isolation evidence bound to the served
+  revision and definition digest. Existing constructors remain available, but strict verification
+  fails closed without the new evidence and assignment providers. Migrate strict integrations using
+  [ADR 0028](docs/decisions/0028-revision-bound-dashboard-isolation-evidence.md).
+- The Signalboard demo now validates antiforgery tokens on sign-in and sign-out.
+
+### Fixed
+
+- External JSON exports parse root arrays and stream complete, ordered chunk chains. Incomplete,
+  truncated, malformed, and inconsistent results fail explicitly; expired external links can be
+  renewed before rows from that chunk are emitted. Inline materialization has a 25 MiB limit.
+- Statement and Genie deadlines include credentials, submission, polling, response bodies, and
+  export reads. Accepted Genie conversation ownership is recorded before polling; recoverable
+  identifiers remain available when the answer times out.
+- Operation dispatch uses a bounded worker pool so a held upstream poll does not serialize all
+  tenants. Refresh status treats `USER_CANCELED` as cancellation and keeps unknown-state errors safe.
+- Candidate consumer validation rejects missing or mismatched packages instead of falling back
+  to a public or cached LakeWright package. CI fails when advisory scan evidence is unavailable,
+  and package compatibility validation again checks the current stable 2.x baseline.
+- Signalboard's Docker build includes its four linked public images. Authenticated navigation
+  reflows at narrow widths, and starting an operation provides visible status feedback.
+
+### Added
+
+- Raw-data columns can opt into exact `BIGINT` and `DECIMAL(p,s)` filters through `WholeNumber`
+  and `FixedPoint`. Existing `Number` filters retain approximate `DOUBLE` semantics. See
+  [numeric contracts](docs/guides/raw-data-numerics.md) for configuration and precision limits.
+- Load verification records bounded admission, completion, failure, drop, and censoring counts,
+  and gates generated throughput separately from completion ratio. Local network and browser
+  lab profiles record their conditions without claiming production capacity or field web vitals.
+
 ## [2.0.0] — 2026-09-02
 
 ### Changed

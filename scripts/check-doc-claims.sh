@@ -92,4 +92,5 @@ if [ "$violations" -ne 0 ]; then
   exit 1
 fi
 
+python3 scripts/check-released-version.py || exit 1
 echo "documentation claims checked against the repository, none stale."

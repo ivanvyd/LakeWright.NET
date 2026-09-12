@@ -47,6 +47,14 @@ async function signIn(page, name) {
     .catch(() => {});
 }
 
+async function checkNoPageOverflow(page, name) {
+  const layout = await page.evaluate(() => ({
+    clientWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+  }));
+  check(name, layout.scrollWidth <= layout.clientWidth + 1, JSON.stringify(layout));
+}
+
 // ---- home, anonymous -------------------------------------------------------
 {
   const { context, page, consoleErrors } = await session();
@@ -61,6 +69,8 @@ async function signIn(page, name) {
   await page.goto(`${BASE}/signin`);
   await shoot(page, `02-signin.png`);
   check('sign-in offers three people', (await page.locator('button.person').count()) === 3);
+  await page.setViewportSize({ width: 375, height: 667 });
+  await checkNoPageOverflow(page, 'anonymous header has no horizontal page scroll at 375px');
   check('no console errors on the anonymous pages', consoleErrors.length === 0, consoleErrors.join('; '));
   await context.close();
 }
@@ -77,33 +87,38 @@ async function signIn(page, name) {
             return b && !b.disabled; }, null, { timeout: 20000 });
 
   const before = await page.locator('table.operations tbody tr').count();
+  const firstAddress = await page.locator('table.operations td.address code').first().textContent();
   await page.getByRole('button', { name: 'Start' }).click();
 
-  // The row must appear without a navigation. That is the circuit doing its job; a Static SSR
-  // page would need a reload and this wait would time out.
+  // The list must refresh without navigation. At the dashboard's bounded row count, a new row
+  // replaces the oldest visible row instead of increasing the count; its newest address changes.
+  // A Static SSR page would need a reload and this wait would time out.
   const navigated = page.url();
   await page.waitForFunction(
-    n => document.querySelectorAll('table.operations tbody tr').length > n,
-    before, { timeout: 15000 }).catch(() => {});
+    ({ count, address }) => {
+      const rows = document.querySelectorAll('table.operations tbody tr').length;
+      const newest = document.querySelector('table.operations td.address code')?.textContent;
+      return rows > count || newest !== address;
+    }, { count: before, address: firstAddress }, { timeout: 15000 }).catch(() => {});
   const after = await page.locator('table.operations tbody tr').count();
+  const newestAddress = await page.locator('table.operations td.address code').first().textContent();
 
-  check('starting an operation adds a row live', after > before, `${before} -> ${after}`);
+  check('starting an operation refreshes the live list', after > before || newestAddress !== firstAddress,
+    `${before} -> ${after}; ${firstAddress} -> ${newestAddress}`);
   check('without navigating away', page.url() === navigated);
   check('no console errors on the dashboard', consoleErrors.length === 0, consoleErrors.join('; '));
 
   await shoot(page, `03-dashboard-admin.png`);
 
-  // Dark theme, same page, because the stylesheet claims to handle both.
-  await page.emulateMedia({ colorScheme: 'dark' });
-  await shoot(page, `04-dashboard-dark.png`);
-
   // Narrow viewport: the table must scroll in its own box, not the page.
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.emulateMedia({ colorScheme: 'light' });
-  const overflows = await page.evaluate(() =>
-    document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
-  check('no horizontal page scroll at 390px', !overflows);
+  await page.setViewportSize({ width: 375, height: 667 });
+  await checkNoPageOverflow(page, 'signed-in header and table have no horizontal page scroll at 375px');
   await shoot(page, `05-dashboard-mobile.png`);
+
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await page.waitForURL(`${BASE}/`, { timeout: 5000 }).catch(() => {});
+  check('sign-out returns to the home page', page.url() === `${BASE}/`, page.url());
+  check('no console errors on sign-out', consoleErrors.length === 0, consoleErrors.join('; '));
   await context.close();
 }
 
