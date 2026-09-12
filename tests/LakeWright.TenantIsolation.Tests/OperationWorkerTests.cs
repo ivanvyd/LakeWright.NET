@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Data.Common;
 using System.Globalization;
 using LakeWright.Core.Jobs;
 using LakeWright.Core.Tenancy;
@@ -6,6 +8,7 @@ using LakeWright.Multitenancy;
 using LakeWright.Multitenancy.Model;
 using LakeWright.Multitenancy.Operations;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -20,7 +23,24 @@ namespace LakeWright.TenantIsolation.Tests;
 public class OperationWorkerTests(PostgresFixture postgres)
 {
     private static readonly TenantId AcmeId = TenantId.Parse("0198f000-0000-7000-8000-0000000000f1");
+    private static readonly TenantId BetaId = TenantId.Parse("0198f000-0000-7000-8000-0000000000f2");
+    private static readonly TenantId GammaId = TenantId.Parse("0198f000-0000-7000-8000-0000000000f3");
+    private static readonly TenantId DeltaId = TenantId.Parse("0198f000-0000-7000-8000-0000000000f4");
     private const long JobId = 4242;
+
+    private sealed class ClaimCounter : DbCommandInterceptor
+    {
+        public int Count;
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            if (command.CommandText.Contains("UPDATE operations o", StringComparison.Ordinal))
+            {
+                Interlocked.Increment(ref Count);
+            }
+            return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+        }
+    }
 
     /// <summary>
     /// Stands in for Databricks. Records every idempotency key it is given, which is what lets the
@@ -32,13 +52,21 @@ public class OperationWorkerTests(PostgresFixture postgres)
         private readonly Dictionary<string, long> _runsByKey = new(StringComparer.Ordinal);
         private long _nextRunId = 1000;
 
-        public List<string> SubmittedKeys { get; } = [];
+        public ConcurrentQueue<string> SubmittedKeys { get; } = [];
+        public ConcurrentQueue<TenantId> SubmittedTenants { get; } = [];
         public RunOutcome? SubmitOverride { get; set; }
         public RunOutcome RunState { get; set; } = new RunOutcome.Succeeded(0);
+        public TaskCompletionSource? HoldFirstPoll { get; set; }
+        public bool HoldAllPolls { get; set; }
+        public TaskCompletionSource? FirstPollStarted { get; set; }
+        public TaskCompletionSource? PollsReached { get; set; }
+        public int PollsTarget { get; set; }
+        public int PollCalls;
 
         public Task<RunOutcome> SubmitAsync(TenantScopedJobRun run, CancellationToken cancellationToken)
         {
-            SubmittedKeys.Add(run.IdempotencyKey);
+            SubmittedKeys.Enqueue(run.IdempotencyKey);
+            SubmittedTenants.Enqueue(run.Tenant.TenantId);
 
             if (SubmitOverride is { } forced) { return Task.FromResult(forced); }
 
@@ -60,18 +88,30 @@ public class OperationWorkerTests(PostgresFixture postgres)
             return Task.CompletedTask;
         }
 
-        public Task<RunOutcome> GetRunAsync(long runId, CancellationToken cancellationToken) =>
-            Task.FromResult(RunState switch
+        public async Task<RunOutcome> GetRunAsync(long runId, CancellationToken cancellationToken)
+        {
+            var polls = Interlocked.Increment(ref PollCalls);
+            if (PollsTarget > 0 && polls >= PollsTarget)
+            {
+                PollsReached?.TrySetResult();
+            }
+            if ((HoldAllPolls || runId == 1000) && HoldFirstPoll is { } hold)
+            {
+                FirstPollStarted?.TrySetResult();
+                await hold.Task.WaitAsync(cancellationToken);
+            }
+            return RunState switch
             {
                 RunOutcome.Succeeded => new RunOutcome.Succeeded(runId),
                 RunOutcome.Cancelled => new RunOutcome.Cancelled(runId),
                 RunOutcome.Failed f => new RunOutcome.Failed(runId, f.Reason, f.IsTransient),
                 _ => (RunOutcome)new RunOutcome.Running(runId)
-            });
+            };
+        }
     }
 
     private static async Task<(ServiceProvider Provider, FakeSubmitter Submitter)>
-        BuildAsync(PostgresFixture postgres)
+        BuildAsync(PostgresFixture postgres, ClaimCounter? counter = null)
     {
         await using var seed = await postgres.NewDatabaseAsync();
         seed.Organizations.Add(new Organization
@@ -88,7 +128,11 @@ public class OperationWorkerTests(PostgresFixture postgres)
 
         var submitter = new FakeSubmitter();
         var services = new ServiceCollection();
-        services.AddDbContext<LakeWrightDbContext>(o => o.UseNpgsql(connectionString));
+        services.AddDbContext<LakeWrightDbContext>(o =>
+        {
+            o.UseNpgsql(connectionString);
+            if (counter is not null) { o.AddInterceptors(counter); }
+        });
         services.Configure<MultitenancyOptions>(options => options.Catalog = "analytics");
         services.AddLakeWrightTenancy<EfTenantContextResolver>();
         services.AddSingleton(TimeProvider.System);
@@ -99,14 +143,16 @@ public class OperationWorkerTests(PostgresFixture postgres)
         return (services.BuildServiceProvider(), submitter);
     }
 
-    private static OperationWorker WorkerFor(ServiceProvider provider) =>
+    private static OperationWorker WorkerFor(ServiceProvider provider, int concurrency = 4, TimeSpan? grace = null, TimeSpan? idleDelay = null) =>
         new(provider.GetRequiredService<IServiceScopeFactory>(),
             Options.Create(new OperationWorkerOptions
             {
                 Jobs = { ["analysis"] = JobId },
                 InitialPollInterval = TimeSpan.FromMilliseconds(1),
                 MaxPollInterval = TimeSpan.FromMilliseconds(2),
-                ReconciliationGracePeriod = TimeSpan.FromMinutes(-5)
+                ReconciliationGracePeriod = grace ?? TimeSpan.FromMinutes(-5),
+                IdleDelay = idleDelay ?? TimeSpan.FromSeconds(5),
+                MaxConcurrentOperations = concurrency
             }),
             Options.Create(new MultitenancyOptions { Catalog = "analytics" }),
             NullLogger<OperationWorker>.Instance,
@@ -179,7 +225,7 @@ public class OperationWorkerTests(PostgresFixture postgres)
         didWork.ShouldBeTrue();
         submitter.SubmittedKeys.Count.ShouldBe(2);
         submitter.SubmittedKeys.Distinct().Count().ShouldBe(1);
-        submitter.SubmittedKeys[1].ShouldBe(idempotencyKey);
+        submitter.SubmittedKeys.ElementAt(1).ShouldBe(idempotencyKey);
         final.ExternalId.ShouldBe("1000", "the reconciled run is the one already started, not a new one");
         final.State.ShouldBe(OperationState.Succeeded);
     }
@@ -374,5 +420,122 @@ public class OperationWorkerTests(PostgresFixture postgres)
         // Assert — the caller uses this to decide whether to idle, so an empty queue must not
         // report work.
         didWork.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task A_reconciliation_preferred_dispatch_does_not_starve_an_old_run_behind_new_work()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (provider, submitter) = await BuildAsync(postgres);
+        await using var _p = provider;
+        submitter.RunState = new RunOutcome.Succeeded(0);
+        Guid orphanId;
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var store = scope.ServiceProvider.GetRequiredService<OperationStore>();
+            var orphan = await store.CreateAsync(Ctx(), "auth0|alice", "analysis", null, ct);
+            var claimed = await store.ClaimNextAsync(100, ct);
+            var run = (RunOutcome.Submitted)await submitter.SubmitAsync(TenantScopedJobRun.Create(Ctx(), JobId, claimed!.IdempotencyKey), ct);
+            await store.RecordExternalIdAsync(Ctx(), claimed.Id, run.RunId.ToString(CultureInfo.InvariantCulture), ct);
+            orphanId = orphan.Id;
+            await store.CreateAsync(Ctx(), "auth0|alice", "analysis", null, ct);
+        }
+
+        await WorkerFor(provider).RunOnceAsync(ct, preferReconciliation: true);
+
+        await using var check = provider.CreateAsyncScope();
+        var completed = await check.ServiceProvider.GetRequiredService<LakeWrightDbContext>().Operations.SingleAsync(x => x.Id == orphanId, ct);
+        completed.CompletedAt.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task Execute_pool_starts_second_tenant_while_first_poll_is_held()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (provider, submitter) = await BuildAsync(postgres);
+        await using var _p = provider;
+        submitter.RunState = new RunOutcome.Succeeded(0);
+        submitter.HoldFirstPoll = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        submitter.HoldAllPolls = true;
+        submitter.FirstPollStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LakeWrightDbContext>();
+            db.Organizations.Add(new Organization { Id = BetaId, Name = "Beta", Slug = "beta", CreatedAt = DateTimeOffset.UtcNow, Schema = UnityCatalogIdentifier.SchemaForTenant(BetaId), State = OrganizationState.Active });
+            await db.SaveChangesAsync(ct);
+            var store = scope.ServiceProvider.GetRequiredService<OperationStore>();
+            await store.CreateAsync(Ctx(), "auth0|alice", "analysis", null, ct);
+            await store.CreateAsync(TenantContextFactory.ForTenant(BetaId, "analytics"), "auth0|bob", "analysis", null, ct);
+        }
+        var worker = WorkerFor(provider, 2, TimeSpan.FromMinutes(5));
+        await worker.StartAsync(ct);
+        await submitter.FirstPollStarted.Task.WaitAsync(ct);
+        await Task.Delay(100, ct);
+        submitter.SubmittedTenants.ShouldContain(AcmeId);
+        submitter.SubmittedTenants.ShouldContain(BetaId);
+        submitter.HoldFirstPoll.SetResult();
+        await worker.StopAsync(ct);
+    }
+
+    [Fact]
+    public async Task Controlled_dispatch_measurement_starts_one_or_four_held_polls_at_the_configured_bound()
+    {
+        var one = await MeasureHeldPollsAsync(1);
+        var four = await MeasureHeldPollsAsync(4);
+
+        one.ShouldBe(1);
+        four.ShouldBe(4);
+        Console.WriteLine($"controlled worker dispatch: concurrency=1 started {one} held poll; concurrency=4 started {four} held polls");
+    }
+
+    [Fact]
+    public async Task Idle_dispatch_pool_backs_off_instead_of_spinning_empty_claims()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var counter = new ClaimCounter();
+        var (provider, _) = await BuildAsync(postgres, counter);
+        await using var _p = provider;
+        var worker = WorkerFor(provider, concurrency: 4, idleDelay: TimeSpan.FromMilliseconds(100));
+
+        await worker.StartAsync(ct);
+        await Task.Delay(250, ct);
+        await worker.StopAsync(ct);
+
+        // Initial slots plus three 100 ms backoff windows; a spinning scheduler reached 71 here.
+        Volatile.Read(ref counter.Count).ShouldBeLessThanOrEqualTo(24);
+    }
+
+    private async Task<int> MeasureHeldPollsAsync(int concurrency)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (provider, submitter) = await BuildAsync(postgres);
+        await using var _p = provider;
+        submitter.RunState = new RunOutcome.Succeeded(0);
+        submitter.HoldFirstPoll = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        submitter.HoldAllPolls = true;
+        submitter.PollsReached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        submitter.PollsTarget = concurrency;
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LakeWrightDbContext>();
+            foreach (var (id, name) in new[] { (BetaId, "Beta"), (GammaId, "Gamma"), (DeltaId, "Delta") })
+            {
+                db.Organizations.Add(new Organization { Id = id, Name = name, Slug = name.ToLowerInvariant(), CreatedAt = DateTimeOffset.UtcNow, Schema = UnityCatalogIdentifier.SchemaForTenant(id), State = OrganizationState.Active });
+            }
+            await db.SaveChangesAsync(ct);
+            var store = scope.ServiceProvider.GetRequiredService<OperationStore>();
+            foreach (var id in new[] { AcmeId, BetaId, GammaId, DeltaId })
+            {
+                await store.CreateAsync(TenantContextFactory.ForTenant(id, "analytics"), "auth0|worker", "analysis", null, ct);
+            }
+        }
+
+        var worker = WorkerFor(provider, concurrency, TimeSpan.FromMinutes(5));
+        await worker.StartAsync(ct);
+        await submitter.PollsReached.Task.WaitAsync(ct);
+        var observed = Volatile.Read(ref submitter.PollCalls);
+        submitter.HoldFirstPoll.SetResult();
+        await worker.StopAsync(ct);
+        return observed;
     }
 }

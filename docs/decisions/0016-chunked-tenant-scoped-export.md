@@ -4,6 +4,9 @@ Date: 2026-08-30
 
 Status: Accepted
 
+Payload, expiry, memory, and deadline behavior is superseded by
+[ADR 0029](0029-complete-statement-results-and-deadlines.md). Use that decision for current contracts.
+
 ## Context
 
 The `IStatementExecutor` surface (ADR 0004) returns the whole result of a statement in

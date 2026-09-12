@@ -12,11 +12,11 @@ where.
 
 | Open item | Recorded in | Blocked on |
 |---|---|---|
-| Cost attribution in currency | [Threat model, T5](docs/security/threat-model.md) | A metastore-admin grant on `system.billing`. The elapsed-time proxy now ships as the default implementation; the billing read is an `ICostAttribution` replacement. ADR 0012. |
+| Live currency attribution verification | [Threat model, T5](docs/security/threat-model.md) | The billing reader and attribution adapter are implemented and locally tested. Live system-table validation needs the required `system.billing` grant; elapsed-time attribution remains the default. |
 | Per-tenant token metering | [Compatibility](docs/compatibility.md) | The same grant — it belongs with cost attribution |
 | Offering the streaming shim upstream | [ADR 0009](docs/decisions/0009-a-separate-optional-ai-module.md) | Nothing but doing it. `LiveChatTests` holds the reproduction |
 | Reference deployment to Azure Container Apps | [Compatibility](docs/compatibility.md), [docs/guides/deploying-azure.md](docs/guides/deploying-azure.md) | Billable resources someone has to decide to create. The Bicep template now compiles and the workflow is in place; the first deploy is the promotion step. ADR 0014. |
-| An observability export | [Compatibility](docs/compatibility.md), ADR 0013 | The sample's opt-in OTel pipeline is the reference; vendor-specific wiring is the adopter's. |
+| Adopter observability backend validation | [Compatibility](docs/compatibility.md), ADR 0013 | The sample's opt-in OTel pipeline is implemented. Backend credentials, configuration, and receipt verification belong to the adopter. |
 | Synthetic events and cost attribution in Signalboard | This file, week 7 | Nothing. The cost endpoint answers against real operations today. |
 | A first backlog of well-scoped issues | This file, week 8 | Nothing. The issue tracker is empty, so a contributor arriving has nowhere obvious to start |
 | A demo recording | This file, week 8 | Nothing. Dropped rather than deferred |
@@ -150,7 +150,7 @@ tracker is empty, so a contributor arriving has nowhere obvious to start.
   The packages were already built, attested and attached to the v0.1.0 release; what was withheld
   was the one surface a .NET developer actually searches. They initially published with a prerelease
   suffix. **Outcome 2026-08-30:** stable tags now publish stable packages under
-  [ADR 0019](docs/decisions/0019-stable-1-0-0.md); the current stable line is v1.2.0.
+  [ADR 0019](docs/decisions/0019-stable-1-0-0.md). Current stable release: [v2.0.0](https://github.com/ivanvyd/LakeWright.NET/releases/tag/v2.0.0), published 2026-09-02.
 - A `dotnet new` template. It ossifies the structure before we know the structure is right.
 - Catalog-per-tenant and workspace-per-tenant as implemented paths. Documented, not built.
 - Billing, invoicing, or payment integration.

@@ -2,10 +2,11 @@ using LakeWright.Core;
 
 namespace LakeWright.Databricks;
 
-/// <summary>A statement remained pending after its configured local polling budget expired.</summary>
+/// <summary>The local statement or export deadline expired. This does not confirm remote cancellation.</summary>
 public sealed class StatementBudgetExceededException(string statementId, TimeSpan budget)
-    : LakeWrightException($"Statement '{statementId}' did not complete within the {budget} polling budget.")
+    : LakeWrightException($"The statement did not complete within the {budget} local budget.")
 {
+    /// <summary>The accepted statement id, or an empty string if submission did not return an id.</summary>
     public string StatementId { get; } = statementId;
 
     public TimeSpan Budget { get; } = budget;

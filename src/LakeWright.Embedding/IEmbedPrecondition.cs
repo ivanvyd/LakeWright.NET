@@ -18,3 +18,19 @@ public interface IEmbedPrecondition
         string dashboardId,
         CancellationToken cancellationToken = default);
 }
+
+/// <summary>Authorizes a resolved tenant to receive a token for one dashboard.</summary>
+/// <remarks>
+/// Dashboard assignment is application data: LakeWright deliberately does not infer it from a
+/// workspace catalog, a dashboard folder, or a browser-supplied identifier. Implement this over
+/// the host's trusted assignment store and compose it into an <see cref="IEmbedPrecondition"/>
+/// before exposing token minting.
+/// </remarks>
+public interface ITenantDashboardAssignment
+{
+    /// <summary>Returns whether this resolved tenant is assigned the requested dashboard.</summary>
+    Task<bool> IsAssignedAsync(
+        TenantContext tenant,
+        string dashboardId,
+        CancellationToken cancellationToken = default);
+}

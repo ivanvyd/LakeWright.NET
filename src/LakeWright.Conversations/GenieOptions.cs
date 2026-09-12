@@ -37,7 +37,7 @@ public sealed class GenieOptions
     /// </summary>
     public bool AcknowledgeNoTenantIsolation { get; set; }
 
-    /// <summary>How long to keep polling one question before giving up.</summary>
+    /// <summary>The total local deadline for one question, from credential acquisition through polling.</summary>
     /// <remarks>
     /// Databricks recommends stopping at ten minutes: a question still running after that is not
     /// going to answer usefully, and a request held open longer is a connection the caller's

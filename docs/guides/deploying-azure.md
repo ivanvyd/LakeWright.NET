@@ -81,11 +81,11 @@ configure the following in Entra ID:
    `POSTGRES_ADMIN_PASSWORD` value is loaded from a Key Vault reference in real deploys and
    supplied as a parameter file in local deploys — never inline in the workflow.
 
-The OIDC handshake happens in `azure/login@v2`; the `arm-deploy@v1` step then deploys with
+The OIDC handshake happens in `azure/login@v3`; the `arm-deploy@v2` step then deploys with
 the token it gets back. If the federated credential's subject does not match the workflow's
-running subject (e.g. only `main` is registered but the workflow is running on a PR), the login
-step succeeds and the deploy step fails with an "AADSTS70021" error. The federated-credential
-subject must include the branch or environment the workflow runs under.
+running subject (for example, only `main` is registered but the workflow uses the `production`
+environment), Azure login fails with an `AADSTS70021` error. The federated-credential subject
+must match the environment the deploy job uses.
 
 ## After the deploy
 
@@ -143,10 +143,6 @@ drifts from those values is one a reviewer should challenge.
   switch to a `diagnosticSetting` (which writes via Azure's control plane) and read the
   key into a Bicep variable, or move to a customer-managed key and store it in Key Vault.
   Tracked as a follow-up; the deploy guide explicitly says "not production-ready."
-
-- **`arm-deploy@v1` is in maintenance mode.** Microsoft's recommended successor is
-  `azure/bicep-deploy`, which is first-party and supports OIDC without the action's
-  quirks. Tracked as a follow-up.
 
 - **No VNet, no private endpoint, no custom domain.** The deploy guide is explicit about
   these being production prerequisites, not template omissions.

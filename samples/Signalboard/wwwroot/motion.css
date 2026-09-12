@@ -1,0 +1,96 @@
+:root {
+    --motion-ease: cubic-bezier(.2, .7, .2, 1);
+    --motion-quick: 180ms;
+    --motion-standard: 320ms;
+    --motion-slow: 650ms;
+}
+
+.scene-wrap { position: relative; min-width: 0; }
+.scene-controls { display: flex; justify-content: center; flex-wrap: wrap; gap: .25rem; margin-top: 1.9rem; }
+.motion-replay { display: flex; align-items: center; gap: .4rem; min-height: 44px; padding: .25rem .7rem; border: 1px solid transparent; border-radius: 20px; background: transparent; color: var(--muted); font-size: .7rem; transition: background var(--motion-quick), color var(--motion-quick); }
+.motion-replay svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.motion-replay .play-glyph, [data-ambient-toggle][data-paused="true"] .pause-glyph { display: none; }
+[data-ambient-toggle][data-paused="true"] .play-glyph { display: block; }
+.motion-replay:hover { background: #e7f0df; color: var(--accent); }
+.lake-current { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; pointer-events: none; color: #72a58c; opacity: .24; }
+.lake-current path { stroke: currentColor; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.current-front, .current-back { transform-origin: center; }
+
+@media (prefers-reduced-motion: no-preference) {
+    .current-front { animation: lake-drift 14s ease-in-out infinite alternate; animation-play-state: paused; }
+    .current-back { animation: lake-drift 19s ease-in-out -6s infinite alternate-reverse; animation-play-state: paused; }
+    [data-ambient-running="true"] .current-front, [data-ambient-running="true"] .current-back { animation-play-state: running; }
+    .hero-copy { animation: copy-arrive var(--motion-slow) var(--motion-ease) both; }
+    .app-platform { animation: platform-arrive 800ms var(--motion-ease) 100ms both; }
+    .membership-chip { animation: chip-arrive 450ms var(--motion-ease) 500ms both; }
+    .tenant-islands { animation: islands-arrive var(--motion-slow) var(--motion-ease) 700ms both; }
+    .connection { animation: route-draw 1400ms var(--motion-ease) 400ms both, route-flow 1800ms ease-in-out 1800ms 1 both; }
+    .connection-pulse { animation: connection-pulse 1800ms ease-in-out 1600ms 1 both; }
+    .compute-base { animation: copy-arrive var(--motion-slow) var(--motion-ease) 950ms both; }
+    .tenant-island { transition: translate var(--motion-standard) var(--motion-ease), box-shadow var(--motion-standard); }
+    .data-stack > span { transition: translate var(--motion-standard) var(--motion-ease); }
+    .tenant-island:hover { translate: 0 -5px; box-shadow: 0 6px 0 #e4eee1, 0 7px 0 #cfdccc, 0 28px 35px -18px #a2bba0; }
+    .tenant-island:hover .data-stack > span:nth-child(2) { translate: 0 -5px; }
+    .tenant-island:hover .data-stack > span:nth-child(3) { translate: 0 -11px; }
+    .button:active { transform: translateY(1px) scale(.985); }
+    .feature-icon { transition: transform var(--motion-standard) var(--motion-ease); }
+    .toolkit-grid article:hover .feature-icon { transform: translateY(-3px) rotate(-5deg); }
+    .brand-mark { transition: transform var(--motion-standard) var(--motion-ease); }
+    .brand:hover .brand-mark { transform: rotate(-6deg) translateY(-1px); }
+    .button > span { transition: transform var(--motion-quick) var(--motion-ease); }
+    .button:hover > span { transform: translateX(4px); }
+    .site-header .nav-section { position: relative; }
+    .site-header .nav-section::after { content: ""; position: absolute; left: 0; right: 0; bottom: 4px; height: 1px; background: var(--accent); transform: scaleX(0); transform-origin: left; transition: transform var(--motion-standard) var(--motion-ease); }
+    .site-header .nav-section:hover::after, .site-header .nav-section:focus-visible::after { transform: scaleX(1); }
+    .persona-tabs .person-avatar { transition: transform var(--motion-quick) var(--motion-ease); }
+    .persona-tabs > button:hover .person-avatar { transform: translateX(2px); }
+    .docs-list a:hover b { transform: translate(4px, -3px); }
+}
+
+@keyframes lake-drift {
+    from { transform: translate(-14px, 7px); }
+    to { transform: translate(18px, -8px); }
+}
+
+@keyframes copy-arrive {
+    from { translate: 0 12px; }
+    to { translate: 0 0; }
+}
+
+@keyframes platform-arrive {
+    from { translate: 0 24px; opacity: 0; }
+    to { translate: 0 0; opacity: 1; }
+}
+
+@keyframes chip-arrive {
+    from { translate: 0 7px; opacity: 0; }
+    to { translate: 0 0; opacity: 1; }
+}
+
+@keyframes islands-arrive {
+    from { translate: 0 18px; opacity: 0; }
+    to { translate: 0 0; opacity: 1; }
+}
+
+@keyframes route-draw {
+    from { clip-path: inset(35% 0 65% 0); }
+    to { clip-path: inset(0); }
+}
+
+@keyframes route-flow {
+    from { stroke-dashoffset: 24; }
+    to { stroke-dashoffset: 0; }
+}
+
+@keyframes connection-pulse {
+    0%, 100% { opacity: .4; }
+    50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .scene-controls { display: none; }
+}
+
+@media (max-width: 820px) {
+    .scene-wrap { width: 100%; max-width: 510px; margin-inline: auto; }
+}

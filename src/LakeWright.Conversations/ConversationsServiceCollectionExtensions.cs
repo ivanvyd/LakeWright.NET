@@ -28,7 +28,8 @@ public static class ConversationsServiceCollectionExtensions
         // the tenant is known, rather than at boot, where it is not.
         services.AddOptions<GenieOptions>()
             .Bind(configuration.GetSection("Genie"))
-            .Validate(o => !string.IsNullOrWhiteSpace(o.WorkspaceUrl), "Genie:WorkspaceUrl is required.");
+            .Validate(o => !string.IsNullOrWhiteSpace(o.WorkspaceUrl), "Genie:WorkspaceUrl is required.")
+            .Validate(o => o.ResponseTimeout > TimeSpan.Zero, "Genie:ResponseTimeout must be positive.");
         LakeWrightOptions.ValidateOnStart<GenieOptions>(services);
         services.AddSingleton<IValidateOptions<GenieOptions>>(provider =>
             new GenieSharedSpaceOptionsValidator(provider.GetService<ILoggerFactory>()));

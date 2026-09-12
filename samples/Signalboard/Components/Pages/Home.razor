@@ -1,87 +1,157 @@
 @page "/"
 @attribute [AllowAnonymous]
+@inject NavigationManager Navigation
 
-<PageTitle>Signalboard</PageTitle>
+<PageTitle>LakeWright.NET — build on Databricks, ship to your customers</PageTitle>
 
-<h1>Two tenants that cannot see each other</h1>
+<HeadContent>
+    <meta name="description" content="Open-source .NET components for customer-facing analytics on Databricks. Membership-resolved tenant schemas, durable jobs, and dashboard tokens." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="@Navigation.BaseUri" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="LakeWright.NET" />
+    <meta property="og:title" content="Build on Databricks. Ship to your customers." />
+    <meta property="og:description" content="Customer-facing .NET analytics on Databricks. One application, with tenant membership and schema-scoped SQL." />
+    <meta property="og:url" content="@Navigation.BaseUri" />
+    <meta property="og:image" content="@SocialImageUrl" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="LakeWright.NET: one .NET application, separate tenant schemas on Databricks." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Build on Databricks. Ship to your customers." />
+    <meta name="twitter:description" content="Open-source .NET components for customer-facing analytics on Databricks." />
+    <meta name="twitter:image" content="@SocialImageUrl" />
+</HeadContent>
 
-<p>
-    Signalboard is a sample product built on LakeWright.NET. It exists to make one claim checkable:
-    a customer of one organization cannot reach another organization's work, and cannot learn that
-    the work exists.
-</p>
+<article class="landing">
+    <section class="hero" aria-labelledby="hero-title" data-ambient-region>
+        <LakeCurrent />
+        <div class="landing-shell hero-grid">
+            <div class="hero-copy">
+                <a class="release-pill" href="https://github.com/ivanvyd/LakeWright.NET/releases/tag/v2.0.0"><span>v2.0.0</span> Read the release notes <b aria-hidden="true">↗</b></a>
+                <h1 id="hero-title">Build on<br /> Databricks.<br /><span>Ship to your<br class="desktop-break" /> customers.</span></h1>
+                <p class="hero-deck">The .NET build kit for customer-facing analytics on Databricks. Your customers use your app, not your workspace. LakeWright checks tenant membership and scopes SQL to the right schema.</p>
+                <div class="hero-actions">
+                    <a class="button button-primary" href="#run">Run the sample <span aria-hidden="true">→</span></a>
+                    <a class="button button-secondary" href="https://github.com/ivanvyd/LakeWright.NET">View on GitHub <span aria-hidden="true">↗</span></a>
+                </div>
+                <p class="hero-footnote"><span aria-hidden="true">✓</span> Apache 2.0 <span aria-hidden="true">·</span> .NET 10 <span aria-hidden="true">·</span> No workspace needed to try it</p>
+            </div>
 
-<h2>Who you can be</h2>
+            <TenantArchitecture />
+        </div>
+        <div class="landing-shell capability-strip" aria-label="Included building blocks">
+            <span>Included in LakeWright</span>
+            <span><b aria-hidden="true">⌘</b> Tenant-scoped SQL</span>
+            <span><b aria-hidden="true">↻</b> Durable jobs</span>
+            <span><b aria-hidden="true">▦</b> Embedded analytics</span>
+            <span><b aria-hidden="true">◎</b> Audit trails</span>
+        </div>
+    </section>
 
-@* Rendered from the same list the sign-in page and the seeder read, so a fourth person is one
-   entry rather than three places to remember. *@
-<table>
-    <thead>
-        <tr><th>Organization</th><th>Person</th><th>Role</th></tr>
-    </thead>
-    <tbody>
-        @foreach (var person in DemoTenants.Everyone)
-        {
-            <tr>
-                <td>@person.Organization</td>
-                <td>@person.Name</td>
-                <td>@person.Role</td>
-            </tr>
-        }
-    </tbody>
-</table>
+    <section class="foundation section-pad" id="how-it-works" aria-labelledby="foundation-title">
+        <div class="landing-shell foundation-grid">
+            <div class="section-copy">
+                <h2 id="foundation-title">Every query starts<br />with a tenant.</h2>
+                <p>With one service principal, Databricks sees your backend’s identity on every request. LakeWright checks membership in your application and carries the tenant’s catalog and schema into each statement.</p>
+                <ul class="feature-checks">
+                    <li><span aria-hidden="true">✓</span><div><strong>Membership first</strong><p>A tenant ID becomes a <code>TenantContext</code> only after membership is checked.</p></div></li>
+                    <li><span aria-hidden="true">✓</span><div><strong>Schema from membership</strong><p>The statement API gets its catalog and schema from the resolved tenant context.</p></div></li>
+                    <li><span aria-hidden="true">✓</span><div><strong>SQL values stay parameters</strong><p>Typed parameters for values. Direct SQL interpolation is a compile error.</p></div></li>
+                </ul>
+                <a class="text-link" href="https://github.com/ivanvyd/LakeWright.NET/blob/main/docs/planning/03-architecture.md">Read the architecture <span aria-hidden="true">↗</span></a>
+            </div>
+            <div class="code-composition">
+                <div class="code-window">
+                    <div class="code-titlebar"><span><i aria-hidden="true">C#</i> Your application</span><span>Tenant-scoped SQL</span></div>
+                    <pre tabindex="0" aria-label="C sharp tenant-scoped SQL example"><code><span class="code-comment">// Resolved membership, not a tenant ID.</span>
+<span class="code-keyword">var</span> statement = <span class="code-type">TenantScopedStatement</span>.Create(
+    tenant,
+    <span class="code-string">"SELECT * FROM orders WHERE status = :status"</span>,
+    <span class="code-type">StatementParameter</span>.String(<span class="code-string">"status"</span>, <span class="code-string">"OPEN"</span>));
 
-<p>
-    <a class="cta" href="/signin">Sign in as one of them</a>
-</p>
+<span class="code-keyword">await</span> executor.ExecuteAsync(
+    statement, cancellationToken);</code></pre>
+                    <div class="code-footer"><span class="code-check" aria-hidden="true">✓</span> Catalog + schema travel with the context.</div>
+                </div>
+                <div class="context-receipt"><span class="receipt-icon" aria-hidden="true">↳</span><div><strong>Tenant context follows the query.</strong><span>Identity → membership → context → query</span></div><span class="receipt-check" aria-hidden="true">✓</span></div>
+            </div>
+        </div>
+    </section>
 
-<h2>What to try</h2>
+    <section class="toolkit section-pad" aria-labelledby="toolkit-title">
+        <div class="landing-shell">
+            <div class="section-heading"><h2 id="toolkit-title">Add the parts your app needs.</h2><p>Use the packages you need with your existing UI,<br class="desktop-break" /> identity provider, and Databricks workspace.</p></div>
+            <div class="toolkit-grid">
+                <article><span class="feature-icon icon-data" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m7 6-5 6 5 6m10-12 5 6-5 6M14 4l-4 16" /></svg></span><h3>Tenant-scoped data.</h3><p>Tenant-scoped SQL, typed parameters, raw-data queries, and bounded CSV exports.</p><a class="text-link" href="https://github.com/ivanvyd/LakeWright.NET/blob/main/docs/guides/getting-started.md">Build your first query <span aria-hidden="true">↗</span></a></article>
+                <article><span class="feature-icon icon-jobs" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 10a8 8 0 1 0-2 8M20 4v6h-6M12 7v5l3 2" /></svg></span><h3>Durable operations.</h3><p>Durable operations with idempotent starts, ownership checks, and polling that resumes after a restart.</p><a class="text-link" href="https://github.com/ivanvyd/LakeWright.NET/blob/main/docs/planning/03-architecture.md">Follow an operation <span aria-hidden="true">↗</span></a></article>
+                <article><span class="feature-icon icon-insights" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 7v4m-2 2-4 4m8-4 4 4" /><circle cx="12" cy="4" r="3" /><circle cx="12" cy="13" r="2" /><circle cx="4" cy="19" r="3" /><circle cx="20" cy="19" r="3" /></svg></span><h3>Embedded analytics and AI.</h3><p>Scoped AI/BI dashboard tokens, tenant-mapped Genie conversations, and model serving through <code>IChatClient</code>.</p><a class="text-link" href="https://github.com/ivanvyd/LakeWright.NET/tree/main/docs">Explore the modules <span aria-hidden="true">↗</span></a></article>
+            </div>
+        </div>
+    </section>
 
-<p>
-    Sign in as Alice and start an operation. Sign in as Bob and open the same operation's address:
-    you get <strong>404, not 403</strong>. A 403 would confirm the operation exists, which is a
-    smaller leak than reading it but a leak all the same. Bob is not a member of Acme, so the tenant
-    never resolves and the request stops before authorization is consulted.
-</p>
+    <section class="product-proof section-pad" id="proof" aria-labelledby="proof-title" data-boundary-lab>
+        <div class="landing-shell proof-grid">
+            <div class="section-copy proof-copy">
+                <h2 id="proof-title">See tenant isolation<br />in Signalboard.</h2>
+                <p>Run the Blazor sample with two organizations and three identities. Switch users to check the same operation from another tenant.</p>
+                <div class="persona-tabs" role="tablist" aria-label="Explore the Signalboard sample" aria-orientation="vertical">
+                    <button id="persona-alice" type="button" role="tab" aria-selected="true" aria-controls="trace-alice" tabindex="0" data-boundary-tab><span class="person-avatar avatar-acme">A</span><span><strong>Alice</strong><small>Acme · Admin</small></span><span class="persona-result">Can start work <b aria-hidden="true">↗</b></span></button>
+                    <button id="persona-vera" type="button" role="tab" aria-selected="false" aria-controls="trace-vera" tabindex="-1" data-boundary-tab><span class="person-avatar avatar-viewer">V</span><span><strong>Vera</strong><small>Acme · Viewer</small></span><span class="persona-result">Writes get 403 <b aria-hidden="true">↗</b></span></button>
+                    <button id="persona-bob" type="button" role="tab" aria-selected="false" aria-controls="trace-bob" tabindex="-1" data-boundary-tab><span class="person-avatar avatar-globex">B</span><span><strong>Bob</strong><small>Globex · Admin</small></span><span class="persona-result">Acme reads get 404 <b aria-hidden="true">↗</b></span></button>
+                </div>
+                <a class="text-link" href="#run">Run the sample yourself <span aria-hidden="true">→</span></a>
+            </div>
+            <div class="sample-viewer">
+                <div class="sample-bar"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>Signalboard / repository captures</span><span class="sample-badge">BLAZOR</span></div>
+                <div id="trace-alice" class="sample-panel" role="tabpanel" aria-labelledby="persona-alice" tabindex="0">
+                    <div class="product-frame" tabindex="0" role="region" aria-label="Scrollable Signalboard screenshot"><img src="/images/signalboard-dashboard.png" width="2560" height="2500" loading="lazy" decoding="async" alt="The real Signalboard dashboard: Alice sees Acme Logistics operations and an enabled Start button." /></div>
+                    <div class="sample-caption"><span><i class="result-dot dot-acme"></i> Acme operations, scoped to Alice’s membership.</span><a href="/images/signalboard-dashboard.png" target="_blank" rel="noopener">Full capture <span class="visually-hidden">(opens in a new tab)</span> <span aria-hidden="true">↗</span></a></div>
+                </div>
+                <div id="trace-vera" class="sample-panel" role="tabpanel" aria-labelledby="persona-vera" tabindex="0" hidden>
+                    <div class="product-frame" tabindex="0" role="region" aria-label="Scrollable Signalboard screenshot"><img src="/images/signalboard-viewer-denied.png" width="2560" height="2500" loading="lazy" decoding="async" alt="The real Signalboard Viewer view: Vera can see Acme work but the Start button is disabled with a permission explanation." /></div>
+                    <div class="sample-caption"><span><i class="result-dot dot-viewer"></i> Same tenant. Reading allowed, writing refused.</span><a href="/images/signalboard-viewer-denied.png" target="_blank" rel="noopener">Full capture <span class="visually-hidden">(opens in a new tab)</span> <span aria-hidden="true">↗</span></a></div>
+                </div>
+                <div id="trace-bob" class="sample-panel" role="tabpanel" aria-labelledby="persona-bob" tabindex="0" hidden>
+                    <div class="product-frame" tabindex="0" role="region" aria-label="Scrollable Signalboard screenshot"><img src="/images/signalboard-other-tenant.png" width="2560" height="1600" loading="lazy" decoding="async" alt="The real Signalboard Globex dashboard: Bob sees no Acme operations." /></div>
+                    <div class="sample-caption"><span><i class="result-dot dot-globex"></i> Acme’s operation returns 404 to Bob.</span><a href="/images/signalboard-other-tenant.png" target="_blank" rel="noopener">Full capture <span class="visually-hidden">(opens in a new tab)</span> <span aria-hidden="true">↗</span></a></div>
+                </div>
+            </div>
+            <p class="sample-note">The sample’s identity picker and <code>X-Demo-User</code> header are for local use. Use real OIDC in your app. Without a Databricks workspace, jobs stay Pending. <a href="https://github.com/ivanvyd/LakeWright.NET/blob/main/samples/Signalboard/README.md">Read the sample’s scope ↗</a></p>
+        </div>
+    </section>
 
-<p>
-    Then sign in as Vera. She is a member of Acme, so the tenant resolves and she can read. Starting
-    work gets her a 403, because a Viewer is below the role that endpoint requires. Two denials, two
-    status codes, two different reasons.
-</p>
+    <section class="quickstart section-pad" id="run" aria-labelledby="run-title">
+        <div class="landing-shell quickstart-grid">
+            <div class="section-copy">
+                <h2 id="run-title">Your first two tenants<br />are three commands away.</h2>
+                <p>Run Signalboard with Docker. It builds the app, starts PostgreSQL, and seeds both organizations.</p>
+                <ul class="requirements"><li><span aria-hidden="true">✓</span> No .NET SDK to install</li><li><span aria-hidden="true">✓</span> No Databricks account required</li></ul>
+                <p class="next-step">Then open <a href="http://localhost:8080">localhost:8080</a>, sign in as Alice, and try again as Bob.</p>
+            </div>
+            <div class="install-stack">
+                <div class="terminal-window code-window">
+                    <div class="code-titlebar"><span><span class="terminal-icon" aria-hidden="true">&gt;_</span> Run Signalboard</span><button type="button" class="copy-button" data-copy-target="quickstart-code" data-copy-status="copy-status" aria-label="Copy Signalboard setup commands">Copy commands</button></div>
+                    <pre id="quickstart-code" tabindex="0"><code>git clone https://github.com/ivanvyd/LakeWright.NET
+cd LakeWright.NET/samples/Signalboard
+docker compose up</code></pre>
+                    <div class="terminal-footer"><span class="live-dot"></span> App + PostgreSQL + seeded tenants</div>
+                    <span id="copy-status" class="visually-hidden" role="status" aria-live="polite"></span>
+                </div>
+                <div class="package-install"><div><strong>Already have an application?</strong><a href="https://www.nuget.org/packages/LakeWright.AspNetCore/2.0.0/">NuGet v2.0.0 ↗</a></div><code tabindex="0">dotnet add package LakeWright.AspNetCore --version 2.0.0</code><p>Add <code>LakeWright.Databricks</code> when your process executes SQL or jobs.</p></div>
+            </div>
+        </div>
+    </section>
 
-<h2>The same thing from a terminal</h2>
+    <section class="open-source" id="docs" aria-labelledby="community-title">
+        <div class="landing-shell community-panel" data-ambient-region>
+            <LakeCurrent />
+            <div class="community-copy"><h2 id="community-title">Help improve<br />LakeWright.</h2><p>Report a bug, review an isolation decision, or propose a change. Open an issue before starting substantial work.</p><div class="community-actions"><a class="button button-primary" href="https://github.com/ivanvyd/LakeWright.NET">Star on GitHub <span aria-hidden="true">☆</span></a><a class="text-link" href="https://github.com/ivanvyd/LakeWright.NET/blob/main/CONTRIBUTING.md">Start contributing <span aria-hidden="true">↗</span></a></div></div>
+            <nav class="docs-list" aria-label="Go deeper"><a href="https://github.com/ivanvyd/LakeWright.NET/tree/main/docs"><span><strong>Read the documentation</strong><small>Guides, modules, and architecture decisions.</small></span><b aria-hidden="true">↗</b></a><a href="https://github.com/ivanvyd/LakeWright.NET/blob/main/docs/compatibility.md"><span><strong>Check compatibility</strong><small>Tested versions and known limitations.</small></span><b aria-hidden="true">↗</b></a><a href="https://github.com/ivanvyd/LakeWright.NET/blob/main/docs/security/threat-model.md"><span><strong>Inspect the threat model</strong><small>The boundaries, and where they stop.</small></span><b aria-hidden="true">↗</b></a><a href="https://github.com/ivanvyd/LakeWright.NET/issues/new/choose"><span><strong>Open an issue</strong><small>Discuss a bug or proposed change.</small></span><b aria-hidden="true">↗</b></a></nav>
+        </div>
+    </section>
+</article>
 
-<p>
-    The HTTP API is the same one the dashboard uses. Authenticate with a header instead of a cookie:
-</p>
-
-<pre><code>curl -i -X POST http://localhost:8080/organizations/@(DemoTenants.Acme.Value)/operations \
-  -H "X-Demo-User: @DemoTenants.Alice" \
-  -H "Idempotency-Key: $(uuidgen)" \
-  -H "Content-Type: application/json" \
-  -d '{"kind":"analysis"}'</code></pre>
-
-<p>
-    Send the same <code>Idempotency-Key</code> twice and you get the same operation back rather than
-    a second Databricks run. Reuse it with a different <code>kind</code> and you get 422, because
-    answering with the stored operation would answer a question you did not ask.
-</p>
-
-<p>
-    Read <a href="/openapi/v1.json">the OpenAPI document</a> for the rest.
-</p>
-
-<h2>What is not real here</h2>
-
-<p>
-    Authentication. Signing in picks a name from a list and trusts it, so that the sample runs with
-    one container and no identity provider. That is safe to demonstrate with precisely because
-    isolation does not depend on it: membership is read from the database on every request, so
-    claiming to be Bob gets you Bob's access and nothing more.
-</p>
-
-<p>
-    Without a Databricks workspace configured no worker starts, so operations stay
-    <code>Pending</code>. Nothing here fakes a run.
-</p>
+@code {
+    private string SocialImageUrl => new Uri(new Uri(Navigation.BaseUri), "images/lakewright-social-preview.png").AbsoluteUri;
+}

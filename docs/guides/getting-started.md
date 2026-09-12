@@ -143,12 +143,32 @@ fresh read proves another replica wrote the exact same marker. It publishes with
 that credential model is an intentional, reviewed part of the dashboard deployment.
 
 `IDashboardPublishVerifier.HasUnpublishedChangesAsync` compares the draft's `update_time` with
-the published revision timestamp and caches that inexpensive metadata check briefly. The public
-Lakeview API does not return serialized SQL from its published-dashboard endpoint, so
-`VerifyServedRevisionAsync` deliberately reports that verification is unavailable until the host
-adds an `IPublishedDashboardDefinitionReader` for an authoritative published artifact. Register
-`PublishedRevisionEmbedPrecondition` with the token broker only when that reader is present; it
-then fails minting closed until `DashboardPublishGate` passes on the proved served definition.
+the published revision timestamp and caches that inexpensive metadata check briefly. It is not an
+isolation check. `DashboardMarkerLint` only reports executable `__aibi_external_value` references;
+it cannot prove that every tenant-owned relation is constrained.
+
+Before exposing an embed-token endpoint, implement `ITenantDashboardAssignment` over the host's
+trusted assignment store, `IPublishedDashboardDefinitionReader` over the served deployment artifact,
+and `IPublishedDashboardIsolationEvidenceReader` over a source-owned query-template, parsed-query,
+or lineage verifier. Register `PublishedRevisionEmbedPrecondition` with both the verifier and the
+assignment resolver. It compares the evidence dashboard id, revision timestamp, and SHA-256 digest
+with the served definition and platform revision, then fails closed before token exchange if any
+proof is absent or stale. Do not substitute a dashboard folder, workspace catalog result, draft
+definition, or browser-supplied dashboard id for assignment or isolation evidence. See
+[ADR 0028](../decisions/0028-revision-bound-dashboard-isolation-evidence.md).
+
+The host registration is explicit because only the host owns its assignment data and deployment
+proof:
+
+```csharp
+builder.Services.AddSingleton<ITenantDashboardAssignment, ApplicationDashboardAssignment>();
+builder.Services.AddSingleton<IPublishedDashboardDefinitionReader, DeploymentArtifactReader>();
+builder.Services.AddSingleton<IPublishedDashboardIsolationEvidenceReader, DeploymentIsolationEvidenceReader>();
+builder.Services.AddSingleton<IEmbedPrecondition>(services =>
+    new PublishedRevisionEmbedPrecondition(
+        services.GetRequiredService<IDashboardPublishVerifier>(),
+        services.GetRequiredService<ITenantDashboardAssignment>()));
+```
 
 `IDashboardMetadataCatalog` is the operations-only read surface for portal administration. It
 reads draft and published metadata by opaque dashboard id and walks every page for `ListAllAsync`.

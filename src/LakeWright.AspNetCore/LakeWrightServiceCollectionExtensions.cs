@@ -99,6 +99,7 @@ public static class LakeWrightServiceCollectionExtensions
 
         services.AddOptions<OperationWorkerOptions>()
             .Bind(configuration.GetSection(OperationWorkerOptions.SectionName))
+            .Validate(options => options.MaxConcurrentOperations > 0, "OperationWorker:MaxConcurrentOperations must be positive.")
             .ValidateOnStart();
 
         services.TryAddSingletonTimeProvider();

@@ -1,6 +1,7 @@
 using LakeWright.Core.Tenancy;
 using LakeWright.Databricks;
 using Microsoft.Azure.Databricks.Client.Models;
+using Microsoft.Extensions.Time.Testing;
 
 namespace LakeWright.TenantIsolation.Tests;
 
@@ -36,7 +37,8 @@ public sealed class StatementExecutionTests
     public async Task A_statement_that_outlives_its_budget_has_a_distinct_exception()
     {
         var session = new SequencedSession(new StatementOutcome.Pending("statement-1"));
-        var executor = new DatabricksStatementExecutor(session, new DatabricksOptions { WarehouseId = "warehouse" });
+        var time = new FakeTimeProvider();
+        var executor = new DatabricksStatementExecutor(session, new DatabricksOptions { WarehouseId = "warehouse" }, time);
         var statement = TenantScopedStatement.Create(
             TenantContextFactory.ForTenant(TenantId.New(), "analytics"),
             "SELECT 1",
@@ -46,8 +48,9 @@ public sealed class StatementExecutionTests
                 TotalBudget = TimeSpan.FromMilliseconds(10),
             });
 
-        var error = await Should.ThrowAsync<StatementBudgetExceededException>(() =>
-            executor.ExecuteAsync(statement, TestContext.Current.CancellationToken));
+        var pending = executor.ExecuteAsync(statement, TestContext.Current.CancellationToken);
+        time.Advance(TimeSpan.FromMilliseconds(10));
+        var error = await Should.ThrowAsync<StatementBudgetExceededException>(() => pending);
 
         error.StatementId.ShouldBe("statement-1");
     }

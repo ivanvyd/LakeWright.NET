@@ -132,9 +132,8 @@ jobs:
       # transitive package ships while the bump PR waits for review.
       - name: Fail on vulnerable packages
         run: |
-          dotnet list package --vulnerable --include-transitive 2>&1 | tee vuln.txt
-          grep -q -E '>\s+\S+\s+\S+\s+\S+\s+(Moderate|High|Critical)' vuln.txt && exit 1
-          echo "no moderate-or-higher advisories"
+          python3 scripts/test-vulnerabilities.py
+          python3 scripts/check-vulnerabilities.py --output vulnerabilities.json
 
   test:
     needs: confidentiality-preflight
@@ -173,33 +172,22 @@ jobs:
           global-json-file: global.json
       - run: dotnet restore --locked-mode
       - name: Pack the candidate packages
-        run: dotnet pack LakeWright.slnx -c Release -o consumer-floor-packages -p:Version=1.1.2-ci.0
+        run: dotnet pack LakeWright.slnx -c Release -o consumer-floor-packages -p:Version=2.0.1-ci.0
       - name: Verify every packed package has a publication order
         run: |
-          python3 scripts/package-publish-order.py consumer-floor-packages 1.1.2-ci.0 > consumer-floor-packages/publish-order.txt
-          packed=$(find consumer-floor-packages -maxdepth 1 -type f -name '*.1.1.2-ci.0.nupkg' | wc -l)
+          python3 scripts/package-publish-order.py consumer-floor-packages 2.0.1-ci.0 > consumer-floor-packages/publish-order.txt
+          packed=$(find consumer-floor-packages -maxdepth 1 -type f -name '*.2.0.1-ci.0.nupkg' | wc -l)
           ordered=$(wc -l < consumer-floor-packages/publish-order.txt)
           test "$packed" -eq "$ordered"
-      - name: Run the net8 consumer floor
-        run: |
-          dotnet run --project tests/consumer-floor/consumer-floor.csproj \
-            -p:LakeWrightVersion=1.1.2-ci.0 \
-            -p:RestoreAdditionalProjectSources="$GITHUB_WORKSPACE/consumer-floor-packages"
-          command -v grep >/dev/null || {
-            echo "::error title=Consumer floor assertion unavailable::grep is required to enforce the persistence dependency boundary."
-            exit 1
-          }
-          if grep -Eiq 'EntityFramework|Npgsql|PostgreSQL' tests/consumer-floor/obj/project.assets.json; then
-              echo "::error title=Consumer floor leaked persistence dependencies::The net8 Embedding and Databricks path must not acquire EF Core, Npgsql, or PostgreSQL."
-            exit 1
-          fi
       - name: Exercise the packaged local verification tool
         run: |
           dotnet tool install --tool-path .lakewright-tool \
             --add-source "$GITHUB_WORKSPACE/consumer-floor-packages" \
-            LakeWright.Tooling --version 1.1.2-ci.0
+            LakeWright.Tooling --version 2.0.1-ci.0
           .lakewright-tool/lakewright inspect-dashboard tests/assets/tooling-safe-dashboard.lvdash.json
-          .lakewright-tool/lakewright verify-floor "$GITHUB_WORKSPACE/consumer-floor-packages" 1.1.2-ci.0
+          python3 scripts/test-consumer-floor.py .lakewright-tool/lakewright
+          .lakewright-tool/lakewright verify-floor "$GITHUB_WORKSPACE/consumer-floor-packages" 2.0.1-ci.0
+          python3 scripts/test-incompatible-consumer.py .lakewright-tool/lakewright "$GITHUB_WORKSPACE/consumer-floor-packages" 2.0.1-ci.0
 
   docs:
     needs: confidentiality-preflight
@@ -242,7 +230,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: databricks/setup-cli@602f285bac0c85e5985bf4c16d5a2befed0578d9 # v1.14.1
+      - uses: databricks/setup-cli@1c6cdbb6ac593995df697192e7f91d9d111cac19 # v1.15.0
       # `bundle validate` resolves against a live workspace, so it needs credentials
       # that a fork PR must never receive. Forks get schema validation only; a
       # maintainer runs the authenticated validation before merge.

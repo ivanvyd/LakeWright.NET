@@ -246,19 +246,24 @@ internal sealed class DatabricksJobsApi(
             ?? (state.ValueKind == JsonValueKind.Object && state.TryGetProperty("termination_details", out var termination)
                 ? ReadString(termination, "code")
                 : null);
-        // Databricks state_message can include a SQL fragment or user-supplied parameter values.
-        // Preserve a safe summary for portal callers; operators can inspect the workspace run.
-        failureReason = result is "SUCCESS" or null ? null : "The job run reported a terminal failure.";
-
-        return lifecycle switch
+        var mapped = lifecycle switch
         {
             "PENDING" or "QUEUED" or "BLOCKED" or "WAITING" => RefreshRunState.Queued,
             "RUNNING" or "TERMINATING" => RefreshRunState.Running,
             "TERMINATED" when result is "SUCCESS" => RefreshRunState.Succeeded,
-            "TERMINATED" when result is "CANCELED" or "CANCELLED" => RefreshRunState.Cancelled,
+            "TERMINATED" when result is "CANCELED" or "CANCELLED" or "USER_CANCELED" => RefreshRunState.Cancelled,
             "TERMINATED" => RefreshRunState.Failed,
             _ => RefreshRunState.Running,
         };
+
+        // Databricks state_message can include a SQL fragment or user-supplied parameter values.
+        // Expose a stable summary only for terminal failures; cancellation is an intentional state,
+        // not a failed refresh, and unknown upstream values remain non-terminal until understood.
+        failureReason = mapped == RefreshRunState.Failed
+            ? "The job run reported a terminal failure."
+            : null;
+
+        return mapped;
     }
 
     private static string? ReadString(JsonElement element, string propertyName) =>

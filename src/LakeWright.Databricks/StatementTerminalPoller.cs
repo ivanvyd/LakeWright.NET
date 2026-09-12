@@ -32,6 +32,10 @@ internal sealed class StatementTerminalPoller(
 
                 var delay = execution.PollInterval < remaining ? execution.PollInterval : remaining;
                 await Task.Delay(delay, time, cancellationToken).ConfigureAwait(false);
+                if (time.GetUtcNow() - startedAt >= execution.TotalBudget)
+                {
+                    throw new StatementBudgetExceededException(pending.StatementId, execution.TotalBudget);
+                }
                 outcome = await session.GetAsync(tenant.TenantId, pending.StatementId, cancellationToken).ConfigureAwait(false);
             }
 

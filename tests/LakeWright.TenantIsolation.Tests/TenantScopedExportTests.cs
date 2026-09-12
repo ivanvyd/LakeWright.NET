@@ -16,9 +16,8 @@ namespace LakeWright.TenantIsolation.Tests;
 /// <remarks>
 /// <para>
 /// The unit tests in this file exercise the export's chunk-fetch path against a fake
-/// presigned server. The fake mirrors the workspace's chunk shape — a JSON envelope
-/// carrying a <c>data_array</c> — so the parser is tested with the same payload format
-/// the real warehouse returns.
+/// presigned server. Fixtures follow the documented external JSON_ARRAY root array.
+/// They verify the local parser; they are not live-workspace evidence.
 /// </para>
 /// <para>
 /// The Databricks client itself is exercised by <c>LiveDatabricksTests</c>, which need
@@ -50,7 +49,7 @@ public class TenantScopedExportTests : IDisposable
         StubStatementExecution(
             chunks: [$"{_chunks.Urls[0]}/chunk-0.json"],
             columns: ["id", "name"]);
-        StubChunk("""{"data_array":[[1,"alpha"],[2,"beta"]]}""");
+        StubChunk("""[["1","alpha"],["2","beta"]]""");
 
         var export = NewExport();
 
@@ -79,12 +78,12 @@ public class TenantScopedExportTests : IDisposable
             .Given(Request.Create().WithPath("/chunk-0.json").UsingGet())
             .RespondWith(Response.Create()
                 .WithHeader("Content-Type", "application/json")
-                .WithBody("""{"data_array":[[1],[2]]}"""));
+                .WithBody("""[["1"],["2"]]"""));
         _chunks
             .Given(Request.Create().WithPath("/chunk-1.json").UsingGet())
             .RespondWith(Response.Create()
                 .WithHeader("Content-Type", "application/json")
-                .WithBody("""{"data_array":[[3],[4]]}"""));
+                .WithBody("""[["3"],["4"]]"""));
 
         var export = NewExport();
 
@@ -109,7 +108,7 @@ public class TenantScopedExportTests : IDisposable
         StubStatementExecution(
             chunks: [$"{_chunks.Urls[0]}/chunk-0.json"],
             columns: ["id", "note"]);
-        StubChunk("""{"data_array":[[1,null],[2,"x"]]}""");
+        StubChunk("""[["1",null],["2","x"]]""");
 
         var export = NewExport();
 
@@ -127,10 +126,8 @@ public class TenantScopedExportTests : IDisposable
     }
 
     [Fact]
-    public async Task The_export_handles_a_chunk_without_data_array_as_empty()
+    public async Task The_export_rejects_an_object_envelope_instead_of_silently_returning_empty_data()
     {
-        // Arrange — the chunk envelope can be missing the data_array key (e.g. an empty
-        // chunk). The export must not crash.
         StubStatementExecution(
             chunks: [$"{_chunks.Urls[0]}/chunk-0.json"],
             columns: ["id"]);
@@ -139,15 +136,10 @@ public class TenantScopedExportTests : IDisposable
         var export = NewExport();
 
         // Act
-        var rows = new List<ExportRow>();
-        await foreach (var row in export.StreamAsync(SampleStatement(), TestContext.Current.CancellationToken))
+        await Should.ThrowAsync<System.Text.Json.JsonException>(async () =>
         {
-            rows.Add(row);
-        }
-
-        // Assert — header only.
-        rows.Count.ShouldBe(1);
-        rows[0].Column.ShouldNotBeNull();
+            await foreach (var row in export.StreamAsync(SampleStatement(), TestContext.Current.CancellationToken)) { }
+        });
     }
 
     [Fact]
@@ -155,8 +147,8 @@ public class TenantScopedExportTests : IDisposable
     {
         StubStatementExecution(
             chunks: [$"{_chunks.Urls[0]}/chunk-0.json"],
-            columns: ["id"]);
-        StubChunk("""{"data_array":[]}""");
+            columns: ["id"], rowsPerChunk: 0);
+        StubChunk("""[]""");
 
         var export = NewExport();
 
@@ -175,13 +167,11 @@ public class TenantScopedExportTests : IDisposable
     [Fact]
     public async Task The_export_propagates_typed_cell_values_as_strings()
     {
-        // Arrange — booleans and numbers come back as their JSON forms. The export is
-        // string-typed because the goal is a stream of CSV-shaped rows; the caller
-        // knows which columns are numbers from the header.
+        // The external JSON_ARRAY contract renders every non-null cell as a string.
         StubStatementExecution(
             chunks: [$"{_chunks.Urls[0]}/chunk-0.json"],
             columns: ["ok", "n"]);
-        StubChunk("""{"data_array":[[true,42],[false,0]]}""");
+        StubChunk("""[["true","42"],["false","0"]]""");
 
         var export = NewExport();
 
@@ -248,7 +238,7 @@ public class TenantScopedExportTests : IDisposable
     [Fact]
     public async Task A_pending_export_is_polled_to_external_links_within_its_budget()
     {
-        StubChunk("""{"data_array":[[1]]}""");
+        StubChunk("""[["1"]]""");
         var session = new SequencedSession(
             new StatementOutcome.Pending("statement-1"),
             new StatementOutcome.LargeResult(
@@ -283,7 +273,7 @@ public class TenantScopedExportTests : IDisposable
         StubStatementExecution(
             chunks: [$"{_chunks.Urls[0]}/chunk-0.json"],
             columns: ["id"]);
-        StubChunk("""{"data_array":[[1],[2]]}""");
+        StubChunk("""[["1"],["2"]]""");
         var measurements = new List<(string Name, long Value)>();
         using var listener = new MeterListener();
         listener.InstrumentPublished = (instrument, meterListener) =>
@@ -310,12 +300,13 @@ public class TenantScopedExportTests : IDisposable
             .Sum(measurement => measurement.Value).ShouldBeGreaterThan(0);
     }
 
-    private void StubStatementExecution(IReadOnlyList<string> chunks, IReadOnlyList<string> columns)
+    private void StubStatementExecution(IReadOnlyList<string> chunks, IReadOnlyList<string> columns, long rowsPerChunk = 2)
     {
         var manifest = new
         {
             schema = new { columns = columns.Select(c => new { name = c }).ToArray() },
-            total_row_count = 0L,
+            total_row_count = rowsPerChunk * chunks.Count,
+            total_chunk_count = chunks.Count,
             truncated = false
         };
         var result = new
@@ -324,7 +315,8 @@ public class TenantScopedExportTests : IDisposable
             {
                 external_link = uri,
                 chunk_index = i,
-                row_count = 0L,
+                row_count = rowsPerChunk,
+                row_offset = rowsPerChunk * i,
                 byte_count = 0L
             }).ToArray()
         };

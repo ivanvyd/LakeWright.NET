@@ -100,6 +100,53 @@ public sealed class DashboardRefresherTests
         run.TenantId.ShouldBe(FirstTenant.TenantId.ToString());
     }
 
+    [Theory]
+    [InlineData("CANCELED")]
+    [InlineData("CANCELLED")]
+    [InlineData("USER_CANCELED")]
+    public void Maps_terminal_cancellation_codes_without_a_failure_reason(string cancellationCode)
+    {
+        var json = $"{{\"run_id\":17,\"job_id\":42,\"status\":{{\"state\":\"TERMINATED\",\"termination_details\":{{\"code\":\"{cancellationCode}\"}}}},\"tasks\":[{{\"task_key\":\"refresh\",\"status\":{{\"state\":\"TERMINATED\",\"termination_details\":{{\"code\":\"{cancellationCode}\"}}}}}}]}}";
+        using var document = JsonDocument.Parse(json);
+
+        var run = DatabricksJobsApi.ParseRun(document.RootElement);
+
+        run.State.ShouldBe(RefreshRunState.Cancelled);
+        run.FailureReason.ShouldBeNull();
+        run.Tasks.Single().State.ShouldBe(RefreshRunState.Cancelled);
+        run.Tasks.Single().FailureReason.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("SUCCESS", RefreshRunState.Succeeded, null)]
+    [InlineData("SUCCESS_WITH_FAILURES", RefreshRunState.Failed, "The job run reported a terminal failure.")]
+    [InlineData(null, RefreshRunState.Failed, "The job run reported a terminal failure.")]
+    [InlineData("A_FUTURE_RESULT", RefreshRunState.Failed, "The job run reported a terminal failure.")]
+    public void Maps_terminal_and_future_result_codes_to_safe_public_summaries(
+        string? resultCode,
+        RefreshRunState expectedState,
+        string? expectedReason)
+    {
+        var detail = resultCode is null ? string.Empty : $",\"termination_details\":{{\"code\":\"{resultCode}\"}}";
+        using var document = JsonDocument.Parse($"{{\"run_id\":17,\"status\":{{\"state\":\"TERMINATED\"{detail}}}}}");
+
+        var run = DatabricksJobsApi.ParseRun(document.RootElement);
+
+        run.State.ShouldBe(expectedState);
+        run.FailureReason.ShouldBe(expectedReason);
+    }
+
+    [Fact]
+    public void Keeps_unknown_nonterminal_lifecycle_states_running_until_the_contract_is_understood()
+    {
+        using var document = JsonDocument.Parse("""{"run_id":17,"status":{"state":"A_FUTURE_LIFECYCLE","termination_details":{"code":"SUCCESS"}}}""");
+
+        var run = DatabricksJobsApi.ParseRun(document.RootElement);
+
+        run.State.ShouldBe(RefreshRunState.Running);
+        run.FailureReason.ShouldBeNull();
+    }
+
     private static DashboardRefresher Refresher(FakeJobsApi api, IRefreshRunOwnership? ownership = null) => new(
         api,
         Options.Create(new DashboardRefreshOptions

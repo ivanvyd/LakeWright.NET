@@ -7,14 +7,14 @@ namespace Lakewright.LoadHarness;
 /// harness run.
 /// </summary>
 /// <remarks>
-/// Reads <c>pg_stat_activity</c> every second. Postgres exposes the live connection count via
-/// the total in this view. The harness compares the peak against the SLO. One query per second
-/// against a 17-alpine container is sub-millisecond and adds nothing measurable to the test.
+/// Reads <c>pg_stat_activity</c> every second. Postgres exposes the server-wide client connection
+/// count via this view; this is not Npgsql pool occupancy.
 /// </remarks>
 public sealed class PostgresSampler : IAsyncDisposable
 {
     private readonly string _connectionString;
     private readonly ConcurrentQueue<int> _samples = new();
+    private int _failures;
     private CancellationTokenSource? _cts;
     private Task? _loop;
 
@@ -31,10 +31,14 @@ public sealed class PostgresSampler : IAsyncDisposable
         await Task.Delay(50);
     }
 
-    public async Task<int> PeakSinceStartAsync()
+    public async Task<SamplerResult> PeakSinceStartAsync()
     {
         await StopAsync();
-        return _samples.DefaultIfEmpty(0).Max();
+        var samples = _samples.ToArray();
+        return new SamplerResult(
+            samples.Length == 0 ? null : samples.Max(),
+            samples.Length,
+            Volatile.Read(ref _failures));
     }
 
     private async Task RunLoop(CancellationToken ct)
@@ -50,9 +54,9 @@ public sealed class PostgresSampler : IAsyncDisposable
                 var count = Convert.ToInt32(await cmd.ExecuteScalarAsync(ct));
                 _samples.Enqueue(count);
             }
-            catch
+            catch (Exception) when (!ct.IsCancellationRequested)
             {
-                // Don't let a transient read fail the harness.
+                Interlocked.Increment(ref _failures);
             }
             try { await Task.Delay(TimeSpan.FromSeconds(1), ct); }
             catch (TaskCanceledException) { return; }
@@ -74,3 +78,6 @@ public sealed class PostgresSampler : IAsyncDisposable
 
     public async ValueTask DisposeAsync() => await StopAsync();
 }
+
+/// <summary>Sampler coverage; a missing peak is unavailable, never zero.</summary>
+public sealed record SamplerResult(int? PeakConnections, int SampleCount, int FailureCount);

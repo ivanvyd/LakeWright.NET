@@ -21,6 +21,58 @@ public class DatabricksBillingUsageReaderTests
         DateTimeOffset.Parse("2026-09-01T00:00:00Z", null);
 
     [Fact]
+    public async Task Billing_consumes_all_inline_result_chunks_before_attributing_cost()
+    {
+        var first = Success([["11", "1", "USD", "2"]]) with
+        {
+            TotalRowCount = 2,
+            TotalChunkCount = 2,
+            FirstChunk = new StatementExecutionResultChunk
+            {
+                DataArray = [["11", "1", "USD", "2"]],
+                RowCount = 1,
+                NextChunkIndex = 1,
+            },
+        };
+        var session = new StubStatementSession(first)
+        {
+            ResultChunk = new StatementExecutionResultChunk
+            {
+                ChunkIndex = 1,
+                RowOffset = 1,
+                RowCount = 1,
+                DataArray = [["22", "3", "USD", "6"]],
+            },
+        };
+        using var reader = Reader(session);
+        var rows = await reader.ReadAsync(Acme(), From, Until, [11, 22], TestContext.Current.CancellationToken);
+        rows.Count.ShouldBe(2);
+        session.RequestedChunks.ShouldBe([1]);
+    }
+
+    [Fact]
+    public async Task Billing_chunk_reads_share_the_original_deadline()
+    {
+        var time = new FakeTimeProvider(Until);
+        var first = Success([["11", "1", "USD", "2"]]) with
+        {
+            TotalRowCount = 2,
+            FirstChunk = new StatementExecutionResultChunk
+            {
+                DataArray = [["11", "1", "USD", "2"]],
+                RowCount = 1,
+                NextChunkIndex = 1,
+            },
+        };
+        var session = new StubStatementSession(first) { BlockChunkUntilCancelled = true };
+        using var reader = Reader(session, time, pollingTimeoutSeconds: 1);
+        var read = reader.ReadAsync(Acme(), From, Until, [11, 22], TestContext.Current.CancellationToken);
+        await session.FirstChunkStarted.Task.WaitAsync(TestContext.Current.CancellationToken);
+        time.Advance(TimeSpan.FromSeconds(1));
+        (await Should.ThrowAsync<BillingUsageException>(() => read)).Code.ShouldBe("POLL_TIMEOUT");
+    }
+
+    [Fact]
     public async Task ReadAsync_binds_workspace_run_and_window_values()
     {
         var session = new StubStatementSession(Success([]));
@@ -516,6 +568,18 @@ public class DatabricksBillingUsageReaderTests
         public Exception? CancelException { get; init; }
         public bool BlockPollUntilCancelled { get; init; }
         public Task FirstPollStarted => _firstPollStarted.Task;
+        public StatementExecutionResultChunk? ResultChunk { get; init; }
+        public bool BlockChunkUntilCancelled { get; init; }
+        public TaskCompletionSource FirstChunkStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public List<int> RequestedChunks { get; } = [];
+
+        public async Task<StatementExecutionResultChunk> GetChunkAsync(string statementId, int chunkIndex, CancellationToken cancellationToken)
+        {
+            RequestedChunks.Add(chunkIndex);
+            FirstChunkStarted.TrySetResult();
+            if (BlockChunkUntilCancelled) { await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); }
+            return ResultChunk ?? throw new InvalidOperationException("No result chunk configured.");
+        }
 
         public Task<StatementOutcome> ExecuteAsync(
             SqlStatement request,

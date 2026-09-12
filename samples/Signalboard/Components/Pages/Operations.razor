@@ -7,12 +7,14 @@
 
 <PageTitle>Operations — Signalboard</PageTitle>
 
+<section class="app-page operations-page">
 @if (_view is null)
 {
-    <p>Loading.</p>
+    <p role="status">Loading.</p>
 }
 else
 {
+    <p class="eyebrow"><span>Signalboard / tenant scope</span> Live application flow</p>
     <h1>@_view.Organization</h1>
 
     <p class="scope">
@@ -75,6 +77,7 @@ else
         </p>
     }
 }
+</section>
 
 @code {
     private const string StateKey = nameof(Operations);

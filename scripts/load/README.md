@@ -1,122 +1,92 @@
-# Lakewright.LoadHarness — load harness for Lakewright.NET
+# Load verification
 
-A load harness that drives the kit's sample in-process at a target RPS, captures
-per-endpoint latency percentiles + error rate, samples Postgres connection-pool
-utilisation, and asserts four SLO gates.
+Checked 2026-09-12. The harness records generated traffic, incomplete work, endpoint latency,
+and database sampling evidence. Fast responses alone cannot make an under-delivered run pass.
 
-## Why
+## Profiles
 
-The project's own ROADMAP says "nothing is load-tested." This harness is the first
-piece of that work. It runs against the same `WebApplicationFactory<Program>` + testcontainers
-Postgres path the test suite uses, so it gives a real signal without needing a real
-Databricks workspace.
+The workflow runs the **smoke** profile on PRs, schedule, and manual dispatch: 50 RPS for
+30 seconds. The local **sustained** target is 500 RPS for five minutes. Both use
+`WebApplicationFactory<Program>` and disposable PostgreSQL Testcontainers. They exercise
+ASP.NET Core and PostgreSQL without a Databricks workspace, sockets, TLS, or ingress.
 
-## What it does
+The **loopback** profile drives a running Signalboard through real sockets. It signs in using
+the actual antiforgery form and cookie, and accepts only loopback URLs:
 
-- Brings up a `postgres:17-alpine` container via testcontainers.
-- Boots the sample (`samples/Signalboard`) in-process via `WebApplicationFactory<Program>`.
-- Seeds a configurable number of tenants with one Viewer principal each.
-- Drives N concurrent workers at a target RPS for a configurable duration, alternating
-  between `POST /operations` and `GET /cost` in roughly 80/20.
-- Samples `pg_stat_activity` every second and tracks peak connection count.
-- Computes p50/p95/p99 latency, error rate, and peak pool utilisation.
-- Asserts four SLO gates and exits non-zero on failure.
+```powershell
+pwsh ./scripts/load/run-loopback-network.ps1 -BaseUrl http://127.0.0.1:8080
+```
 
-## SLO gates (defaults)
+This profile explicitly omits the database gate because it has no database sampler. Its
+JSON labels the gate unevaluated. It does not establish remote ingress or production capacity.
 
-| Gate | Default | Override |
-|---|---|---|
-| `POST /operations` p99 | < 500 ms | `--p99-operations` |
-| `GET /cost` p99 | < 200 ms | `--p99-cost` |
-| Combined error rate | < 0.1% | `--error-rate` |
-| Peak Postgres pool utilisation | < 80% | `--pool` |
+## What the in-process profile measures
 
-## How to run
+- A configurable number of seeded tenants with Member principals; traffic targets the first tenant.
+- A synthetic 80/20 mix of operation starts and cost reads, through bounded dispatch workers
+  and an arrival queue.
+- Scheduled, issued, completed, failed, dropped, censored, queued, and in-flight counts.
+  Every arrival must reconcile. Work unfinished at the phase cutoff is censored and fails
+  the accounting gate, even when it is a small fraction of the offered load.
+- Per-endpoint p50/p95/p99 and errors, plus completion/scheduled and actual/requested rates.
+- PostgreSQL client connections sampled once per second, including the sampler. This is
+  server-wide client connections divided by `max_connections`, not Npgsql busy/idle pool slots.
+  The server is started with `-c max_connections=...` and verified with `SHOW max_connections`.
+  The configured Npgsql `MaxPoolSize` is applied to both seed and application connection strings.
+- Sample and sampling-failure counts. A TestServer verdict requires samples and no sampling
+  failures; missing evidence cannot be reported as an observed zero.
+- JSON with options, measurements, verdict, and process CPU time, RSS snapshot, and thread count.
+
+Each run warms up for ten seconds before the timed phase. Database sampling includes warmup.
+Exit zero means every required gate passed; an infrastructure or evidence failure also fails
+the run. CI retains the JSON when a gate fails.
+
+## Run locally
+
+From the repository root:
 
 ```bash
-# From the repo root
-dotnet build scripts/load/Lakewright.LoadHarness/Lakewright.LoadHarness.csproj -c Release
+dotnet restore LakeWright.slnx --locked-mode
+dotnet restore scripts/load/Lakewright.LoadHarness.MechanismTests/Lakewright.LoadHarness.MechanismTests.csproj --locked-mode
+dotnet build scripts/load/Lakewright.LoadHarness/Lakewright.LoadHarness.csproj -c Release --no-restore
 
-# A small smoke run (10s, 50 RPS, very loose SLOs)
 dotnet run --project scripts/load/Lakewright.LoadHarness/Lakewright.LoadHarness.csproj -c Release --no-build -- \
-    --rps=50 --duration=10 \
-    --p99-operations=5000 --p99-cost=2000 \
-    --error-rate=0.5 --pool=0.99
+  --rps=50 --duration=30 --results=artifacts/load-smoke.json
 
-# A production-target run (5 minutes, 500 RPS, the default SLOs)
 dotnet run --project scripts/load/Lakewright.LoadHarness/Lakewright.LoadHarness.csproj -c Release --no-build -- \
-    --rps=500 --duration=300
+  --rps=500 --duration=300 --results=artifacts/load-sustained.json
 ```
 
-All flags:
+Use `--name=value` syntax. Command-line values override their `LW_HARNESS_*` environment
+counterparts; the exact names are in `HarnessOptions.cs`.
 
-| Flag | Default | Description |
+| Flag | Default | Meaning |
 |---|---|---|
-| `--rps` | 500 | Target requests per second |
-| `--duration` | 300 | Run length, seconds |
-| `--connections` | 1024 | HTTP client max connections per endpoint |
-| `--pg-max-connections` | 200 | Postgres `max_connections` on the testcontainer (ADR 0015) |
-| `--pg-pool` | 12 | EF Core / Npgsql per-process pool (ADR 0015) |
-| `--p99-operations` | 500 | SLO gate, /operations POST p99 in ms |
-| `--p99-cost` | 200 | SLO gate, /cost GET p99 in ms |
-| `--error-rate` | 0.001 | SLO gate, combined error rate (0..1) |
-| `--pool` | 0.8 | SLO gate, peak pool utilisation (0..1) |
-| `--pg-image` | postgres:17-alpine | Postgres image to use in testcontainers |
-| `--seed` | 2 | Number of seeded tenants |
+| `--rps` | 500 | Requested arrivals per second |
+| `--duration` | 300 | Main phase seconds |
+| `--connections` | 8 | Maximum requests in flight |
+| `--queue` | 64 | Maximum arrivals waiting for a slot |
+| `--min-achieved` | 0.95 | Minimum completion fraction and actual/requested rate |
+| `--min-samples` | 20 | Minimum completed observations per endpoint |
+| `--pg-max-connections` | 200 | Verified PostgreSQL server limit |
+| `--pg-pool` | 12 | Application Npgsql maximum pool size |
+| `--p99-operations` | 500 | Operation p99 must be below this many milliseconds |
+| `--p99-cost` | 200 | Cost p99 must be below this many milliseconds |
+| `--error-rate` | 0.001 | Failed/dropped arrivals must be below this fraction |
+| `--pool` | 0.8 | Sampled server connection utilisation must be below this fraction |
+| `--pg-image` | postgres:17-alpine | Disposable PostgreSQL image |
+| `--seed` | 2 | Seeded tenant count |
+| `--base-url` | unset | Select loopback socket/cookie profile |
+| `--results` | unset | JSON output path |
 
-Env-var equivalents: `LW_HARNESS_RPS`, `LW_HARNESS_DURATION`, etc. Command-line flags
-override env vars.
+## Interpretation limits
 
-## Known issues (first run)
+These are local regression targets. Neither profile establishes production capacity, a
+month-long availability SLO, multi-host fairness, or restart/chaos behavior. The workload
+accepts operations into the local database; it does not complete real Databricks jobs.
 
-The first end-to-end run came back with a 100% error rate even with the correct
-`X-Demo-User` header and matching memberships. The harness captures and reports
-the error correctly — the SLO gate fires — but the underlying cause is in how the
-sample's auth scheme interacts with the test server. This is a real bug in the
-integration, not in the harness. Track it under "Cost endpoint integration test"
-in the load-harness follow-up work.
-
-### What the diagnostic showed (commit-time investigation)
-
-With the harness seed-loop logging in place, the run shows:
-
-```
-[diag-seed] SaveChanges wrote 4 rows
-[diag-seed] 2 orgs: Tenant 1(01a05006-...), Tenant 2(01a05006-...)
-[diag-seed] 2 memberships: harness-user-1@01a05006-..., harness-user-2@01a05006-...
-```
-
-The harness's seed is correct: rows are committed and visible on the same
-`LakewrightDbContext`. Yet the next-stage log line is the standard "the resolver
-found nothing, 404" — meaning the host's separate `LakewrightDbContext` query
-sees a database that does not have those rows.
-
-The most likely cause is a connection-pooling race on the in-process TestServer:
-the host's `LakewrightDbContext` may be reading from a snapshot of the database
-that pre-dates the harness's commit. The fix is either to seed from within the
-host's startup (a delegated `IServiceCollection` callback) rather than from
-`HarnessEnvironment.CreateAsync`, or to introduce a barrier that waits for the
-host to see the seeded data. The cleanest path forward is the former.
-
-The second-best path: bypass `WebApplicationFactory<SampleProgram>` entirely and
-mirror the test project's approach — register the host's services manually with
-the harness's `LakewrightDbContext` configuration. That is the established pattern
-in the existing test suite and removes the lifecycle ambiguity.
-
-## Why these defaults
-
-500 RPS and a 31-day SLO are the targets the user picked at planning, scaled down
-to a 5-minute smoke for the first full cycle. The SLOs are deliberately
-generous; tighten them as you have real production data.
-
-## What this is not
-
-- Not a network load generator. The harness uses `Microsoft.AspNetCore.TestHost.TestServer`,
-  which runs the application in-process. Latency includes ASP.NET Core + EF Core + Postgres
-  but excludes TCP, TLS, and any load balancer. For network-inclusive latency, run the
-  harness against the deployed Bicep stack.
-- Not a chaos test. Killing a worker mid-claim, killing Postgres, killing the warehouse
-  are all out of scope. The existing claim loop and reconciliation have their own tests; this
-  harness is for **throughput under steady state**, not resilience.
-- Not a multi-host test. Eight workers in one process is what the test server can pump.
-  Add replicas in the Bicep stack and run this harness from each.
+For deployment-specific evidence, use a separate load generator and record the revision,
+image digests, hardware and resource limits, replica count, network/ingress, database limits,
+dataset, and raw result. Keep successful endpoint latency separate from dropped or censored
+traffic. Report the actual verdict, including a failed target. Do not infer a database race
+or other root cause from a status code alone.

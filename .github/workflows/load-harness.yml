@@ -2,11 +2,11 @@ name: Load harness
 
 # Runs the load harness against the merged main on a schedule and on demand.
 # The harness is the project that says "is this thing fast enough at the
-# SLO targets we picked." Workflow failures here are SLO violations.
+# SLO targets we picked." Workflow failures can be an SLO, accounting, or infrastructure-evidence failure.
 
 on:
   # Triggers: pull_request runs the smoke against the PR's branch. workflow_dispatch is for
-  # manual runs (post-deploy, on-call). The weekly cron is the long production-target run.
+  # manual runs (post-deploy, on-call). The weekly cron runs the same bounded smoke profile.
   pull_request:
   workflow_dispatch:
   schedule:
@@ -27,9 +27,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    # The harness's default 5-minute smoke at 500 RPS is well within 30 minutes.
-    # A real run at production target takes longer; the budget here is the
-    # smoke, not the long run.
+    # CI uses the documented 50 RPS / 30 s smoke, not the sustained target.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -38,19 +36,36 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Restore load and regression projects
+        run: |
+          dotnet restore LakeWright.slnx --locked-mode
+          dotnet restore scripts/load/Lakewright.LoadHarness.MechanismTests/Lakewright.LoadHarness.MechanismTests.csproj --locked-mode
+
       - name: Build the harness
-        run: dotnet build scripts/load/Lakewright.LoadHarness/Lakewright.LoadHarness.csproj -c Release
+        run: dotnet build scripts/load/Lakewright.LoadHarness/Lakewright.LoadHarness.csproj -c Release --no-restore
+
+      - name: Verify harness accounting mechanisms
+        run: dotnet run --project scripts/load/Lakewright.LoadHarness.MechanismTests/Lakewright.LoadHarness.MechanismTests.csproj -c Release --no-restore
+
+      - name: Verify load accounting and worker dispatch regressions
+        run: dotnet test tests/LakeWright.TenantIsolation.Tests/LakeWright.TenantIsolation.Tests.csproj -c Release --no-restore --filter "FullyQualifiedName~LoadHarnessGateTests|FullyQualifiedName~OperationWorkerTests"
 
       # A short smoke at 50 RPS for 30 s. The user-configurable SLO defaults
       # are 500 RPS and 5 min; this is a smoke, not the production-target run.
-      # A real run is `./scripts/load/run.sh`. Tighten the SLOs as production
-      # data arrives; loosen as you add features.
+      # The sustained local profile and its interpretation limits are in scripts/load/README.md.
       - name: Run the harness (smoke)
         run: |
           dotnet run --project scripts/load/Lakewright.LoadHarness/Lakewright.LoadHarness.csproj -c Release --no-build -- \
             --rps=50 --duration=30 \
             --p99-operations=500 --p99-cost=200 \
-            --error-rate=0.1 --pool=0.8
+            --error-rate=0.001 --pool=0.8 --results=artifacts/load-smoke.json
+
+      - name: Upload smoke evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: load-harness-smoke
+          path: artifacts/load-smoke.json
 
       # The harness exits 0 when all SLO gates pass and 1 otherwise. The
       # workflow's own exit status is that exit status; the SLO gate is the

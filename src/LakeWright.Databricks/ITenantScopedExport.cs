@@ -22,9 +22,8 @@ namespace LakeWright.Databricks;
 /// caller. The library's job is to deliver every row, in order, without buffering the world.
 /// </para>
 /// <para>
-/// The export is generic across both <c>INLINE</c> and <c>EXTERNAL_LINKS</c> outcomes.
-/// The latter is the case a real export hits once the result is bigger than the warehouse's
-/// inline cap; the export walks the presigned chunk URLs and yields each chunk's rows. The
+/// The export requests <c>EXTERNAL_LINKS</c> with <c>JSON_ARRAY</c> regardless of the interactive
+/// query defaults. It walks the presigned chunk URLs and yields each chunk's rows. The
 /// links are presigned and require no <c>Authorization</c> header (the executor's
 /// <see cref="StatementOutcome.LargeResult"/> doc comment is explicit about this), so the
 /// fetch uses a plain <see cref="HttpClient"/>.
@@ -38,7 +37,11 @@ public interface ITenantScopedExport
     /// <param name="statement">
     /// A statement already scoped to one tenant via the <c>TenantScopedStatement.Create</c> factory.
     /// </param>
-    /// <param name="cancellationToken">Cancels the export between rows.</param>
+    /// <param name="cancellationToken">Cancels submission, polling, downloads, and row enumeration.</param>
+    /// <remarks>
+    /// TotalBudget starts on first enumeration and includes consumer pauses. A late failure means
+    /// previously yielded rows are incomplete; publish a staged file only after successful enumeration.
+    /// </remarks>
     /// <returns>
     /// An async sequence of rows. The first item of the returned
     /// <see cref="ExportColumn.Columns"/> collection is the column-name header; every
@@ -64,7 +67,7 @@ public sealed record ExportColumn(IReadOnlyList<string> Columns);
 /// The header line, present only on the first item of the stream.
 /// </param>
 /// <param name="Values">
-/// One row's values, positioned to match <see cref="Column"/>. Missing values are null.
+/// One row's values, positioned to match <see cref="Column"/>. SQL null cells remain null.
 /// Length always equals <c>Column.Columns.Count</c>.
 /// </param>
 public sealed record ExportRow(ExportColumn? Column, IReadOnlyList<string?> Values);

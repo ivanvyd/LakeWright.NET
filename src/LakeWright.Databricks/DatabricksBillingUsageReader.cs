@@ -187,6 +187,22 @@ public sealed class DatabricksBillingUsageReader : IBillingUsageReader, IDisposa
                     outcome,
                     deadline,
                     cancellationToken);
+                var remaining = deadline - _timeProvider.GetUtcNow();
+                if (remaining <= TimeSpan.Zero)
+                {
+                    throw new BillingUsageException("POLL_TIMEOUT", isTransient: true);
+                }
+                using var resultDeadline = new StatementDeadline(_timeProvider, remaining, cancellationToken);
+                resultDeadline.Observe(outcome);
+                try
+                {
+                    outcome = await resultDeadline.RunAsync(token =>
+                        StatementResultReader.CompleteInlineAsync(_session, outcome, token)).ConfigureAwait(false);
+                }
+                catch (StatementBudgetExceededException)
+                {
+                    throw new BillingUsageException("POLL_TIMEOUT", isTransient: true);
+                }
                 return Parse(outcome);
             }
             finally

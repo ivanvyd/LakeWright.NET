@@ -277,6 +277,19 @@ public sealed class OperationStore(
         return await systemResolver.ResolveSystemOwnedAsync(tenantId, catalog, cancellationToken);
     }
 
+    /// <summary>Renews a live worker's claim so reconciliation only adopts abandoned work.</summary>
+    /// <remarks>
+    /// A polling run can outlive the reconciliation grace period. Refreshing the lease before
+    /// every poll keeps a second replica from treating a healthy, slow run as abandoned; a crashed
+    /// worker stops renewing and becomes eligible after the configured grace period.
+    /// </remarks>
+    public Task RenewClaimAsync(TenantId tenantId, Guid operationId, CancellationToken cancellationToken) =>
+        db.Operations
+            .Where(operation => operation.Id == operationId
+                && operation.OrganizationId == tenantId
+                && operation.CompletedAt == null)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(operation => operation.ClaimedAt, time.GetUtcNow()), cancellationToken);
+
     /// <summary>Marks a claimed operation as finished.</summary>
     /// <remarks>
     /// Takes the owning tenant and filters on it, even though today's only caller is the worker

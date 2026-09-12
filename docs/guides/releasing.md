@@ -56,6 +56,19 @@ Add the public key at <https://github.com/settings/keys> under **GPG keys**.
 
 ## Cutting a release
 
+Before tagging a candidate, run the locked restore, Release build, non-live and tenant-isolation
+tests, and package validation against the current stable baseline. `scripts/test-package-validation.py`
+also demonstrates that removing a public baseline member fails compatibility validation. Run
+`lakewright verify-floor <candidate-directory> <exact-version>` from the packed tool: it verifies
+the supplied package identities and hashes, restores into a fresh package cache, and builds and
+runs the canonical net8 consumer fixture. See [local verification tooling](local-verification-tooling.md).
+
+The public landing and install commands use `scripts/released-version.json`, independently of
+the development `VersionPrefix`. Update that manifest, its dated release evidence, README,
+roadmap, landing pill/install command, and footer only after the stable GitHub release and all
+intended NuGet package versions are publicly available. Run `python scripts/check-released-version.py`
+to check those references together. A candidate package alone is not evidence of a stable release.
+
 1. **Cut and verify a release candidate first.** Tag the exact main commit as
    `v<version>-rc.N`, dispatch the release workflow, and verify its prerelease result. A stable
    `v<version>` tag must point at that exact commit; the workflow refuses a stable tag without a

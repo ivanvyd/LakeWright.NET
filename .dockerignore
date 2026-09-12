@@ -12,6 +12,16 @@
 .github/
 .claude/
 docs/
+# Signalboard links these approved public captures into its runtime static assets. Keep every
+# other documentation input out of the image context.
+!docs/
+docs/**
+!docs/images/
+docs/images/**
+!docs/images/lakewright-social-preview.png
+!docs/images/signalboard-dashboard.png
+!docs/images/signalboard-viewer-denied.png
+!docs/images/signalboard-other-tenant.png
 databricks/
 scripts/
 tests/

@@ -17,4 +17,22 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\LakeWright.AspNetCore\LakeWright.AspNetCore.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\..\docs\images\lakewright-social-preview.png"
+             Link="wwwroot\images\lakewright-social-preview.png"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\docs\images\signalboard-dashboard.png"
+             Link="wwwroot\images\signalboard-dashboard.png"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\docs\images\signalboard-viewer-denied.png"
+             Link="wwwroot\images\signalboard-viewer-denied.png"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\docs\images\signalboard-other-tenant.png"
+             Link="wwwroot\images\signalboard-other-tenant.png"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

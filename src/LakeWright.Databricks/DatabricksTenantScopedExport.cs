@@ -1,10 +1,6 @@
-using System.Diagnostics;
-using System.Globalization;
-using System.Net.Http.Headers;
+using System.Net;
 using System.Runtime.CompilerServices;
-using System.Text.Json;
 using LakeWright.Core.Features;
-using LakeWright.Core.Tenancy;
 using Microsoft.Azure.Databricks.Client;
 using Microsoft.Azure.Databricks.Client.Models;
 using Microsoft.Extensions.Logging;
@@ -12,35 +8,12 @@ using Microsoft.Extensions.Options;
 
 namespace LakeWright.Databricks;
 
-/// <summary>
-/// The default <see cref="ITenantScopedExport"/>, implemented as a streaming walk over a
-/// statement's presigned external-links result.
-/// </summary>
-/// <remarks>
-/// <para>
-/// The export asks the warehouse for an <c>EXTERNAL_LINKS</c> disposition regardless of the
-/// configured default, so its memory profile is the same whether the host's interactive
-/// queries are tuned for <c>INLINE</c> or for external links. The warehouse puts one chunk
-/// per file in its own storage and hands back presigned URLs; the export walks them in
-/// order and yields each chunk's rows.
-/// </para>
-/// <para>
-/// The presigned URLs do not accept an <c>Authorization</c> header (the warehouse signs the
-/// request as Azure blob SAS, and Azure rejects requests that carry both a SAS and an
-/// Authorization header with HTTP 400). The fetch uses a plain <see cref="HttpClient"/>.
-/// See the executor's <see cref="StatementOutcome.LargeResult"/> doc comment for the
-/// constraint.
-/// </para>
-/// </remarks>
-public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
+/// <summary>Streams complete tenant-scoped JSON results through expiring external chunk links.</summary>
+public sealed class DatabricksTenantScopedExport : ITenantScopedExport
 {
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Tenant-scoped export failed: tenant {TenantId}, statement {StatementId}, code {ErrorCode}")]
-    private partial void LogStatementFailed(TenantId? tenantId, string? statementId, string errorCode);
-
     private readonly IDatabricksStatementSession _session;
     private readonly DatabricksOptions _options;
     private readonly HttpClient _http;
-    private readonly ILogger<DatabricksTenantScopedExport> _logger;
     private readonly TimeProvider _time;
     private readonly StatementTerminalPoller _poller;
     private readonly ILakeWrightFeatureGate _features;
@@ -50,14 +23,8 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
         IOptions<DatabricksOptions> options,
         HttpClient http,
         ILogger<DatabricksTenantScopedExport> logger)
+        : this(new DatabricksStatementSession(client, logger), options.Value, http, logger)
     {
-        _session = new DatabricksStatementSession(client, logger);
-        _options = options.Value;
-        _http = http;
-        _logger = logger;
-        _time = TimeProvider.System;
-        _poller = new StatementTerminalPoller(_session, _time);
-        _features = new AlwaysOnFeatureGate();
     }
 
     internal DatabricksTenantScopedExport(
@@ -71,9 +38,8 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
         _session = session;
         _options = options;
         _http = http;
-        _logger = logger;
         _time = time ?? TimeProvider.System;
-        _poller = new StatementTerminalPoller(_session, _time);
+        _poller = new StatementTerminalPoller(session, _time);
         _features = features ?? new AlwaysOnFeatureGate();
     }
 
@@ -83,224 +49,172 @@ public sealed partial class DatabricksTenantScopedExport : ITenantScopedExport
     {
         _features.EnsureEnabled(LakeWrightFeatures.Statements);
         ArgumentNullException.ThrowIfNull(statement.Tenant);
-
-        var execution = statement.Options ?? _options.Statement ?? new StatementOptions
-        {
-            WaitTimeout = _options.WaitTimeout,
-            Disposition = SqlStatementDisposition.EXTERNAL_LINKS,
-        };
+        var execution = statement.Options ?? _options.Statement ?? new StatementOptions { WaitTimeout = _options.WaitTimeout };
         execution.Validate();
+        using var deadline = new StatementDeadline(_time, execution.TotalBudget, cancellationToken);
+        await using var rows = StreamCoreAsync(statement, execution, deadline, deadline.Token).GetAsyncEnumerator(deadline.Token);
+        while (await deadline.RunAsync(_ => rows.MoveNextAsync().AsTask()).ConfigureAwait(false))
+        {
+            yield return rows.Current;
+        }
+    }
+
+    private async IAsyncEnumerable<ExportRow> StreamCoreAsync(
+        TenantScopedStatement statement,
+        StatementOptions execution,
+        StatementDeadline deadline,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
         var startedAt = _time.GetUtcNow();
         using var activity = LakeWrightDatabricksTelemetry.Source.StartActivity("lakewright.statement.export");
         activity?.SetTag("statement.kind", execution.Kind);
-
         var request = new SqlStatement
         {
             WarehouseId = _options.WarehouseId,
             Catalog = statement.Tenant.Catalog,
             Schema = statement.Tenant.Schema,
             Statement = statement.Sql,
-            Parameters = [.. statement.Parameters.Select(p => new SqlStatementParameter
+            Parameters = [.. statement.Parameters.Select(parameter => new SqlStatementParameter
             {
-                Name = p.Name,
-                Value = p.Value,
-                Type = p.Type
+                Name = parameter.Name, Value = parameter.Value, Type = parameter.Type,
             })],
-            // EXTERNAL_LINKS is the only disposition whose rows can be walked without
-            // first materialising them. INLINE caps at 25 MiB and either returns or
-            // cancels, neither of which a streaming export can use. JSON_ARRAY (rather
-            // than ARROW_STREAM) is chosen so the chunk-fetch side does not need an
-            // Apache Arrow dependency; the warehouse's JSON_ARRAY shape is the same
-            // { "data_array": [[...]] } envelope as its INLINE response.
             Disposition = SqlStatementDisposition.EXTERNAL_LINKS,
             Format = StatementFormat.JSON_ARRAY,
             WaitTimeout = execution.WaitTimeout,
-            OnWaitTimeout = execution.OnWaitTimeout
+            OnWaitTimeout = execution.OnWaitTimeout,
         };
-
-        var outcome = await _session.ExecuteAsync(
-            request,
-            statement.Tenant.TenantId,
-            cancellationToken).ConfigureAwait(false);
-        outcome = execution.OnWaitTimeout == SqlStatementOnWaitTimeout.CONTINUE
-            ? await _poller.PollAsync(statement.Tenant, outcome, startedAt, execution, cancellationToken).ConfigureAwait(false)
-            : outcome;
-
+        var outcome = await _session.ExecuteAsync(request, statement.Tenant.TenantId, cancellationToken).ConfigureAwait(false);
+        deadline.Observe(outcome);
+        deadline.Check();
+        if (execution.OnWaitTimeout == SqlStatementOnWaitTimeout.CONTINUE)
+        {
+            outcome = await _poller.PollAsync(statement.Tenant, outcome, startedAt, execution, cancellationToken).ConfigureAwait(false);
+            deadline.Observe(outcome);
+            deadline.Check();
+        }
+        LakeWrightDatabricksTelemetry.RecordStatement(outcome, execution.Kind, _time.GetUtcNow() - startedAt);
         if (outcome is StatementOutcome.Failure failure)
         {
-            LakeWrightDatabricksTelemetry.RecordStatement(outcome, execution.Kind, _time.GetUtcNow() - startedAt);
-            LogStatementFailed(statement.Tenant.TenantId, failure.StatementId, failure.ErrorCode);
-            throw new HttpRequestException(
-                string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"Databricks rejected or failed the export (code {failure.ErrorCode})."),
-                inner: null,
-                statusCode: failure.StatusCode);
+            throw new HttpRequestException($"Databricks export failed ({failure.ErrorCode}).", null, failure.StatusCode);
         }
-
-        if (outcome is StatementOutcome.Pending)
+        // An empty JSON result can omit external_links altogether.
+        if (outcome is StatementOutcome.Success { TotalRowCount: 0, Rows.Count: 0 } empty)
         {
-            LakeWrightDatabricksTelemetry.RecordStatement(outcome, execution.Kind, _time.GetUtcNow() - startedAt);
-            throw new InvalidOperationException(
-                "Databricks returned a still-running statement after export polling was disabled. " +
-                "Use StatementOptions.OnWaitTimeout=CONTINUE, or cancel and retry the export.");
+            yield return new ExportRow(new ExportColumn(empty.ColumnNames), []);
+            yield break;
         }
-
         if (outcome is not StatementOutcome.LargeResult result)
         {
-            LakeWrightDatabricksTelemetry.RecordStatement(outcome, execution.Kind, _time.GetUtcNow() - startedAt);
-            throw new InvalidOperationException(
-                "Databricks export did not return an external-links result.");
+            throw new InvalidOperationException("The export did not return a completed external result.");
         }
-
-        var columnNames = result.ColumnNames.ToArray();
-
-        if (columnNames.Length == 0)
+        var hasMetadata = result.Chunks.Count > 0;
+        var page = hasMetadata ? result.Chunks : result.Links.Select((link, index) =>
+            new ExternalResultChunk(index, -1, -1, link, null, null)).ToArray();
+        var pageIndex = 0;
+        var expectedIndex = 0;
+        long totalRows = 0;
+        yield return new ExportRow(new ExportColumn(result.ColumnNames), []);
+        while (pageIndex < page.Count)
         {
-            LakeWrightDatabricksTelemetry.RecordStatement(outcome, execution.Kind, _time.GetUtcNow() - startedAt);
-            yield break;
-        }
-
-        LakeWrightDatabricksTelemetry.RecordStatement(outcome, execution.Kind, _time.GetUtcNow() - startedAt);
-
-        // The header is the first item in the stream. A caller that writes CSV can use
-        // the header to write its column-name row, then write the values.
-        yield return new ExportRow(new ExportColumn(columnNames), Array.Empty<string?>());
-
-        foreach (var link in result.Links)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            await foreach (var row in FetchChunkAsync(link, columnNames, execution.Kind, cancellationToken).ConfigureAwait(false))
+            deadline.Check();
+            var chunk = page[pageIndex];
+            if (chunk.Index != expectedIndex || expectedIndex >= StatementResultReader.MaxChunks
+                || (hasMetadata && (chunk.RowOffset != totalRows || chunk.RowCount < 0)))
             {
-                yield return row;
+                throw Incomplete();
             }
+            using var response = await OpenChunkAsync(result.StatementId, chunk, cancellationToken).ConfigureAwait(false);
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            long chunkRows = 0;
+            await foreach (var row in ExternalJsonRows.ReadAsync(stream, result.ColumnNames.Count, execution.Kind, cancellationToken).ConfigureAwait(false))
+            {
+                deadline.Check();
+                chunkRows++;
+                totalRows++;
+                if (totalRows > result.TotalRowCount || (hasMetadata && chunkRows > chunk.RowCount)) { throw Incomplete(); }
+                yield return new ExportRow(null, row);
+            }
+            if (hasMetadata && chunkRows != chunk.RowCount) { throw Incomplete(); }
+            expectedIndex++;
+            pageIndex++;
+            if (chunk.NextChunkIndex is { } next && next != expectedIndex) { throw Incomplete(); }
+            if (pageIndex < page.Count) { continue; }
+            if (chunk.NextChunkIndex is null) { break; }
+            page = StatementResultReader.ExternalChunks(await GetChunkAsync(
+                result.StatementId, expectedIndex, cancellationToken).ConfigureAwait(false));
+            hasMetadata = true;
+            pageIndex = 0;
+            if (page.Count == 0) { throw Incomplete(); }
         }
+        if (totalRows != result.TotalRowCount
+            || (result.TotalChunkCount is { } chunks && expectedIndex != chunks)) { throw Incomplete(); }
     }
 
-    private async IAsyncEnumerable<ExportRow> FetchChunkAsync(
-        Uri chunkUrl,
-        string[] columnNames,
-        string kind,
-        [EnumeratorCancellation] CancellationToken cancellationToken)
+    private async Task<HttpResponseMessage> OpenChunkAsync(string statementId, ExternalResultChunk chunk, CancellationToken cancellationToken)
     {
-        // Presigned SAS URLs do not accept an Authorization header; the chunk is a
-        // public blob scoped by signature. See remarks on the class.
-        using var request = new HttpRequestMessage(HttpMethod.Get, chunkUrl);
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-
-        using var response = await _http.SendAsync(
-            request,
-            HttpCompletionOption.ResponseHeadersRead,
-            cancellationToken).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode)
+        var renewed = false;
+        if (chunk.ExpiresAt is { } expiration && expiration <= _time.GetUtcNow().AddSeconds(5))
         {
-            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            throw new HttpRequestException(
-                string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"Databricks chunk fetch answered {(int)response.StatusCode} {response.ReasonPhrase}: {body}"),
-                inner: null,
-                statusCode: response.StatusCode);
+            chunk = await RenewChunkAsync(statementId, chunk, cancellationToken).ConfigureAwait(false);
+            renewed = true;
         }
-
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        using var countingStream = new CountingReadStream(stream);
-        using var doc = await JsonDocument.ParseAsync(
-            countingStream,
-            cancellationToken: cancellationToken).ConfigureAwait(false);
-        LakeWrightDatabricksTelemetry.ExportBytes.Add(
-            countingStream.BytesRead,
-            new TagList { { "statement.kind", kind } });
-
-        if (!doc.RootElement.TryGetProperty("data_array", out var dataArray)
-            || dataArray.ValueKind != JsonValueKind.Array)
+        var response = await SendChunkAsync(chunk.Link, cancellationToken).ConfigureAwait(false);
+        if (!renewed && response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
-            yield break;
+            response.Dispose();
+            chunk = await RenewChunkAsync(statementId, chunk, cancellationToken).ConfigureAwait(false);
+            response = await SendChunkAsync(chunk.Link, cancellationToken).ConfigureAwait(false);
         }
-
-        foreach (var entry in dataArray.EnumerateArray())
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (entry.ValueKind != JsonValueKind.Array)
-            {
-                continue;
-            }
-
-            var values = new string?[columnNames.Length];
-            var i = 0;
-            foreach (var cell in entry.EnumerateArray())
-            {
-                if (i >= values.Length)
-                {
-                    break;
-                }
-                values[i++] = cell.ValueKind switch
-                {
-                    JsonValueKind.Null => null,
-                    JsonValueKind.String => cell.GetString(),
-                    JsonValueKind.Number => cell.GetRawText(),
-                    JsonValueKind.True => "true",
-                    JsonValueKind.False => "false",
-                    _ => cell.GetRawText(),
-                };
-            }
-            LakeWrightDatabricksTelemetry.ExportRows.Add(1, new TagList { { "statement.kind", kind } });
-            yield return new ExportRow(null, values);
-        }
+        if (response.IsSuccessStatusCode) { return response; }
+        var status = response.StatusCode;
+        response.Dispose();
+        throw new HttpRequestException("The external result chunk could not be read.", null, status);
     }
 
-    private sealed class CountingReadStream(Stream inner) : Stream
+    private async Task<ExternalResultChunk> RenewChunkAsync(string statementId, ExternalResultChunk previous, CancellationToken cancellationToken)
     {
-        public long BytesRead { get; private set; }
-
-        public override bool CanRead => inner.CanRead;
-
-        public override bool CanSeek => false;
-
-        public override bool CanWrite => false;
-
-        public override long Length => throw new NotSupportedException();
-
-        public override long Position
-        {
-            get => throw new NotSupportedException();
-            set => throw new NotSupportedException();
-        }
-
-        public override void Flush() => throw new NotSupportedException();
-
-        public override Task FlushAsync(CancellationToken cancellationToken) =>
-            Task.FromException(new NotSupportedException());
-
-        public override int Read(byte[] buffer, int offset, int count)
-        {
-            var read = inner.Read(buffer, offset, count);
-            BytesRead += read;
-            return read;
-        }
-
-        public override async ValueTask<int> ReadAsync(
-            Memory<byte> buffer,
-            CancellationToken cancellationToken = default)
-        {
-            var read = await inner.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
-            BytesRead += read;
-            return read;
-        }
-
-        public override async Task<int> ReadAsync(
-            byte[] buffer,
-            int offset,
-            int count,
-            CancellationToken cancellationToken)
-        {
-            return await ReadAsync(buffer.AsMemory(offset, count), cancellationToken).ConfigureAwait(false);
-        }
-
-        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-
-        public override void SetLength(long value) => throw new NotSupportedException();
-
-        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        var page = StatementResultReader.ExternalChunks(await GetChunkAsync(
+            statementId, previous.Index, cancellationToken).ConfigureAwait(false));
+        var renewed = page.SingleOrDefault(chunk => chunk.Index == previous.Index);
+        if (renewed is null || renewed.RowCount != previous.RowCount || renewed.RowOffset != previous.RowOffset
+            || renewed.NextChunkIndex != previous.NextChunkIndex
+            || renewed.ExpiresAt <= _time.GetUtcNow()) { throw Incomplete(); }
+        return renewed;
     }
+
+    private async Task<StatementExecutionResultChunk> GetChunkAsync(string statementId, int index, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _session.GetChunkAsync(statementId, index, cancellationToken).ConfigureAwait(false);
+        }
+        catch (ClientApiException exception)
+        {
+            throw new HttpRequestException("The warehouse could not return the external result chunk.", null, exception.StatusCode);
+        }
+    }
+
+    private async Task<HttpResponseMessage> SendChunkAsync(Uri link, CancellationToken cancellationToken)
+    {
+        if (_http.DefaultRequestHeaders.Authorization is not null)
+        {
+            throw new InvalidOperationException("External result downloads require an HttpClient without default Authorization.");
+        }
+        if (!link.IsAbsoluteUri || (link.Scheme != Uri.UriSchemeHttps && !(link.IsLoopback && link.Scheme == Uri.UriSchemeHttp)))
+        {
+            throw new InvalidDataException("External result links must use HTTPS.");
+        }
+        using var request = new HttpRequestMessage(HttpMethod.Get, link);
+        try
+        {
+            return await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        }
+        catch (HttpRequestException exception)
+        {
+            // Transport exceptions can quote the signed URL; do not forward their text or inner exception.
+            throw new HttpRequestException("The external result chunk could not be reached.", null, exception.StatusCode);
+        }
+    }
+
+    private static InvalidDataException Incomplete() => new("External result metadata or row counts are incomplete or inconsistent.");
 }
