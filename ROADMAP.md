@@ -150,7 +150,7 @@ tracker is empty, so a contributor arriving has nowhere obvious to start.
   The packages were already built, attested and attached to the v0.1.0 release; what was withheld
   was the one surface a .NET developer actually searches. They initially published with a prerelease
   suffix. **Outcome 2026-08-30:** stable tags now publish stable packages under
-  [ADR 0019](docs/decisions/0019-stable-1-0-0.md). Current stable release: [v2.0.0](https://github.com/ivanvyd/LakeWright.NET/releases/tag/v2.0.0), published 2026-09-02.
+  [ADR 0019](docs/decisions/0019-stable-1-0-0.md). Current stable release: [v2.1.0](https://github.com/ivanvyd/LakeWright.NET/releases/tag/v2.1.0), published 2026-09-12.
 - A `dotnet new` template. It ossifies the structure before we know the structure is right.
 - Catalog-per-tenant and workspace-per-tenant as implemented paths. Documented, not built.
 - Billing, invoicing, or payment integration.
