@@ -361,10 +361,8 @@ jobs:
               --api-key "$NUGET_API_KEY" \
               --source https://api.nuget.org/v3/index.json \
               --skip-duplicate | tee -a push.log
-            dotnet nuget push "$symbols" \
-              --api-key "$NUGET_API_KEY" \
-              --source https://api.nuget.org/v3/index.json \
-              --skip-duplicate | tee -a push.log
+            # dotnet nuget push uploads the adjacent .snupkg with its primary package.
+            # Pushing the symbols file again only produces a duplicate-package warning.
           done < artifacts/publish-order.txt
 
           # --skip-duplicate turns a 409 into a warning, which is what makes a resumed release
