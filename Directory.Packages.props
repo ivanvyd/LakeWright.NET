@@ -83,7 +83,7 @@
   </ItemGroup>
 
   <ItemGroup Label="Testing">
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.0" />
     <!-- xUnit 4 defaults to Microsoft Testing Platform v2. This repository intentionally keeps
          the VSTest pipeline for TRX and coverlet compatibility, so use the official opt-out
          package until the test infrastructure is migrated as one deliberate change. -->
