@@ -34,7 +34,7 @@
     <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="10.9.0" />
     <PackageVersion Include="OpenAI" Version="2.12.0" />
     <PackageVersion Include="Microsoft.Extensions.Diagnostics.Testing" Version="10.9.0" />
-    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.9.0" />
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.10.0" />
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" />
     <!-- Pinned above the transitive 2.0.0 that Microsoft.AspNetCore.OpenApi resolves:
          GHSA-v5pm-xwqc-g5wc is high severity and patched in 2.7.5. The vulnerable-package
@@ -87,7 +87,7 @@
     <!-- xUnit 4 defaults to Microsoft Testing Platform v2. This repository intentionally keeps
          the VSTest pipeline for TRX and coverlet compatibility, so use the official opt-out
          package until the test infrastructure is migrated as one deliberate change. -->
-    <PackageVersion Include="xunit.v3.mtp-off" Version="4.0.0" />
+    <PackageVersion Include="xunit.v3.mtp-off" Version="4.0.1" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
     <PackageVersion Include="Shouldly" Version="4.3.0" />
     <PackageVersion Include="NSubstitute" Version="6.2.0" />
