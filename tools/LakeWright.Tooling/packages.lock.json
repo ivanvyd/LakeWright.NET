@@ -135,9 +135,8 @@
         "type": "Project",
         "dependencies": {
           "Azure.Core": "[1.44.1, )",
-          "LakeWright.Core": "[2.0.0, )",
+          "LakeWright.Core": "[2.1.1, )",
           "Microsoft.Azure.Databricks.Client": "[2.9.3, )",
-          "Microsoft.Bcl.TimeProvider": "[8.0.1, )",
           "Microsoft.Extensions.Configuration.Abstractions": "[8.0.0, )",
           "Microsoft.Extensions.Http": "[8.0.1, )",
           "Microsoft.Extensions.Logging.Abstractions": "[8.0.3, )",
@@ -149,8 +148,7 @@
       "lakewright.embedding": {
         "type": "Project",
         "dependencies": {
-          "LakeWright.Core": "[2.0.0, )",
-          "Microsoft.Bcl.TimeProvider": "[8.0.1, )",
+          "LakeWright.Core": "[2.1.1, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[8.0.2, )",
           "Microsoft.Extensions.Http": "[8.0.1, )",
           "Microsoft.Extensions.Logging.Abstractions": "[8.0.3, )",
@@ -181,12 +179,6 @@
         "dependencies": {
           "Azure.Core": "1.44.1"
         }
-      },
-      "Microsoft.Bcl.TimeProvider": {
-        "type": "CentralTransitive",
-        "requested": "[8.0.1, )",
-        "resolved": "8.0.1",
-        "contentHash": "C7kWHJnMRY7EvJev2S8+yJHZ1y7A4ZlLbA4NE+O23BDIAN5mHeqND1m+SKv1ChRS5YlCDW7yAMUe7lttRsJaAA=="
       },
       "Microsoft.Extensions.Configuration.Abstractions": {
         "type": "CentralTransitive",

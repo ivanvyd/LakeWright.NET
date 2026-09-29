@@ -8,6 +8,17 @@ note.
 
 ## [Unreleased]
 
+## [2.1.1] — 2026-09-29
+
+### Changed
+
+- Refresh pinned Signalboard .NET SDK and runtime images and CI security, Databricks CLI,
+  and Azure login actions.
+- Update Microsoft.Extensions AI, OpenAI, testing, and .NET test tooling dependencies;
+  regenerate lock files for both .NET 8 and .NET 10 targets.
+- Remove the redundant TimeProvider polyfill reference from .NET 8 libraries. The type is
+  supplied by .NET 8 itself.
+
 ## [2.1.0] — 2026-09-12
 
 ### Security

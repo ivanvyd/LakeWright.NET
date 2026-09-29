@@ -15,10 +15,6 @@
     <PackageReference Include="Microsoft.Extensions.Http" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options" />
-    <!-- TimeProvider and TimeProvider.System are net8.0+, but on net8.0 the type lives in
-         Microsoft.Bcl.TimeProvider (the polyfill the runtime ships). The reference is conditional
-         so the net10.0 build does not double up on a type that already ships in the BCL. -->
-    <PackageReference Include="Microsoft.Bcl.TimeProvider" Condition="'$(TargetFramework)' == 'net8.0'" />
   </ItemGroup>
   <ItemGroup>
     <!-- Core only. The token exchange is OAuth over HTTP and needs nothing from the Databricks
