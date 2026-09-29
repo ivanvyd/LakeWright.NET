@@ -291,10 +291,10 @@ public class GenieConversationTests : IDisposable
     /// </summary>
     private static async Task AdvanceUntilDone(FakeTimeProvider time, Task pending)
     {
-        for (var i = 0; i < 200 && !pending.IsCompleted; i++)
+        for (var i = 0; i < 400 && !pending.IsCompleted; i++)
         {
             await Task.Delay(5, TestContext.Current.CancellationToken);
-            time.Advance(TimeSpan.FromMinutes(1));
+            time.Advance(TimeSpan.FromSeconds(2));
         }
     }
 

@@ -5,7 +5,7 @@
 # Pinned by digest, not by tag. A tag is a moving pointer, so `10.0-noble` today and `10.0-noble`
 # next month are different images, and the build that was reviewed is not the image that ships.
 # Dependabot watches this directory and raises the digest bumps, so pinning does not mean freezing.
-FROM mcr.microsoft.com/dotnet/sdk:10.0-noble@sha256:e1ffd2a92ae84c1291bc1b6887501f8af98e6331e7af6d4c8d37168c5e87a64c AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0-noble@sha256:2fa828c68761b1b8c23d7662dc134421b9d3b59fe1425fdbc80804e390cdb24d AS build
 WORKDIR /src
 
 # The whole source before restore, not the project files first. The usual manifests-first trick
@@ -32,7 +32,7 @@ RUN dotnet publish samples/Signalboard/Signalboard.csproj \
 
 # Chiseled: no shell, no package manager, and a non-root user already in place. There is nothing in
 # this image to run except the application, which is the point.
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled@sha256:0839314d08bb65da369135389a5d8291f75ace587fbb0488f469eb92c62eef68 AS final
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled@sha256:9651fa59abcdf177c30392cb44a820605ca5d618429ab37acbf6e7c644510b02 AS final
 WORKDIR /app
 COPY --from=build /app .
 

@@ -10,7 +10,6 @@
     <PackageReference Include="Microsoft.Extensions.Http" />
     <PackageReference Include="Microsoft.Extensions.Options" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
-    <PackageReference Include="Microsoft.Bcl.TimeProvider" Condition="'$(TargetFramework)' == 'net8.0'" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\LakeWright.Core\LakeWright.Core.csproj" />
