@@ -5,10 +5,11 @@ What has been run against a real system, what has only been read in documentatio
 Anything not listed as **Verified** should be treated as unverified regardless of how confident the
 surrounding prose sounds.
 
-Last updated 2026-09-12 for the v2.1.0 package publication and public net8 consumer verification.
-The live-system dates below are unchanged. The complete local suite, package consumer and load
-harness were rerun for the reviewed merge. Docker, HTTP and browser verification also passed.
-Databricks CLI authenticated to the active development workspace;
+Last updated 2026-09-29 for the v2.1.1 package publication and public net8 consumer verification.
+The live-system dates below are unchanged. The v2.1.1 release workflow passed its non-live tests,
+and a fresh net8 consumer restored and ran against the public stable packages. The earlier v2.1.0
+reviewed merge also covered the complete local suite, load harness, Docker, HTTP and browser checks.
+Databricks CLI authenticated to the active development workspace for that earlier verification;
 bundle validation and the non-mutating plan passed. CI independently validated the bundle with
 setup-cli 1.14.1. The currency path is implemented and locally verified, but its system-table read
 remains blocked because the verification identity lacks `USE SCHEMA` on `system.billing`.
@@ -16,8 +17,8 @@ A `Documented` row is not promoted to `Verified` by a stable version number; the
 records the work that has been done, not a claim about future work.
 
 The current package-publication and consumer evidence is in the
-[2.1.0 release evidence](release-evidence/v2.1.0.md). Earlier evidence remains available for
-[2.0.0](release-evidence/v2.0.0.md), [1.2.0](release-evidence/v1.2.0.md), [1.1.1](release-evidence/v1.1.1.md), and
+[2.1.1 release evidence](release-evidence/v2.1.1.md). Earlier evidence remains available for
+[2.1.0](release-evidence/v2.1.0.md), [2.0.0](release-evidence/v2.0.0.md), [1.2.0](release-evidence/v1.2.0.md), [1.1.1](release-evidence/v1.1.1.md), and
 [1.1.0](release-evidence/v1.1.0.md).
 
 ## Legend
