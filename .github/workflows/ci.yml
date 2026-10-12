@@ -155,7 +155,7 @@ jobs:
         if: always()
         run: python3 scripts/report-coverage.py >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: test-results
@@ -230,7 +230,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: databricks/setup-cli@6a2e75f1f954d87503702c408deea63216c0799d # v1.18.0
+      - uses: databricks/setup-cli@9b64c94a6d2b2e830592d80e9f14c26d32b42ad7 # v1.20.0
       # `bundle validate` resolves against a live workspace, so it needs credentials
       # that a fork PR must never receive. Forks get schema validation only; a
       # maintainer runs the authenticated validation before merge.
