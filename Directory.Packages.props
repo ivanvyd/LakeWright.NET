@@ -13,7 +13,7 @@
   </ItemGroup>
 
   <ItemGroup Label="Azure SDK (net10.0)" Condition="'$(TargetFramework)' == 'net10.0'">
-    <PackageVersion Include="Azure.Core" Version="1.60.0" />
+    <PackageVersion Include="Azure.Core" Version="1.63.0" />
   </ItemGroup>
 
   <ItemGroup Label="Azure SDK (net8.0 floor)" Condition="'$(TargetFramework)' == 'net8.0'">
