@@ -82,11 +82,11 @@
     <!-- xUnit 4 defaults to Microsoft Testing Platform v2. This repository intentionally keeps
          the VSTest pipeline for TRX and coverlet compatibility, so use the official opt-out
          package until the test infrastructure is migrated as one deliberate change. -->
-    <PackageVersion Include="xunit.v3.mtp-off" Version="4.0.1" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
+    <PackageVersion Include="xunit.v3.mtp-off" Version="4.0.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
     <PackageVersion Include="Shouldly" Version="4.3.0" />
     <PackageVersion Include="NSubstitute" Version="6.2.0" />
-    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.15.0" />
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.16.0" />
     <!-- Pinned above the transitive SSH.NET version resolved by Testcontainers. Older versions are
          GHSA-q939-rpr3-3284 (high): ScpClient's recursive download writes wherever a malicious
          server's filenames point. Patched in 2026.0.0. Keep the direct pin until Testcontainers
@@ -94,7 +94,7 @@
     <!-- SSH.NET 2026.0.0 is pinned once in the Extensions group above (for the Databricks SDK
          transitive); Central Package Management requires a single PackageVersion entry, and the
          version is the same. -->
-    <PackageVersion Include="WireMock.Net" Version="2.15.0" />
+    <PackageVersion Include="WireMock.Net" Version="2.19.0" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.11" />
     <!-- The load harness (scripts/load) reads pg_stat_activity to track connection-pool
          utilisation. Same major.minor as the existing Npgsql.EntityFrameworkCore.PostgreSQL
