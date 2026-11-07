@@ -14,10 +14,9 @@ namespace LakeWright.Multitenancy.Operations;
 /// Drives operations from Pending to a terminal state: claim, submit, record, poll, complete.
 /// </summary>
 /// <remarks>
-/// The order of the first three is the whole point, per ADR 0005. Claiming before submitting means
-/// two workers cannot submit the same operation. Recording the run id immediately after submitting
-/// narrows, but does not close, the window in which a crash orphans a run — closing it is
-/// reconciliation's job, and this class deliberately does not pretend otherwise.
+/// Claim before submitting to prevent duplicate workers. Record the run id immediately after
+/// submission. Reconciliation recovers a crash between those steps with the original idempotency
+/// key. See ADR 0005.
 /// </remarks>
 public sealed partial class OperationWorker(
     IServiceScopeFactory scopeFactory,
@@ -163,16 +162,9 @@ public sealed partial class OperationWorker(
     /// Submits an operation and polls it to a terminal state.
     /// </summary>
     /// <remarks>
-    /// One method for both a first submission and a reconciliation, because the steps are
-    /// identical. They were two near-copies, and the risk that fixes a review found: a change to
-    /// the tenant-inactive branch or the failure handling applied to one and forgotten in the
-    /// other, with nothing to catch the divergence.
-    ///
-    /// Reconciliation differs only in wording. Re-submitting an orphan with its original
-    /// idempotency key returns the run that key already started rather than starting a second one,
-    /// so the mechanics are the same call. If it fails, the operation is marked failed rather than
-    /// retried forever: the deduplication window is undocumented, and a key whose run was deleted
-    /// errors permanently.
+    /// Reconciliation uses the original idempotency key to recover the existing run.
+    /// A rejected submission fails the operation because the deduplication window is undocumented
+    /// and a key whose run was deleted can fail permanently.
     /// </remarks>
     private async Task SubmitAndPollAsync(
         OperationStore store,
@@ -275,28 +267,32 @@ public sealed partial class OperationWorker(
     {
         var interval = _options.InitialPollInterval;
         var deadline = timeProvider.GetUtcNow() + _options.RunTimeout;
+        var timedOut = false;
 
         while (!cancellationToken.IsCancellationRequested)
         {
             await store.RenewClaimAsync(operation.OrganizationId, operation.Id, cancellationToken);
-            if (timeProvider.GetUtcNow() >= deadline)
+            if (!timedOut && timeProvider.GetUtcNow() >= deadline)
             {
-                // Stop the run before recording the failure. Marking it failed only stops this
-                // worker watching: the job kept executing, still spending the compute the timeout
-                // exists to bound, and still holding the tenant's schema — which tenant deletion
-                // would then drop underneath it, having counted the operation as finished.
+                // Cancellation is asynchronous. Keep the claim until a status response proves
+                // the run has stopped, so deletion cannot drop its schema while it is in use.
                 await submitter.CancelRunAsync(runId, cancellationToken);
-
-                await store.CompleteAsync(
-                    operation.OrganizationId, operation.Id, OperationState.Failed,
-                    "The run exceeded the configured timeout and was cancelled.", cancellationToken);
-                return;
+                timedOut = true;
             }
 
             await Task.Delay(WithJitter(interval), timeProvider, cancellationToken);
             interval = Min(interval * 2, _options.MaxPollInterval);
 
-            switch (await submitter.GetRunAsync(runId, cancellationToken))
+            var outcome = await submitter.GetRunAsync(runId, cancellationToken);
+            if (timedOut && outcome is RunOutcome.Succeeded or RunOutcome.Cancelled or RunOutcome.Failed)
+            {
+                await store.CompleteAsync(
+                    operation.OrganizationId, operation.Id, OperationState.Failed,
+                    "The run exceeded the configured timeout and has stopped after cancellation was requested.", cancellationToken);
+                return;
+            }
+
+            switch (outcome)
             {
                 case RunOutcome.Succeeded:
                     await store.CompleteAsync(operation.OrganizationId, operation.Id, OperationState.Succeeded, null, cancellationToken);

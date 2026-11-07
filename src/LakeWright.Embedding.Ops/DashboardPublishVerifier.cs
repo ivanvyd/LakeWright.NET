@@ -275,8 +275,15 @@ internal sealed class DatabricksPublishVerificationApi(HttpClient http, IOpsToke
 
     public async Task<DateTimeOffset?> GetPublishedRevisionAsync(string dashboardId, CancellationToken cancellationToken)
     {
-        using var payload = await SendAsync($"api/2.0/lakeview/dashboards/{Uri.EscapeDataString(dashboardId)}/published", cancellationToken).ConfigureAwait(false);
-        return ParseTime(ReadString(payload.RootElement, "revision_create_time"));
+        try
+        {
+            using var payload = await SendAsync($"api/2.0/lakeview/dashboards/{Uri.EscapeDataString(dashboardId)}/published", cancellationToken).ConfigureAwait(false);
+            return ParseTime(ReadString(payload.RootElement, "revision_create_time"));
+        }
+        catch (DashboardVerificationApiException exception) when (exception.StatusCode == 404)
+        {
+            return null;
+        }
     }
 
     private async Task<JsonDocument> SendAsync(string relativeUrl, CancellationToken cancellationToken)
@@ -301,4 +308,7 @@ internal sealed class DatabricksPublishVerificationApi(HttpClient http, IOpsToke
 }
 
 internal sealed class DashboardVerificationApiException(int statusCode)
-    : LakeWrightException($"Databricks Dashboard API answered {statusCode}.");
+    : LakeWrightException($"Databricks Dashboard API answered {statusCode}.")
+{
+    public int StatusCode { get; } = statusCode;
+}

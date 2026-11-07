@@ -81,10 +81,20 @@ public class OperationWorkerTests(PostgresFixture postgres)
         }
 
         public List<long> CancelledRuns { get; } = [];
+        public Exception? CancelFailure { get; set; }
+        public bool CompleteCancellation { get; set; }
 
         public Task CancelRunAsync(long runId, CancellationToken cancellationToken)
         {
             CancelledRuns.Add(runId);
+            if (CancelFailure is { } failure)
+            {
+                return Task.FromException(failure);
+            }
+            if (CompleteCancellation)
+            {
+                RunState = new RunOutcome.Cancelled(runId);
+            }
             return Task.CompletedTask;
         }
 
@@ -143,7 +153,7 @@ public class OperationWorkerTests(PostgresFixture postgres)
         return (services.BuildServiceProvider(), submitter);
     }
 
-    private static OperationWorker WorkerFor(ServiceProvider provider, int concurrency = 4, TimeSpan? grace = null, TimeSpan? idleDelay = null) =>
+    private static OperationWorker WorkerFor(ServiceProvider provider, int concurrency = 4, TimeSpan? grace = null, TimeSpan? idleDelay = null, TimeSpan? runTimeout = null) =>
         new(provider.GetRequiredService<IServiceScopeFactory>(),
             Options.Create(new OperationWorkerOptions
             {
@@ -152,6 +162,7 @@ public class OperationWorkerTests(PostgresFixture postgres)
                 MaxPollInterval = TimeSpan.FromMilliseconds(2),
                 ReconciliationGracePeriod = grace ?? TimeSpan.FromMinutes(-5),
                 IdleDelay = idleDelay ?? TimeSpan.FromSeconds(5),
+                RunTimeout = runTimeout ?? TimeSpan.FromHours(2),
                 MaxConcurrentOperations = concurrency
             }),
             Options.Create(new MultitenancyOptions { Catalog = "analytics" }),
@@ -323,6 +334,8 @@ public class OperationWorkerTests(PostgresFixture postgres)
             await store.CreateAsync(Ctx(), "auth0|alice", "analysis", clientRequestId: null, ct);
         }
 
+        submitter.CompleteCancellation = true;
+
         // A timeout already in the past, so the deadline is passed on the first poll.
         var worker = new OperationWorker(
             provider.GetRequiredService<IServiceScopeFactory>(),
@@ -347,7 +360,71 @@ public class OperationWorkerTests(PostgresFixture postgres)
 
         submitter.CancelledRuns.ShouldBe([1000]);
         final.State.ShouldBe(OperationState.Failed);
-        final.Error.ShouldNotBeNull().ShouldContain("cancelled");
+        final.Error.ShouldNotBeNull().ShouldContain("timeout");
+    }
+
+    [Fact]
+    public async Task A_timeout_keeps_the_operation_running_until_cancellation_finishes()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (provider, submitter) = await BuildAsync(postgres);
+        await using var _p = provider;
+        submitter.RunState = new RunOutcome.Running(0);
+        submitter.HoldFirstPoll = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        submitter.FirstPollStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<OperationStore>()
+                .CreateAsync(Ctx(), "auth0|alice", "analysis", clientRequestId: null, ct);
+        }
+
+        var iteration = WorkerFor(provider, runTimeout: TimeSpan.FromMinutes(-1)).RunOnceAsync(ct);
+        await submitter.FirstPollStarted.Task.WaitAsync(ct);
+        try
+        {
+            await using var check = provider.CreateAsyncScope();
+            var pending = await check.ServiceProvider.GetRequiredService<LakeWrightDbContext>().Operations.SingleAsync(ct);
+            pending.State.ShouldBe(OperationState.Running);
+            pending.CompletedAt.ShouldBeNull();
+            submitter.CancelledRuns.ShouldBe([1000]);
+        }
+        finally
+        {
+            submitter.RunState = new RunOutcome.Cancelled(0);
+            submitter.HoldFirstPoll.TrySetResult();
+            await iteration;
+        }
+
+        await using var completed = provider.CreateAsyncScope();
+        var final = await completed.ServiceProvider.GetRequiredService<LakeWrightDbContext>().Operations.SingleAsync(ct);
+        final.State.ShouldBe(OperationState.Failed);
+        final.CompletedAt.ShouldNotBeNull();
+        submitter.CancelledRuns.ShouldBe([1000]);
+    }
+
+    [Fact]
+    public async Task A_rejected_timeout_cancellation_preserves_the_running_operation_for_reconciliation()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (provider, submitter) = await BuildAsync(postgres);
+        await using var _p = provider;
+        submitter.RunState = new RunOutcome.Running(0);
+        submitter.CancelFailure = new HttpRequestException("Cancellation rejected.");
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<OperationStore>()
+                .CreateAsync(Ctx(), "auth0|alice", "analysis", clientRequestId: null, ct);
+        }
+
+        await Should.ThrowAsync<HttpRequestException>(() =>
+            WorkerFor(provider, runTimeout: TimeSpan.FromMinutes(-1)).RunOnceAsync(ct));
+
+        await using var check = provider.CreateAsyncScope();
+        var pending = await check.ServiceProvider.GetRequiredService<LakeWrightDbContext>().Operations.SingleAsync(ct);
+        pending.State.ShouldBe(OperationState.Running);
+        pending.ExternalId.ShouldBe("1000");
+        pending.CompletedAt.ShouldBeNull();
+        submitter.CancelledRuns.ShouldBe([1000]);
     }
 
     [Fact]

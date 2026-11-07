@@ -31,12 +31,12 @@ public sealed partial class DatabricksSchemaProvisioner(
     public Task CreateAsync(string catalog, string schema, CancellationToken cancellationToken) =>
         // IF NOT EXISTS because provisioning is retried after a partial failure, and a create that
         // throws on an existing schema turns a recoverable state into a stuck one.
-        ExecuteAsync(catalog, schema, $"CREATE SCHEMA IF NOT EXISTS", cancellationToken);
+        ExecuteAsync(catalog, schema, "CREATE SCHEMA IF NOT EXISTS", cancellationToken);
 
     public Task DropAsync(string catalog, string schema, CancellationToken cancellationToken) =>
         // CASCADE: the schema holds the tenant's tables and the point of the call is that they go.
         // IF EXISTS so that re-running a half-finished deletion completes rather than fails.
-        ExecuteAsync(catalog, schema, $"DROP SCHEMA IF EXISTS", cancellationToken, suffix: " CASCADE");
+        ExecuteAsync(catalog, schema, "DROP SCHEMA IF EXISTS", cancellationToken, suffix: " CASCADE");
 
     private async Task ExecuteAsync(
         string catalog,
