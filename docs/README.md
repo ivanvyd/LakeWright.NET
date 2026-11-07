@@ -5,6 +5,7 @@
 | If you want to | Read |
 |---|---|
 | Get it running | [Getting started](guides/getting-started.md) |
+| Add published packages to an existing application | [Package quickstart](../examples/package-quickstart/README.md) and [integration guide](guides/add-to-existing-app.md) |
 | Run local publish, scope, and package checks | [Local verification tooling](guides/local-verification-tooling.md) |
 | Know whether this project is for you | [The problem it solves](../README.md#what-problem-this-solves), and [what it is not](../README.md#what-this-is-not) |
 | Understand the architecture | [Architecture](planning/03-architecture.md) |

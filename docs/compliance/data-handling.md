@@ -71,6 +71,19 @@ actions, not tenant content.
 rest, refusing a tenant that is not pending deletion, one with work still in flight, and one that
 has not been pending for the caller's stated grace period. Evidence: `TenantLifecycleTests`.
 
+**Unreleased source change:** never-submitted queue entries remain intact during the grace
+period. Once it expires, Pending rows with neither a claim nor an external identifier are
+discarded by the organization cascade. Claimed work, externally identified work, Running work,
+and any other incomplete state still prevent schema drop. They are never submitted just to
+drain the deletion queue. Published 2.1.2 retains the earlier behavior where unclaimed pending
+rows also prevent purge. See [ADR 0033](../decisions/0033-operation-admission-and-deletion-liveness.md).
+
+An inactive tenant's orphan is not automatically reconciled: reconciliation could resubmit work
+for a tenant whose access has stopped. An existing live worker may finish its run. If it has
+stopped, an operator must inspect remote state and record a safely observed terminal outcome
+before purge, or deliberately restore service for reconciliation. A cancellation request is not
+proof of termination. Do not mark uncertain work complete merely to unblock deletion.
+
 Two things the procedure does not give you. The grace period has no default — a caller passes the
 window it wants, because a value chosen here would be wrong for someone — so an adopter that passes
 zero gets no cooldown and no warning. And the schema drop runs before the database transaction that

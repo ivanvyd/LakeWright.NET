@@ -117,9 +117,9 @@ jobs:
           REF_NAME: ${{ github.event.client_payload.tag }}
         run: echo "value=${REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      # ADR 0019: a stable tag is no longer refused. The compat promise for 1.x is a
-      # SemVer minor + CHANGELOG migration note on any breaking change; the prerelease
-      # guard in ADR 0010 still applies to a future 0.x branch but is removed for 1.x.
+      # ADR 0019: stable tags are accepted. From 1.0 onward, breaking changes require
+      # a SemVer major release and a CHANGELOG migration note. ADR 0010's prerelease
+      # policy remains historical guidance for a future 0.x branch.
       # Build metadata is stripped before the prerelease check below so `1.0.0+exp-sha`
       # is read as stable.
       - name: Read whether the version is a prerelease

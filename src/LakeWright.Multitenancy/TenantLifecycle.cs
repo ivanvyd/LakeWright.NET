@@ -178,6 +178,9 @@ public sealed class TenantLifecycle(
     /// both halves back to back and destroying a tenant with no interval to catch the mistake.
     /// There is no default — a caller states the window it wants, because a value chosen here
     /// would be wrong for someone.
+    /// Never-submitted queue entries (Pending, unclaimed, no external identifier) survive the
+    /// grace period and are discarded by the final organization cascade. Any other incomplete
+    /// row blocks schema drop, including a claimed row whose submission outcome is unknown.
     ///
     /// The schema drop happens before the transaction opens, and it is the irreversible step. A
     /// crash between the drop and the commit leaves the tenant's data gone, the row still
@@ -210,7 +213,9 @@ public sealed class TenantLifecycle(
         }
 
         var inFlight = await db.Operations
-            .CountAsync(o => o.OrganizationId == tenantId && o.CompletedAt == null, cancellationToken);
+            .CountAsync(o => o.OrganizationId == tenantId && o.CompletedAt == null
+                && (o.ClaimedAt != null || o.ExternalId != null || o.State != OperationState.Pending),
+                cancellationToken);
 
         if (inFlight > 0) { return TenantPurgeResult.OperationsInFlight; }
 
@@ -227,9 +232,6 @@ public sealed class TenantLifecycle(
         {
             return TenantPurgeResult.StillWithinGracePeriod;
         }
-
-
-
         if (schemas is not null)
         {
             await schemas.DropAsync(tenancy.Value.Catalog, organization.Schema, cancellationToken);

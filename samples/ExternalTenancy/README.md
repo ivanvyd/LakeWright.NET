@@ -3,6 +3,11 @@
 This net8 sample owns membership resolution itself and gives LakeWright only an
 `ITenantContextResolver`. The resolver decides whether the authenticated principal belongs to the
 requested tenant; only then does its injected `ITenantContextFactory` mint a `TenantContext`.
+The server-owned fixture maps `demo-user` to one specific tenant, catalog, and schema. It fails
+if that same principal can resolve an unrelated tenant. No database or workspace is contacted.
+
+This sample uses project references for source CI. To adopt the published packages without
+repository build settings, use the [package quickstart](../../examples/package-quickstart/README.md).
 
 ```powershell
 dotnet run --project samples/ExternalTenancy/ExternalTenancy.csproj -c Release

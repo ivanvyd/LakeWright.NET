@@ -1,7 +1,9 @@
+using System.Data;
 using System.Text.Json;
 using LakeWright.Core.Tenancy;
 using LakeWright.Multitenancy.Model;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 
 namespace LakeWright.Multitenancy;
@@ -167,20 +169,9 @@ public sealed class OperationStore(
     /// Claims one pending operation for this worker, or returns null if there is nothing to do.
     /// </summary>
     /// <remarks>
-    /// Two separate properties, and it is worth not conflating them, because measuring showed the
-    /// obvious description of this was wrong.
-    ///
-    /// <b>Exactly-once comes from the single statement.</b> The update and its subquery are one
-    /// statement, so claiming is atomic. Selecting first and updating second is the version that
-    /// looks correct and hands the same row to two workers under load; the concurrency test fails
-    /// against that and passes against this.
-    ///
-    /// <b><c>SKIP LOCKED</c> buys throughput, not correctness.</b> Removing it leaves the
-    /// concurrency test green: a competing worker blocks on the row lock, re-evaluates, and takes
-    /// a different row rather than duplicating one. What it prevents is the convoy — ten workers
-    /// queued behind one slow claim instead of moving on to other rows. Measured, not assumed:
-    /// this comment previously credited it with the exactly-once guarantee, and the test passed
-    /// with it deleted.
+    /// The operation update and its subquery are one statement, preventing duplicate ownership.
+    /// Organization row locks serialize admission per tenant; SKIP LOCKED lets another tenant
+    /// proceed without waiting for that admission transaction.
     ///
     /// A worker that dies mid-claim releases its lock on rollback and the row returns to the pool.
     ///
@@ -201,33 +192,69 @@ public sealed class OperationStore(
     /// Databricks compute one tenant can hold at once (threat T5). It is a concurrency limit rather
     /// than a currency budget: it bounds the blast radius of a runaway loop without needing billing
     /// data that arrives hours late. A tenant at its cap is skipped, not failed — its work waits.
+    /// Admission locks the organization in a separate statement before counting again under
+    /// ReadCommitted. A count in the locking statement could still use a snapshot from before a
+    /// competing claim committed. Caller-owned transactions must use ReadCommitted or PostgreSQL's
+    /// equivalent ReadUncommitted; their lifetime and commit remain the caller's responsibility.
     /// </remarks>
     public async Task<Operation?> ClaimNextAsync(int maxInFlightPerTenant, CancellationToken cancellationToken)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(maxInFlightPerTenant, 1);
 
-        // Both states are interpolated, which FromSql turns into parameters rather than text.
-        // A literal 0 here would silently start claiming a different state if the enum is ever
-        // reordered, with nothing to catch it: the raw SQL does not see the enum at all.
-        var claimed = await db.Operations
+        if (db.Database.CurrentTransaction is { } callerTransaction
+            && callerTransaction.GetDbTransaction().IsolationLevel is not
+                (IsolationLevel.ReadCommitted or IsolationLevel.ReadUncommitted))
+        {
+            throw new InvalidOperationException("Operation claims require a ReadCommitted or ReadUncommitted transaction.");
+        }
+
+        await using var transaction = db.Database.CurrentTransaction is null
+            ? await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+
+        var candidates = await db.Organizations
             .FromSql($"""
                 WITH in_flight AS (
                     SELECT "OrganizationId", COUNT(*) AS held
                     FROM operations
                     WHERE "ClaimedAt" IS NOT NULL AND "CompletedAt" IS NULL
                     GROUP BY "OrganizationId"
+                ), queued AS (
+                    SELECT "OrganizationId", MIN("CreatedAt") AS oldest
+                    FROM operations
+                    WHERE "State" = {(int)OperationState.Pending} AND "ClaimedAt" IS NULL
+                    GROUP BY "OrganizationId"
                 )
+                SELECT org.* FROM organizations org
+                JOIN queued q ON q."OrganizationId" = org."Id"
+                LEFT JOIN in_flight f ON f."OrganizationId" = org."Id"
+                WHERE org."State" = {(int)OrganizationState.Active}
+                  AND COALESCE(f.held, 0) < {maxInFlightPerTenant}
+                ORDER BY COALESCE(f.held, 0), q.oldest, org."Id"
+                FOR UPDATE OF org SKIP LOCKED
+                LIMIT 1
+                """)
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+
+        if (candidates.FirstOrDefault() is not { } candidate) { return null; }
+
+        // This statement gets a fresh snapshot after the admission lock. Keep the operation
+        // update atomic as well: other workers and reconciliation still lock operation rows.
+        var claimed = await db.Operations
+            .FromSql($"""
                 UPDATE operations o
                 SET "ClaimedAt" = now()
                 WHERE o."Id" = (
                     SELECT c."Id" FROM operations c
-                    JOIN organizations org ON org."Id" = c."OrganizationId"
-                    LEFT JOIN in_flight f ON f."OrganizationId" = c."OrganizationId"
-                    WHERE c."State" = {(int)OperationState.Pending}
+                    WHERE c."OrganizationId" = {candidate.Id.Value}
+                      AND c."State" = {(int)OperationState.Pending}
                       AND c."ClaimedAt" IS NULL
-                      AND org."State" = {(int)OrganizationState.Active}
-                      AND COALESCE(f.held, 0) < {maxInFlightPerTenant}
-                    ORDER BY COALESCE(f.held, 0), c."CreatedAt"
+                      AND (SELECT COUNT(*) FROM operations held
+                           WHERE held."OrganizationId" = {candidate.Id.Value}
+                             AND held."ClaimedAt" IS NOT NULL AND held."CompletedAt" IS NULL)
+                          < {maxInFlightPerTenant}
+                    ORDER BY c."CreatedAt", c."Id"
                     FOR UPDATE OF c SKIP LOCKED
                     LIMIT 1
                 )
@@ -238,6 +265,8 @@ public sealed class OperationStore(
             // against; those writes re-read the row.
             .AsNoTracking()
             .ToListAsync(cancellationToken);
+
+        if (transaction is not null) { await transaction.CommitAsync(cancellationToken); }
 
         if (claimed.FirstOrDefault() is not { } operation) { return null; }
 

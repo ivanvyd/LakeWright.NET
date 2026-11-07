@@ -41,15 +41,17 @@ person.
 
 ## Releases
 
-Semantic versioning. Pre-1.0 the minor version may break. Breaking changes are listed in
-[CHANGELOG.md](CHANGELOG.md) with a migration note.
+Use SemVer 2.0. Before 1.0, minor releases may break. From 1.0 onward, breaking API, behavior,
+dependency, or target-framework changes require a major release. Compatible features use a minor
+release; compatible fixes use a patch. Breaking changes include a migration note in
+[CHANGELOG.md](CHANGELOG.md).
 
 Release tags are signed, and the release workflow refuses an unsigned or lightweight tag before it
 builds anything. [docs/guides/releasing.md](docs/guides/releasing.md) covers the one-time setup.
 
 Stable tags publish stable packages to nuget.org; tags with a SemVer prerelease label publish
-prerelease packages and require `--prerelease` to install. Every breaking change carries a SemVer
-minor version and a migration note. A package that exists solely because a folder existed is still a
+prerelease packages and require an explicit prerelease version or `--prerelease` to install.
+A package that exists solely because a folder existed is still a
 maintenance liability — [ADR 0010](docs/decisions/0010-publish-prerelease-packages.md) records why
 publishing nothing turned out to cost more than it saved, while
 [ADR 0019](docs/decisions/0019-stable-1-0-0.md) records the stable-release policy.

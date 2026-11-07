@@ -5,10 +5,10 @@ policy, or a package candidate is promoted. Dashboard inspection does not mutate
 The consumer check executes a bundled fixture against local synthetic HTTP endpoints, without
 Databricks credentials or real warehouse calls.
 
-Install a prerelease explicitly from the same feed as the candidate being assessed:
+Install the published stable tool:
 
 ```bash
-dotnet tool install --global LakeWright.Tooling --prerelease --add-source <package-source>
+dotnet tool install --global LakeWright.Tooling --version 2.1.2
 ```
 
 ## Lint dashboard markers
@@ -33,8 +33,12 @@ for that request and is never written to output.
 After packing a candidate into a local package source, verify its narrow net8 dependency floor:
 
 ```bash
-lakewright verify-floor ./artifacts 2.0.0-rc.1
+lakewright verify-floor ./artifacts 2.1.2-ci.12345.1
 ```
+
+The version above is an illustrative unpublished CI identity; use the exact version
+you packed. CI derives it from the SDK's project version with a `ci.<run-id>.<run-attempt>` suffix.
+For a candidate tool, install that exact prerelease version from the candidate feed too.
 
 The command requires exact-version Embedding and Databricks nupkgs plus their LakeWright dependency
 closure in that directory. Empty, incomplete, duplicate, and wrong-version sources fail before
@@ -47,5 +51,6 @@ It builds and runs the bundled net8 consumer with the lowest supported Microsoft
 including synthetic tenant resolution, SQL, and token-broker flows, and rejects persistence
 dependencies. Successful output identifies each candidate and hash. This is separate from checking
 already published packages on nuget.org and from the full tenant-isolation suite. Package API
-validation compares every library under `src/` with stable 2.0.0 during pack; Tooling is a CLI and
-uses these packaged command checks instead of a public-library API baseline.
+validation compares every library under `src/` with stable 2.1.2 during pack and stays enabled
+across major-version changes. Tooling is a CLI and uses these packaged command checks instead of
+a public-library API baseline.
