@@ -12,8 +12,9 @@ consumers passed the membership, query and denied-tenant fixtures. Installed
 Embedding packages.
 
 The 3.0.0 release checks did not run a live Databricks workspace or deploy the Azure application.
-The live-system observations below retain their original dates. A stable version does not advance
-those dates or verify another environment.
+A separate [2026-11-07 AWS check](#2026-11-07-installed-package-aws-check) exercised the published
+Core and Databricks packages. Earlier live-system observations retain their original dates.
+A stable version does not advance those dates or verify another environment.
 
 The current package-publication and consumer evidence is in the
 [3.0.0 release evidence](release-evidence/v3.0.0.md). Earlier evidence remains available for
@@ -39,9 +40,9 @@ verification identity lacked `USE SCHEMA` on `system.billing`.
 
 ## Recorded verification environments
 
-These are the environments recorded by the earlier checks. They do not establish an available
-target for current-package live acceptance. That check needs an existing, explicitly approved
-nonproduction workspace. The offline package quickstart needs no workspace.
+These rows record the earlier verification environments. The AWS check below used a separate,
+existing, explicitly approved nonproduction workspace on 2026-11-07. The offline package
+quickstart needs no workspace.
 
 | | |
 |---|---|
@@ -132,14 +133,32 @@ request, package-consumer, publication and cleanup commands are in the
 | Entra token accepted after `az login` to a non-default tenant | **Not supported** | 2026-08-05 | Databricks refuses it with `IncorrectClaimException: Expected iss claim to be .../A/, but was .../B/` — an HTTP 400 naming neither the workspace nor the fix. `LiveCredential` now honours `AZURE_TENANT_ID` |
 | Creating a **catalog** via bundle or SQL on a Default Storage metastore | **Not supported** | 2026-08-01 | `INVALID_STATE: Metastore storage root URL does not exist`. Needs the UI or an explicit `MANAGED LOCATION`, so the catalog is a documented prerequisite. |
 
+### 2026-11-07 installed-package AWS check
+
+A package-only .NET 8 consumer of public `LakeWright.Core` and `LakeWright.Databricks` 3.0.0 ran
+against an existing AWS Free Edition workspace with a serverless PRO warehouse. It used the
+`samples.bakehouse` catalog/schema metadata and a CLI user OAuth token forwarded through a custom
+`TokenCredential` adapter. This did not exercise `DefaultAzureCredential`, managed identity or
+LakeWright's machine-to-machine OAuth route.
+
+The bound statement `SELECT :value AS value` returned one row containing `1`. HTTP diagnostics
+observed one SQL POST and one total SQL request. A wrong-tenant request was denied by the consumer's
+trusted membership resolver; rejection of a default statement was also checked. Each added zero SQL
+requests. No resources, grants or tables were changed.
+
+This verifies the installed-package statement path and those local rejection boundaries. It does
+not verify separate server-side tenant schemas or RBAC, billing attribution, jobs, Azure hosting,
+broader live regressions, cross-cloud parity or .NET 10 live execution. The older capability rows
+above retain their original scope and dates.
+
 ## Clouds
 
 | Cloud | Status | Notes |
 |---|---|---|
 | Azure | **Verified** for the dated rows above | The hosted reference application remains unverified. |
-| AWS | Unverified | OAuth federation documented; nobody here has run it |
-| GCP | Unverified | Same |
-| Free Edition | **Service principal OAuth does not work** | Free Edition exposes no account console or account-level API, and service principal OAuth depends on account-level identity infrastructure — confirmed by Databricks on the community forum, 2026-08-01. Contributors use their own user identity there, or need no workspace at all: the sample runs without one |
+| AWS | **Verified** for the bounded 2026-11-07 check above | Public Core/Databricks 3.0.0 on .NET 8 with a custom CLI user OAuth adapter. OAuth federation and LakeWright M2M remain unverified. |
+| GCP | Unverified | OAuth federation documented; no live check recorded |
+| Free Edition | **Verified** for the bounded user OAuth check above | The 2026-08-01 assessment recorded service-principal OAuth as unavailable based on the account-level API limitation and a community response. On 2026-11-07, [LakeSpeak's hosted M2M run](https://github.com/ivanvyd/LakeSpeak.NET/actions/runs/42409476224) passed nine live tests in the same Free Edition workspace using an existing client ID/secret pair. LakeWright's M2M route was not retested. The offline sample needs no workspace. |
 
 ## .NET
 
