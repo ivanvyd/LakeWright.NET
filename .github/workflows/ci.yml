@@ -117,12 +117,14 @@ jobs:
       # the lock files were not regenerated, which is a chore rather than a defect -- and the
       # error NuGet prints for it does not mention the fix.
       - name: Test CI shell boundaries
-        run: python3 scripts/test-ci-shell-inputs.py
+        run: |
+          python3 scripts/test-ci-shell-inputs.py
+          python3 scripts/test-refresh-lock-files.py
       - name: Restore
         run: |
           set -euo pipefail
           if ! dotnet restore --locked-mode; then
-            echo "::error title=Lock files are out of step::dotnet restore --locked-mode failed. If this is a dependency bump, Dependabot cannot rewrite packages.lock.json under central package management. Run the 'Refresh lock files' workflow using the Dependabot branch, then re-run these checks."
+            echo "::error title=Lock files are out of step::dotnet restore --locked-mode failed. If this is a dependency bump, Dependabot cannot rewrite packages.lock.json under central package management. Run the 'Refresh lock files' workflow from the default branch, with the Dependabot branch as its input, then re-run these checks."
             exit 1
           fi
       - run: dotnet build --no-restore -c Release
