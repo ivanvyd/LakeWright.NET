@@ -33,21 +33,17 @@ public interface IJobSubmitter
     /// </remarks>
     Task<RunOutcome> SubmitAsync(TenantScopedJobRun run, CancellationToken cancellationToken);
 
+    /// <summary>Reads the remote run state.</summary>
+    /// <remarks>A failed status request throws. It does not establish that the run has stopped.</remarks>
     Task<RunOutcome> GetRunAsync(long runId, CancellationToken cancellationToken);
 
     /// <summary>
     /// Asks Databricks to stop a run.
     /// </summary>
     /// <remarks>
-    /// Giving up on a run and stopping it are different things, and this interface only had the
-    /// first. When the worker's run timeout elapsed it marked the operation failed and returned,
-    /// which stopped the polling and left the job executing — still consuming the compute the
-    /// timeout exists to bound, and still holding a schema that tenant deletion would then drop
-    /// underneath it.
-    ///
-    /// Best effort by nature: the run may already be terminal, and cancelling something that has
-    /// finished is not an error worth propagating to a caller who has already decided to abandon
-    /// it.
+    /// A successful call requests cancellation. Cancellation is asynchronous, so callers must
+    /// confirm a terminal state through <see cref="GetRunAsync"/> before releasing run ownership.
+    /// A rejected request throws and leaves the run state unknown.
     /// </remarks>
     Task CancelRunAsync(long runId, CancellationToken cancellationToken);
 }

@@ -57,10 +57,12 @@ internal sealed record DashboardDraft(
     string WarehouseId,
     string? Etag,
     string? ParentPath,
-    string SerializedDashboard);
+    string SerializedDashboard,
+    DateTimeOffset? UpdatedAt = null);
 
 internal sealed class DashboardCacheBuster(
     IDashboardEditorApi dashboards,
+    IPublishVerificationApi publication,
     IOptions<DashboardCacheBustOptions> options,
     ILakeWrightFeatureGate features) : IDashboardCacheBuster
 {
@@ -101,30 +103,41 @@ internal sealed class DashboardCacheBuster(
         var stamped = AddMarker(draft.SerializedDashboard, marker, out var alreadyCurrent);
         if (alreadyCurrent)
         {
-            return new DashboardCacheBustResult(dashboardId, marker, AlreadyCurrent: true);
-        }
-
-        try
-        {
-            await dashboards.PatchDraftAsync(draft, stamped, cancellationToken).ConfigureAwait(false);
-        }
-        catch (DashboardApiException exception) when (exception.IsConcurrencyConflict)
-        {
-            // Another replica may have made the same idempotent change. Re-read exactly once:
-            // retrying PATCH blindly could overwrite a concurrent authored dashboard change.
-            var current = await dashboards.GetDraftAsync(dashboardId, cancellationToken).ConfigureAwait(false);
-            _ = AddMarker(current.SerializedDashboard, marker, out var currentHasMarker);
-            if (!currentHasMarker)
+            if (await IsPublishedAsync(draft, cancellationToken).ConfigureAwait(false))
             {
-                throw;
+                return new DashboardCacheBustResult(dashboardId, marker, AlreadyCurrent: true);
             }
-
-            return new DashboardCacheBustResult(dashboardId, marker, AlreadyCurrent: true);
+        }
+        else
+        {
+            try
+            {
+                await dashboards.PatchDraftAsync(draft, stamped, cancellationToken).ConfigureAwait(false);
+            }
+            catch (DashboardApiException exception) when (exception.IsConcurrencyConflict)
+            {
+                // Re-read once rather than overwriting a concurrent authored change.
+                var current = await dashboards.GetDraftAsync(dashboardId, cancellationToken).ConfigureAwait(false);
+                _ = AddMarker(current.SerializedDashboard, marker, out var currentHasMarker);
+                if (!currentHasMarker)
+                {
+                    throw;
+                }
+                if (await IsPublishedAsync(current, cancellationToken).ConfigureAwait(false))
+                {
+                    return new DashboardCacheBustResult(dashboardId, marker, AlreadyCurrent: true);
+                }
+            }
         }
 
         await dashboards.PublishAsync(dashboardId, _options.EmbedCredentials, cancellationToken).ConfigureAwait(false);
         return new DashboardCacheBustResult(dashboardId, marker, AlreadyCurrent: false);
     }
+
+    private async Task<bool> IsPublishedAsync(DashboardDraft draft, CancellationToken cancellationToken) =>
+        draft.UpdatedAt is { } updated
+        && await publication.GetPublishedRevisionAsync(draft.Id, cancellationToken).ConfigureAwait(false) is { } published
+        && published >= updated;
 
     internal static string AddMarker(string serializedDashboard, string marker, out bool alreadyCurrent)
     {
@@ -211,7 +224,8 @@ internal sealed class DatabricksDashboardEditorApi(HttpClient http, IOpsTokenBro
             ReadRequiredString(root, "warehouse_id"),
             ReadOptionalString(root, "etag"),
             ReadOptionalString(root, "parent_path"),
-            ReadRequiredString(root, "serialized_dashboard"));
+            ReadRequiredString(root, "serialized_dashboard"),
+            DateTimeOffset.TryParse(ReadOptionalString(root, "update_time"), out var updated) ? updated : null);
     }
 
     public async Task PatchDraftAsync(DashboardDraft draft, string serializedDashboard, CancellationToken cancellationToken)

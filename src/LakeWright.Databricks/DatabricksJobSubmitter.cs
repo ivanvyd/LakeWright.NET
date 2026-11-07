@@ -23,6 +23,9 @@ public sealed partial class DatabricksJobSubmitter(
     [LoggerMessage(Level = LogLevel.Warning, Message = "Cancelling run {RunId} was rejected with {StatusCode}")]
     private partial void LogCancelRejected(long runId, int statusCode);
 
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Reading run {RunId} was rejected with {StatusCode}")]
+    private partial void LogPollRejected(long runId, int statusCode);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Run {RunId} reported unrecognised lifecycle state {State}; treating as running")]
     private partial void LogUnrecognisedState(long runId, RunStatusState state);
 
@@ -59,10 +62,8 @@ public sealed partial class DatabricksJobSubmitter(
         }
         catch (ClientApiException e)
         {
-            // The caller has already given up on this run; a cancel that fails because the run is
-            // already terminal, or gone, changes nothing it would do differently. Logged rather
-            // than thrown so the abandonment still completes.
             LogCancelRejected(runId, (int)e.StatusCode);
+            throw new HttpRequestException($"Databricks rejected cancellation for run {runId} (HTTP {(int)e.StatusCode}).", null, e.StatusCode);
         }
     }
 
@@ -77,7 +78,8 @@ public sealed partial class DatabricksJobSubmitter(
         }
         catch (ClientApiException ex)
         {
-            return new RunOutcome.Failed(runId, ex.Message, IsTransient: false);
+            LogPollRejected(runId, (int)ex.StatusCode);
+            throw new HttpRequestException($"Databricks rejected reading run {runId} (HTTP {(int)ex.StatusCode}).", null, ex.StatusCode);
         }
     }
 
