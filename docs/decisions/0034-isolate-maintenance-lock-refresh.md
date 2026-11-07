@@ -6,9 +6,8 @@ Date: 2026-11-07
 
 ## Context
 
-Dependabot updates central package versions without regenerating NuGet lock files.
-Refreshing those files requires restore and build, which can execute code from the bump branch.
-Running that code in a job with repository-write permission exposes the write credential.
+Dependabot updates central package versions without regenerating NuGet locks. Restore and build
+can execute bump-branch code; a job with repository-write permission exposes its write credential.
 
 ## Decision
 
@@ -20,9 +19,11 @@ Trusted scripts come from the workflow commit. Three fresh runners separate the 
   builds. Its outputs carry untrusted lock data, and cannot supply the writer's trusted source SHA.
 - A writer receives the SHA directly from the resolver and executes only trusted workflow code.
 
-The bounded payload has an exact schema, matching branch and base SHA, and the complete set of
-existing tracked regular `packages.lock.json` paths. It carries base64-encoded lock bytes.
-Validation rejects unexpected files, traversal, symlinks, malformed JSON and invalid lock structures.
+Set workflow-level `cache-mode: none`, with no job overrides, to deny cache restores and saves.
+Runtime cache tokens are independent of `contents` permissions; GitHub enforces their scope.
+
+The exact payload schema carries base64 lock bytes, matching branch/base SHA and every existing
+tracked regular `packages.lock.json` path. Reject extra files, traversal, symlinks and malformed lock JSON.
 Limits are 16 MiB per payload, 1 MiB per decoded lock, 128 files and 512 characters per path.
 
 The writer fetches Git objects into a new bare repository with an empty template. It constructs an
@@ -37,14 +38,13 @@ Candidate execution has read-only repository permission. The fresh writer alone 
 Push events from `GITHUB_TOKEN` do not start workflows. PR runs can await approval; after a changed
 push, select 'Approve workflows to run' for pending runs. If expected checks are absent, close and
 reopen the PR with your own identity. Rerunning an older run retains its original SHA.
-See [workflow triggers](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow) and
-[rerun semantics](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs).
+See [workflow triggers](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow) and [rerun semantics](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs).
 
-Lock validation checks supported format versions, dependency structure and content-hash encoding.
-It does not solve NuGet version ranges or establish that a dependency is suitable. New lock formats
-require review. A compromised candidate runner can propose valid lock data within this boundary.
+Validation checks supported lock formats, dependency structure and content-hash encoding. It does
+not solve NuGet ranges, judge dependency suitability or attest an honest candidate build.
+New lock formats require review; compromised candidate code can propose valid lock data.
 
-The design trusts the default-branch workflow, pinned Actions, GitHub runner isolation, scoped
-tokens and artifact delivery. Payload limits apply after artifact download. Local Git fixtures
-exercise data validation, commit boundaries and races; hosted token, runner and artifact behavior
-still requires verification on GitHub.
+The design trusts default-branch code, pinned Actions, hosted runner isolation, and GitHub's
+[scoped cache tokens](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#cache-mode), job tokens and artifact delivery.
+Payload size checks apply after download. Local checks verify policy and Git data handling;
+hosted cache denial, token scope and runner/artifact behavior require verification on GitHub.

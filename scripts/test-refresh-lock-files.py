@@ -39,7 +39,26 @@ def isolated_writer_policy(source):
             and all("dotnet " not in job for job in jobs.values() if "contents: write" in job))
 
 
+def cache_disabled_policy(source):
+    keys = re.findall(r"(?m)^[ \t]*cache-mode:", source)
+    return bool(re.search(r"(?m)^cache-mode: none$", source)) and len(keys) == 1
+
+
 class WorkflowPolicyTests(unittest.TestCase):
+    def test_runtime_cache_access_is_disabled_without_job_overrides(self):
+        source = (ROOT / ".github/workflows/refresh-lock-files.yml").read_text(encoding="utf-8")
+        self.assertTrue(cache_disabled_policy(source))
+        self.assertTrue(cache_disabled_policy(source + "\n# cache-mode is enforced by scoped cache tokens.\n"))
+        self.assertFalse(cache_disabled_policy(source.replace("cache-mode: none\n", "", 1)))
+        for mode in ("read", "write", "write-only"):
+            with self.subTest(workflow_mode=mode):
+                self.assertFalse(cache_disabled_policy(source.replace("cache-mode: none", "cache-mode: " + mode, 1)))
+        for job in workflow_jobs(source):
+            for mode in ("none", "read", "write", "write-only"):
+                with self.subTest(job=job, override=mode):
+                    overridden = source.replace(f"  {job}:\n", f"  {job}:\n    cache-mode: {mode}\n", 1)
+                    self.assertFalse(cache_disabled_policy(overridden))
+
     def test_candidate_execution_has_no_write_job_and_trust_comes_from_resolver(self):
         source = (ROOT / ".github/workflows/refresh-lock-files.yml").read_text(encoding="utf-8")
         self.assertTrue(isolated_writer_policy(source))

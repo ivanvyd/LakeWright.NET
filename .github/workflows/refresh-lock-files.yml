@@ -28,6 +28,9 @@ on:
 permissions:
   contents: read
 
+# Repository permissions do not restrict runtime cache access.
+cache-mode: none
+
 concurrency:
   group: refresh-lock-files-${{ inputs.branch }}
   cancel-in-progress: false
