@@ -120,9 +120,9 @@ The sample includes opt-in OpenTelemetry export wiring. Currency attribution has
 implementation, and Azure deployment has Bicep templates and a workflow. Their live verification
 boundaries are recorded in [the compatibility matrix](docs/compatibility.md).
 
-Current stable release: [v2.1.1](https://github.com/ivanvyd/LakeWright.NET/releases/tag/v2.1.1).
+Current stable release: [v2.1.2](https://github.com/ivanvyd/LakeWright.NET/releases/tag/v2.1.2).
 The source tree may contain changes for a later candidate; published packages retain the behavior
-documented in their release evidence.
+documented in [the release evidence](docs/release-evidence/v2.1.2.md).
 
 ## Documentation
 
