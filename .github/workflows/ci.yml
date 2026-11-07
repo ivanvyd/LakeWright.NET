@@ -170,24 +170,36 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           global-json-file: global.json
+          dotnet-version: '8.0.x'
       - run: dotnet restore --locked-mode
+      - name: Derive the CI candidate from the project version
+        run: |
+          version=$(dotnet msbuild src/LakeWright.Core/LakeWright.Core.csproj -nologo -getProperty:Version -p:VersionSuffix="ci.${{ github.run_id }}.${{ github.run_attempt }}")
+          echo "CANDIDATE_VERSION=$version" >> "$GITHUB_ENV"
       - name: Pack the candidate packages
-        run: dotnet pack LakeWright.slnx -c Release -o consumer-floor-packages -p:Version=2.0.1-ci.0
+        run: dotnet pack LakeWright.slnx -c Release -o consumer-floor-packages -p:Version="$CANDIDATE_VERSION"
       - name: Verify every packed package has a publication order
         run: |
-          python3 scripts/package-publish-order.py consumer-floor-packages 2.0.1-ci.0 > consumer-floor-packages/publish-order.txt
-          packed=$(find consumer-floor-packages -maxdepth 1 -type f -name '*.2.0.1-ci.0.nupkg' | wc -l)
+          python3 scripts/package-publish-order.py consumer-floor-packages "$CANDIDATE_VERSION" > consumer-floor-packages/publish-order.txt
+          packed=$(find consumer-floor-packages -maxdepth 1 -type f -name "*.$CANDIDATE_VERSION.nupkg" | wc -l)
           ordered=$(wc -l < consumer-floor-packages/publish-order.txt)
           test "$packed" -eq "$ordered"
       - name: Exercise the packaged local verification tool
+        env:
+          # Deliberately nest the generated consumer under this repository's CPM/build policy.
+          TMPDIR: ${{ github.workspace }}/consumer-floor-tmp
         run: |
+          mkdir -p "$TMPDIR"
           dotnet tool install --tool-path .lakewright-tool \
             --add-source "$GITHUB_WORKSPACE/consumer-floor-packages" \
-            LakeWright.Tooling --version 2.0.1-ci.0
+            LakeWright.Tooling --version "$CANDIDATE_VERSION"
           .lakewright-tool/lakewright inspect-dashboard tests/assets/tooling-safe-dashboard.lvdash.json
           python3 scripts/test-consumer-floor.py .lakewright-tool/lakewright
-          .lakewright-tool/lakewright verify-floor "$GITHUB_WORKSPACE/consumer-floor-packages" 2.0.1-ci.0
-          python3 scripts/test-incompatible-consumer.py .lakewright-tool/lakewright "$GITHUB_WORKSPACE/consumer-floor-packages" 2.0.1-ci.0
+          .lakewright-tool/lakewright verify-floor "$GITHUB_WORKSPACE/consumer-floor-packages" "$CANDIDATE_VERSION"
+          python3 scripts/test-incompatible-consumer.py .lakewright-tool/lakewright "$GITHUB_WORKSPACE/consumer-floor-packages" "$CANDIDATE_VERSION"
+
+      - name: Exercise the published-package quickstart independently of candidate packages
+        run: python3 scripts/verify-package-quickstart.py --artifacts artifacts/package-quickstart
 
   docs:
     needs: confidentiality-preflight

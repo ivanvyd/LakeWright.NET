@@ -22,6 +22,7 @@ public class TenantLifecycleTests(PostgresFixture postgres)
     private sealed class RecordingSchemas : ITenantSchemaProvisioner
     {
         public List<string> Calls { get; } = [];
+        public bool FailDrop { get; set; }
 
         public Task CreateAsync(string catalog, string schema, CancellationToken cancellationToken)
         {
@@ -31,6 +32,7 @@ public class TenantLifecycleTests(PostgresFixture postgres)
 
         public Task DropAsync(string catalog, string schema, CancellationToken cancellationToken)
         {
+            if (FailDrop) { throw new InvalidOperationException("Fixture schema drop failed."); }
             Calls.Add($"drop {catalog}.{schema}");
             return Task.CompletedTask;
         }
@@ -206,6 +208,47 @@ public class TenantLifecycleTests(PostgresFixture postgres)
         schemas.Calls.ShouldBeEmpty();
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Purging_discards_only_never_submitted_queue_after_the_grace_period(bool checkGrace)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        var schemas = new RecordingSchemas();
+        var lifecycle = Lifecycle(db, schemas);
+        var tenant = await lifecycle.ProvisionAsync("Acme", "acme", "auth0|ops", ct);
+        var other = await lifecycle.ProvisionAsync("Globex", "globex", "auth0|ops", ct);
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
+        var queued = await store.CreateAsync(
+            TenantContextFactory.ForTenant(tenant.Id, "analytics"), "auth0|alice", "analysis", null, ct);
+        var retained = await store.CreateAsync(
+            TenantContextFactory.ForTenant(other.Id, "analytics"), "auth0|bob", "analysis", null, ct);
+        await lifecycle.BeginDeletionAsync(tenant.Id, "auth0|ops", ct);
+        schemas.Calls.Clear();
+
+        if (checkGrace)
+        {
+            (await lifecycle.PurgeAsync(tenant.Id, "auth0|ops", TimeSpan.FromDays(7), ct))
+                .ShouldBe(TenantPurgeResult.StillWithinGracePeriod);
+        }
+        db.ChangeTracker.Clear();
+        var preserved = await db.Operations.SingleAsync(o => o.Id == queued.Id, ct);
+        preserved.State.ShouldBe(OperationState.Pending);
+        preserved.ClaimedAt.ShouldBeNull();
+        preserved.ExternalId.ShouldBeNull();
+        schemas.Calls.ShouldBeEmpty();
+
+        (await store.ClaimNextAsync(1, ct)).ShouldNotBeNull().Id.ShouldBe(retained.Id);
+        (await store.ClaimNextAsync(1, ct)).ShouldBeNull("the deletion queue cannot drain by submission");
+        (await lifecycle.PurgeAsync(tenant.Id, "auth0|ops", TimeSpan.Zero, ct))
+            .ShouldBe(TenantPurgeResult.Deleted);
+        (await db.Operations.AnyAsync(o => o.Id == queued.Id, ct)).ShouldBeFalse();
+        (await db.Operations.AnyAsync(o => o.Id == retained.Id, ct)).ShouldBeTrue();
+        (await db.Organizations.AnyAsync(o => o.Id == other.Id, ct)).ShouldBeTrue();
+        schemas.Calls.ShouldBe([$"drop analytics.{tenant.Schema}"]);
+    }
+
     [Fact]
     public async Task Purging_waits_for_work_still_in_flight()
     {
@@ -221,6 +264,8 @@ public class TenantLifecycleTests(PostgresFixture postgres)
         var operation = await store.CreateAsync(
             TenantContextFactory.ForTenant(tenant.Id, "analytics"), "auth0|alice", "analysis", null, ct);
 
+        (await store.ClaimNextAsync(1, ct)).ShouldNotBeNull().Id.ShouldBe(operation.Id);
+
         await lifecycle.BeginDeletionAsync(tenant.Id, "auth0|ops", ct);
         schemas.Calls.Clear();
 
@@ -233,6 +278,57 @@ public class TenantLifecycleTests(PostgresFixture postgres)
         whileRunning.ShouldBe(TenantPurgeResult.OperationsInFlight);
         afterDraining.ShouldBe(TenantPurgeResult.Deleted);
         schemas.Calls.ShouldBe([$"drop analytics.{tenant.Schema}"]);
+    }
+
+    [Fact]
+    public async Task A_failed_schema_drop_preserves_the_pending_queue_and_tenant_for_retry()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        var schemas = new RecordingSchemas { FailDrop = true };
+        var lifecycle = Lifecycle(db, schemas);
+        var tenant = await lifecycle.ProvisionAsync("Acme", "acme", "auth0|ops", ct);
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
+        var queued = await store.CreateAsync(TenantContextFactory.ForTenant(tenant.Id, "analytics"), "auth0|alice", "analysis", null, ct);
+        await lifecycle.BeginDeletionAsync(tenant.Id, "auth0|ops", ct);
+
+        await Should.ThrowAsync<InvalidOperationException>(() => lifecycle.PurgeAsync(tenant.Id, "auth0|ops", TimeSpan.Zero, ct));
+        (await db.Organizations.SingleAsync(ct)).State.ShouldBe(OrganizationState.PendingDeletion);
+        (await db.Operations.SingleAsync(ct)).Id.ShouldBe(queued.Id);
+        (await db.AuditEvents.AnyAsync(a => a.Action == AuditActions.TenantDeleted, ct)).ShouldBeFalse();
+        schemas.FailDrop = false;
+        (await lifecycle.PurgeAsync(tenant.Id, "auth0|ops", TimeSpan.Zero, ct)).ShouldBe(TenantPurgeResult.Deleted);
+    }
+
+    [Theory]
+    [InlineData(OperationState.Pending, true, false)]
+    [InlineData(OperationState.Pending, false, true)]
+    [InlineData(OperationState.Running, false, false)]
+    [InlineData(OperationState.Succeeded, false, false)]
+    [InlineData(OperationState.Failed, false, false)]
+    [InlineData(OperationState.Cancelled, false, false)]
+    public async Task Purging_retains_every_incomplete_row_that_is_not_a_never_submitted_queue_entry(
+        OperationState state, bool claimed, bool external)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await postgres.NewDatabaseAsync();
+        var schemas = new RecordingSchemas();
+        var lifecycle = Lifecycle(db, schemas);
+        var tenant = await lifecycle.ProvisionAsync("Acme", "acme", "auth0|ops", ct);
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
+        var operation = await store.CreateAsync(TenantContextFactory.ForTenant(tenant.Id, "analytics"), "auth0|alice", "analysis", null, ct);
+        operation.State = state;
+        operation.ClaimedAt = claimed ? DateTimeOffset.UtcNow : null;
+        operation.ExternalId = external ? "known-run" : null;
+        await db.SaveChangesAsync(ct);
+        await lifecycle.BeginDeletionAsync(tenant.Id, "auth0|ops", ct);
+        schemas.Calls.Clear();
+
+        (await lifecycle.PurgeAsync(tenant.Id, "auth0|ops", TimeSpan.Zero, ct)).ShouldBe(TenantPurgeResult.OperationsInFlight);
+        (await store.ClaimOrphanForReconciliationAsync(TimeSpan.FromMinutes(-5), ct)).ShouldBeNull();
+        (await db.Operations.CountAsync(ct)).ShouldBe(1);
+        (await db.Organizations.CountAsync(ct)).ShouldBe(1);
+        schemas.Calls.ShouldBeEmpty();
     }
 
     [Fact]

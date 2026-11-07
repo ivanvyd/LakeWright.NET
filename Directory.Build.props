@@ -58,8 +58,8 @@
     <Copyright>Copyright (c) LakeWright.NET contributors</Copyright>
   </PropertyGroup>
 
-  <!-- All libraries under src shipped at 2.0.0. Compare their actual target-framework assets
-       with that stable release. A future first-release library needs an explicit baseline
+  <!-- Compare every library's target-framework assets with the latest stable package family.
+       A future first-release library needs an explicit baseline
        decision; it must not silently escape validation. Tooling is a CLI, covered by packaged
        command/consumer tests rather than public library API comparison. -->
   <PropertyGroup>
@@ -67,8 +67,8 @@
     <_LakeWrightProjectArea>$([System.IO.Path]::GetFileName('$(_LakeWrightProjectParent)'))</_LakeWrightProjectArea>
   </PropertyGroup>
   <PropertyGroup Condition="'$(_LakeWrightProjectArea)' == 'src'">
-    <PackageValidationBaselineVersion>2.0.0</PackageValidationBaselineVersion>
-    <EnablePackageValidation Condition="$([System.Version]::Parse('$(VersionPrefix)').Major) == $([System.Version]::Parse('$(PackageValidationBaselineVersion)').Major)">true</EnablePackageValidation>
+    <PackageValidationBaselineVersion>2.1.2</PackageValidationBaselineVersion>
+    <EnablePackageValidation>true</EnablePackageValidation>
   </PropertyGroup>
 
   <!-- PackageReadmeFile names the file; it does not put it in the package. Without this, `dotnet

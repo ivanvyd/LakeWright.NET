@@ -3,16 +3,20 @@
 
 import argparse
 import io
+import os
 from pathlib import Path
 import subprocess
 import tarfile
 import tempfile
+import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def run(directory, *arguments):
-    result = subprocess.run(["dotnet", *arguments], cwd=directory, capture_output=True, text=True, check=False, timeout=300)
+    environment = dict(os.environ, TMP=str(directory), TEMP=str(directory), TMPDIR=str(directory))
+    result = subprocess.run(["dotnet", *arguments], cwd=directory, env=environment,
+                            capture_output=True, text=True, check=False, timeout=300)
     return result.returncode, result.stdout + result.stderr
 
 
@@ -20,9 +24,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--evidence", type=Path, required=True)
     args = parser.parse_args()
+    args.evidence = args.evidence.resolve()
     args.evidence.mkdir(parents=True, exist_ok=True)
     archive = subprocess.run(["git", "archive", "HEAD", "src/LakeWright.Core", "Directory.Packages.props", "global.json", "README.md", ".editorconfig"], cwd=ROOT, capture_output=True, check=True)
-    with tempfile.TemporaryDirectory(prefix="lakewright-api-fixture-") as directory:
+    with tempfile.TemporaryDirectory(prefix="lakewright-api-fixture-", dir=args.evidence) as directory:
         fixture = Path(directory)
         with tarfile.open(fileobj=io.BytesIO(archive.stdout)) as source:
             source.extractall(fixture, filter="data")
@@ -32,7 +37,13 @@ def main():
         (args.evidence / "compatibility-fixture-restore.log").write_text(log, encoding="utf-8")
         if code:
             raise RuntimeError("The baseline fixture did not restore; no compatibility verdict is established.")
-        command = ("pack", project, "-c", "Release", "--no-restore", "-p:Version=2.0.1-ci.0", "-o", "candidate")
+        code, version = run(fixture, "msbuild", project, "-nologo", "-getProperty:Version",
+                            f"-p:VersionSuffix=compat.{uuid.uuid4().hex}")
+        if code:
+            raise RuntimeError("The fixture candidate version could not be evaluated.")
+        version = version.strip()
+        (args.evidence / "candidate-version.txt").write_text(version + "\n", encoding="utf-8")
+        command = ("pack", project, "-c", "Release", "--no-restore", f"-p:Version={version}", "-o", "candidate")
         code, log = run(fixture, *command)
         (args.evidence / "compatibility-compatible.log").write_text(log, encoding="utf-8")
         if code:

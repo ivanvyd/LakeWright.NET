@@ -59,7 +59,12 @@ Add the public key at <https://github.com/settings/keys> under **GPG keys**.
 Before tagging a candidate, run the locked restore, Release build, non-live and tenant-isolation
 tests, and package validation against the current stable baseline. `scripts/test-package-validation.py`
 also demonstrates that removing a public baseline member fails compatibility validation. Run
-`lakewright verify-floor <candidate-directory> <exact-version>` from the packed tool: it verifies
+that fixture with `python scripts/test-package-validation.py --evidence artifacts/package-validation`.
+The current baseline is published 2.1.2. API validation remains enabled across major-version
+changes; intentional breaks need reviewed narrow suppressions or a new verified baseline.
+Behavioral compatibility still requires its regression tests and the correct SemVer release.
+
+Run `lakewright verify-floor <candidate-directory> <exact-version>` from the packed tool: it verifies
 the supplied package identities and hashes, restores into a fresh package cache, and builds and
 runs the canonical net8 consumer fixture. See [local verification tooling](local-verification-tooling.md).
 

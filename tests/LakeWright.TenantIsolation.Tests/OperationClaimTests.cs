@@ -1,7 +1,11 @@
+using System.Data;
+using System.Data.Common;
 using LakeWright.Core.Tenancy;
 using LakeWright.Multitenancy;
 using LakeWright.Multitenancy.Model;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace LakeWright.TenantIsolation.Tests;
 
@@ -105,6 +109,139 @@ public class OperationClaimTests(PostgresFixture postgres)
         second.ShouldNotBeNull().OrganizationId.ShouldBe(GlobexId);
         third.ShouldBeNull();
         (await db.Operations.CountAsync(o => o.ClaimedAt == null, ct)).ShouldBe(2);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task An_uncommitted_claim_reserves_the_tenants_last_slot(bool callerTransaction)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var seed = await SeedAsync(postgres, operations: 2);
+        var connectionString = seed.Database.GetConnectionString()!;
+        var gate = new HoldClaim();
+        await using var first = PostgresFixture.ContextFor(connectionString, gate);
+        await using var second = PostgresFixture.ContextFor(connectionString);
+        var firstStore = new OperationStore(first, new AuditLog(first, TimeProvider.System), TimeProvider.System);
+        var secondStore = new OperationStore(second, new AuditLog(second, TimeProvider.System), TimeProvider.System);
+        await using var transaction = callerTransaction ? await first.Database.BeginTransactionAsync(ct) : null;
+
+        var claiming = firstStore.ClaimNextAsync(1, ct);
+        Operation? competing;
+        try
+        {
+            await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
+            competing = await secondStore.ClaimNextAsync(1, ct).WaitAsync(TimeSpan.FromSeconds(10), ct);
+        }
+        finally
+        {
+            gate.Release.TrySetResult();
+            await claiming;
+            if (transaction is not null) { await transaction.CommitAsync(ct); }
+        }
+
+        competing.ShouldBeNull("the first claim has not committed, but owns the tenant's only slot");
+        (await seed.Operations.CountAsync(o => o.ClaimedAt != null && o.CompletedAt == null, ct)).ShouldBe(1);
+        (await secondStore.ClaimNextAsync(1, ct)).ShouldBeNull("the cap also holds after commit");
+    }
+
+    private sealed class HoldClaim : DbCommandInterceptor
+    {
+        internal TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override async ValueTask<DbDataReader> ReaderExecutedAsync(
+            DbCommand command,
+            CommandExecutedEventData eventData,
+            DbDataReader result,
+            CancellationToken cancellationToken = default)
+        {
+            if (command.CommandText.Contains("UPDATE operations", StringComparison.Ordinal))
+            {
+                Entered.TrySetResult();
+                await Release.Task.WaitAsync(cancellationToken);
+            }
+            return result;
+        }
+    }
+
+    [Fact]
+    public async Task A_locked_tenant_does_not_block_another_tenants_claim()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var first = await SeedAsync(postgres, operations: 2);
+        await AddTenantAsync(first, GlobexId, ct);
+        var firstStore = new OperationStore(first, new AuditLog(first, TimeProvider.System), TimeProvider.System);
+        await firstStore.CreateAsync(TenantContextFactory.ForTenant(GlobexId, "analytics"), "auth0|bob", "analysis", null, ct);
+        await using var transaction = await first.Database.BeginTransactionAsync(ct);
+        (await firstStore.ClaimNextAsync(1, ct)).ShouldNotBeNull().OrganizationId.ShouldBe(AcmeId);
+
+        await using var second = PostgresFixture.ContextFor(first.Database.GetConnectionString()!);
+        var secondStore = new OperationStore(second, new AuditLog(second, TimeProvider.System), TimeProvider.System);
+        (await secondStore.ClaimNextAsync(1, ct).WaitAsync(TimeSpan.FromSeconds(10), ct))
+            .ShouldNotBeNull().OrganizationId.ShouldBe(GlobexId);
+        await transaction.RollbackAsync(ct);
+
+        (await secondStore.ClaimNextAsync(1, ct)).ShouldNotBeNull().OrganizationId.ShouldBe(AcmeId);
+    }
+
+    [Theory]
+    [InlineData(IsolationLevel.RepeatableRead)]
+    [InlineData(IsolationLevel.Serializable)]
+    public async Task Claiming_rejects_a_caller_snapshot_that_cannot_refresh(IsolationLevel isolation)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await SeedAsync(postgres, operations: 1);
+        await using var transaction = await db.Database.BeginTransactionAsync(isolation, ct);
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
+
+        (await Should.ThrowAsync<InvalidOperationException>(() => store.ClaimNextAsync(1, ct)))
+            .Message.ShouldContain("ReadCommitted");
+        db.Database.CurrentTransaction.ShouldBeSameAs(transaction);
+        (await db.Operations.CountAsync(o => o.ClaimedAt != null, ct)).ShouldBe(0);
+        await transaction.RollbackAsync(ct);
+        (await store.ClaimNextAsync(1, ct)).ShouldNotBeNull();
+    }
+
+    [Theory]
+    [InlineData(IsolationLevel.ReadCommitted)]
+    [InlineData(IsolationLevel.ReadUncommitted)]
+    public async Task Caller_read_committed_semantics_preserve_admission_and_transaction_ownership(IsolationLevel isolation)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var first = await SeedAsync(postgres, operations: 2);
+        await using var transaction = await first.Database.BeginTransactionAsync(isolation, ct);
+        transaction.GetDbTransaction().IsolationLevel.ShouldBe(isolation);
+        var store = new OperationStore(first, new AuditLog(first, TimeProvider.System), TimeProvider.System);
+        (await store.ClaimNextAsync(1, ct)).ShouldNotBeNull();
+        first.Database.CurrentTransaction.ShouldBeSameAs(transaction);
+
+        await using var second = PostgresFixture.ContextFor(first.Database.GetConnectionString()!);
+        (await second.Operations.CountAsync(o => o.ClaimedAt != null, ct)).ShouldBe(0, "the caller has not committed");
+        var secondStore = new OperationStore(second, new AuditLog(second, TimeProvider.System), TimeProvider.System);
+        (await secondStore.ClaimNextAsync(1, ct)).ShouldBeNull("the uncommitted tenant lock reserves admission");
+        await transaction.RollbackAsync(ct);
+        (await second.Operations.CountAsync(o => o.ClaimedAt != null, ct)).ShouldBe(0);
+        (await secondStore.ClaimNextAsync(1, ct)).ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task Cancelling_a_claim_rolls_back_its_owned_transaction_and_releases_admission()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var seed = await SeedAsync(postgres, operations: 1);
+        var gate = new HoldClaim();
+        await using var db = PostgresFixture.ContextFor(seed.Database.GetConnectionString()!, gate);
+        var store = new OperationStore(db, new AuditLog(db, TimeProvider.System), TimeProvider.System);
+        using var cancelled = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var claiming = store.ClaimNextAsync(1, cancelled.Token);
+        await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
+        await cancelled.CancelAsync();
+        await Should.ThrowAsync<OperationCanceledException>(() => claiming);
+        db.Database.CurrentTransaction.ShouldBeNull();
+        (await seed.Operations.CountAsync(o => o.ClaimedAt != null, ct)).ShouldBe(0);
+        var retry = new OperationStore(seed, new AuditLog(seed, TimeProvider.System), TimeProvider.System);
+        (await retry.ClaimNextAsync(1, ct)).ShouldNotBeNull();
     }
 
     [Fact]

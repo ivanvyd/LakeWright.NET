@@ -14,6 +14,11 @@ internal static class ConsumerFloor
         Directory.CreateDirectory(temporary);
         try
         {
+            // A project-scoped temp directory can inherit the host's central package/build policy.
+            foreach (var file in new[] { "Directory.Build.props", "Directory.Build.targets", "Directory.Packages.props" })
+            {
+                await File.WriteAllTextAsync(Path.Combine(temporary, file), "<Project />").ConfigureAwait(false);
+            }
             var snapshot = Directory.CreateDirectory(Path.Combine(temporary, "candidates")).FullName;
             var cache = Path.Combine(temporary, "packages");
             foreach (var candidate in candidates.Values)

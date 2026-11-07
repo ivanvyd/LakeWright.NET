@@ -3,6 +3,7 @@
 
 import argparse
 import io
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -24,9 +25,12 @@ PARSE_MEMBER = "    public static TenantId Parse(string value) => new(Guid.Parse
 
 class IncompatibleCandidateTests(unittest.TestCase):
     def setUp(self):
-        self.scratch = tempfile.TemporaryDirectory(prefix="lakewright incompatible consumer ")
+        scratch_parent = EVIDENCE if EVIDENCE else ROOT / "artifacts" / "incompatible-consumer"
+        scratch_parent.mkdir(parents=True, exist_ok=True)
+        self.scratch = tempfile.TemporaryDirectory(prefix="lakewright incompatible consumer ", dir=scratch_parent)
         self.addCleanup(self.scratch.cleanup)
         self.root = Path(self.scratch.name)
+        self.environment = dict(os.environ, TMP=str(self.root), TEMP=str(self.root), TMPDIR=str(self.root))
         self.core_root = self.root / "core"
         self.candidates = self.root / "candidates"
         self.candidates.mkdir()
@@ -47,6 +51,7 @@ class IncompatibleCandidateTests(unittest.TestCase):
 
         result = subprocess.run(
             [*COMMAND, "verify-floor", str(self.candidates), VERSION],
+            env=self.environment,
             capture_output=True,
             text=True,
             check=False,
@@ -71,11 +76,13 @@ class IncompatibleCandidateTests(unittest.TestCase):
         )
         with tarfile.open(fileobj=io.BytesIO(archive.stdout), mode="r:") as contents:
             contents.extractall(self.core_root, filter="data")
+        (self.core_root / "Directory.Build.props").write_bytes((ROOT / "Directory.Build.props").read_bytes())
 
     def pack_incompatible_core(self):
         restore = subprocess.run(
             ["dotnet", "restore", "src/LakeWright.Core/LakeWright.Core.csproj", "--locked-mode"],
             cwd=self.core_root,
+            env=self.environment,
             capture_output=True,
             text=True,
             check=False,
@@ -88,12 +95,14 @@ class IncompatibleCandidateTests(unittest.TestCase):
         packed = subprocess.run(
             [
                 "dotnet", "pack", "src/LakeWright.Core/LakeWright.Core.csproj", "--no-restore", "-c", "Release",
-                f"-p:PackageVersion={VERSION}",
                 f"-p:Version={VERSION}",
+                # This deliberately invalid package tests consumer rejection after packing;
+                # normal candidates retain SDK API validation.
                 "-p:EnablePackageValidation=false",
                 "-o", str(output),
             ],
             cwd=self.core_root,
+            env=self.environment,
             capture_output=True,
             text=True,
             check=False,

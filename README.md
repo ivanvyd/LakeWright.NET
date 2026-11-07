@@ -31,7 +31,11 @@ identities you can run locally.
 
 ## Run it
 
-Docker, and nothing else. No .NET SDK, no Databricks account, nothing to configure.
+For an existing application, start with the [published-package quickstart](examples/package-quickstart/README.md):
+trusted membership resolution, one tenant-scoped SQL query, and wrong-tenant denial in a standalone
+.NET 8 consumer of 2.1.2. Its offline HTTP fixture needs no workspace or PostgreSQL.
+
+To run Signalboard, you need Docker. No .NET SDK, Databricks account, or configuration is required.
 
 ```bash
 git clone https://github.com/ivanvyd/LakeWright.NET

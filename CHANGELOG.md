@@ -8,6 +8,34 @@ note.
 
 ## [Unreleased]
 
+### Added
+
+- A standalone .NET 8 consumer of published 2.1.2 packages with trusted membership resolution,
+  a tenant-scoped SQL fixture, explicit wrong-tenant denial, and a separate CI smoke check.
+- An existing-application guide covering membership ownership, optional modules, credential
+  selection, and the boundary between offline package evidence and live workspace verification.
+
+### Fixed
+
+- Serialize operation admission per tenant and re-count in a fresh PostgreSQL statement so
+  concurrent claims cannot exceed the per-tenant ceiling using uncommitted claim counts.
+- Allow tenant purge after its grace period to discard only never-submitted, unclaimed Pending
+  queue entries. Claimed, externally identified, and other incomplete work still blocks schema drop.
+- Make export budget tests use controlled time and in-memory chunk responses, while retaining
+  separate real HTTP chunk tests. The one-second contract no longer depends on loopback latency.
+- Isolate the packaged `verify-floor` consumer from an enclosing repository's build and central
+  package settings when it uses a project-scoped temporary directory.
+
+### Changed
+
+- **Breaking; next major release:** `OperationStore.ClaimNextAsync` rejects caller-owned RepeatableRead and Serializable
+  transactions. Use ReadCommitted (or PostgreSQL's equivalent ReadUncommitted), or invoke claims
+  outside the caller transaction. Accepted caller transactions retain their existing lifetime.
+  See [ADR 0033](docs/decisions/0033-operation-admission-and-deletion-liveness.md).
+- Compare every library package's assets with published 2.1.2 during SDK package validation,
+  including when the next candidate changes major version. CI candidate identities come from
+  the SDK's project version plus the unique workflow run suffix.
+
 ## [2.1.2] — 2026-11-07
 
 ### Fixed
@@ -266,6 +294,10 @@ note.
   continues to report index `0` (#101).
 
 ## [1.0.0] — 2026-08-30
+
+Historical compatibility note: the minor-version exception below was superseded on 2026-11-07.
+Post-1.0 breaking changes require a major release; see the amendment in
+[ADR 0019](docs/decisions/0019-stable-1-0-0.md).
 
 The first stable release. The compat promise is the one the project has been holding:
 breaking changes between 1.0.0 and 2.0.0 ship behind a SemVer minor bump and a CHANGELOG
