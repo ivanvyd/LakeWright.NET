@@ -626,9 +626,9 @@
       "lakewright.aspnetcore": {
         "type": "Project",
         "dependencies": {
-          "LakeWright.Core": "[2.1.2, )",
-          "LakeWright.Databricks": "[2.1.2, )",
-          "LakeWright.Multitenancy": "[2.1.2, )"
+          "LakeWright.Core": "[3.0.0, )",
+          "LakeWright.Databricks": "[3.0.0, )",
+          "LakeWright.Multitenancy": "[3.0.0, )"
         }
       },
       "lakewright.core": {
@@ -643,7 +643,7 @@
         "type": "Project",
         "dependencies": {
           "Azure.Core": "[1.63.0, )",
-          "LakeWright.Core": "[2.1.2, )",
+          "LakeWright.Core": "[3.0.0, )",
           "Microsoft.Azure.Databricks.Client": "[2.9.3, )",
           "Microsoft.Extensions.Configuration.Abstractions": "[10.0.11, )",
           "Microsoft.Extensions.Http": "[10.0.11, )",
@@ -656,7 +656,7 @@
       "lakewright.multitenancy": {
         "type": "Project",
         "dependencies": {
-          "LakeWright.Core": "[2.1.2, )",
+          "LakeWright.Core": "[3.0.0, )",
           "Microsoft.EntityFrameworkCore": "[10.0.11, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
           "Microsoft.Extensions.Hosting.Abstractions": "[10.0.11, )",
@@ -669,7 +669,7 @@
         "type": "Project",
         "dependencies": {
           "Azure.Core": "[1.63.0, )",
-          "LakeWright.AspNetCore": "[2.1.2, )",
+          "LakeWright.AspNetCore": "[3.0.0, )",
           "Microsoft.AspNetCore.OpenApi": "[10.0.11, )",
           "Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore": "[10.0.11, )",
           "OpenTelemetry.Exporter.OpenTelemetryProtocol": "[1.18.0, )",

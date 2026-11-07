@@ -8,6 +8,8 @@ note.
 
 ## [Unreleased]
 
+## [3.0.0] — 2026-11-07
+
 ### Added
 
 - A standalone .NET 8 consumer of published 2.1.2 packages with trusted membership resolution,
@@ -28,7 +30,7 @@ note.
 
 ### Changed
 
-- **Breaking; next major release:** `OperationStore.ClaimNextAsync` rejects caller-owned RepeatableRead and Serializable
+- **Breaking:** `OperationStore.ClaimNextAsync` rejects caller-owned RepeatableRead and Serializable
   transactions. Use ReadCommitted (or PostgreSQL's equivalent ReadUncommitted), or invoke claims
   outside the caller transaction. Accepted caller transactions retain their existing lifetime.
   See [ADR 0033](docs/decisions/0033-operation-admission-and-deletion-liveness.md).

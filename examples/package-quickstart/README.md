@@ -45,7 +45,7 @@ guide lists real-workspace prerequisites. The offline output above proves the pa
 request boundary; live workspace execution is a separate, unverified step in this example.
 
 The [ExternalTenancy source sample](../../samples/ExternalTenancy) remains available for
-source builds. Main may also contain **Unreleased** worker and tenant-deletion fixes.
+source builds. The worker and tenant-deletion fixes are introduced in **3.0.0**.
 Those fixes are not part of the pinned 2.1.2 packages used here.
 
 For the latest stable .NET 10 target, use the [tested adaptation](../../docs/guides/add-to-existing-app.md#use-the-latest-stable-net-target).

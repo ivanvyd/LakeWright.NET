@@ -71,7 +71,7 @@ actions, not tenant content.
 rest, refusing a tenant that is not pending deletion, one with work still in flight, and one that
 has not been pending for the caller's stated grace period. Evidence: `TenantLifecycleTests`.
 
-**Unreleased source change:** never-submitted queue entries remain intact during the grace
+**From 3.0.0:** never-submitted queue entries remain intact during the grace
 period. Once it expires, Pending rows with neither a claim nor an external identifier are
 discarded by the organization cascade. Claimed work, externally identified work, Running work,
 and any other incomplete state still prevent schema drop. They are never submitted just to

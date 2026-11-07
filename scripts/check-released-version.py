@@ -16,7 +16,7 @@ if manifest["releaseUrl"] != release or not (ROOT / f"docs/release-evidence/v{ve
     sys.exit("Released-version metadata and release evidence disagree.")
 
 checks = {
-    "README.md": [f"Current stable release: [v{version}]({release})"],
+    "README.md": [f"Verified stable release at this source snapshot: [v{version}]({release})"],
     "ROADMAP.md": [f"Current stable release: [v{version}]({release})"],
     "samples/Signalboard/Components/Pages/Home.razor": [f'href="{release}"', f"--version {version}", f"<span>v{version}</span>"],
     "samples/Signalboard/Components/Layout/MainLayout.razor": [f"/packages/LakeWright.AspNetCore/{version}/"],
