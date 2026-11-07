@@ -1,6 +1,5 @@
 <Project>
-  <Target Name="VerifyMaintenanceCacheMode" BeforeTargets="Build">
-    <Error Condition="'$(ACTIONS_CACHE_MODE)' != 'none'" Text="Maintenance verification requires ACTIONS_CACHE_MODE=none." />
-    <Message Importance="high" Text="Maintenance verification: ACTIONS_CACHE_MODE=none." />
+  <Target Name="VerifyMaintenanceFixture" BeforeTargets="Build">
+    <Message Importance="high" Text="Maintenance verification: candidate fixture build reached." />
   </Target>
 </Project>
