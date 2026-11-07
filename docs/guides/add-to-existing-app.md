@@ -120,7 +120,7 @@ audit, and durable-operation model. Add `LakeWright.AspNetCore` when you want it
 and operations API. These application-tier modules target .NET 10; the Core/Databricks path
 above supports .NET 8. They are not prerequisites for the package example.
 
-Worker admission and deletion changes in this source revision are **Unreleased**. In that revision,
+Worker admission and deletion changes are introduced in **3.0.0**. In that version,
 `ClaimNextAsync` requires ReadCommitted admission (including PostgreSQL's equivalent
 ReadUncommitted mode), and purge discards never-submitted queued work only after the deletion
 grace period. See

@@ -128,7 +128,7 @@
         "type": "Project",
         "dependencies": {
           "Azure.Core": "[1.63.0, )",
-          "LakeWright.Core": "[2.1.2, )",
+          "LakeWright.Core": "[3.0.0, )",
           "Microsoft.Azure.Databricks.Client": "[2.9.3, )",
           "Microsoft.Extensions.Configuration.Abstractions": "[10.0.11, )",
           "Microsoft.Extensions.Http": "[10.0.11, )",
@@ -346,7 +346,7 @@
         "type": "Project",
         "dependencies": {
           "Azure.Core": "[1.44.1, )",
-          "LakeWright.Core": "[2.1.2, )",
+          "LakeWright.Core": "[3.0.0, )",
           "Microsoft.Azure.Databricks.Client": "[2.9.3, )",
           "Microsoft.Extensions.Configuration.Abstractions": "[8.0.0, )",
           "Microsoft.Extensions.Http": "[8.0.1, )",

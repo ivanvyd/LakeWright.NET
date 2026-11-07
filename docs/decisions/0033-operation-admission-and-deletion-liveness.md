@@ -1,6 +1,6 @@
 # ADR 0033: Serialize tenant admission and distinguish queued deletion work
 
-Status: accepted (Unreleased; the breaking admission precondition requires the next major release)
+Status: accepted for 3.0.0 (breaking admission precondition)
 Date: 2026-11-07
 Amends: [ADR 0005](0005-asynchronous-operations-as-the-default.md),
 [ADR 0030](0030-bounded-operation-dispatch-and-load-evidence.md)
@@ -44,10 +44,9 @@ This is an observable compatibility change: caller transactions with transaction
 transaction, or use ReadCommitted. Ambient/enlisted transactions are not an alternative supported
 admission path; use the explicit EF transaction seam or call outside them.
 
-The new admission precondition changes previously accepted caller behavior and must ship in the
-next major release. It is not eligible for a 2.x minor or patch release. The source VersionPrefix
-is unchanged in this batch; release preparation must select the major version and retain the
-migration guidance above. SDK API validation remains enabled against stable 2.1.2 even across a
+The new admission precondition changes previously accepted caller behavior and belongs to 3.0.0.
+It is not eligible for a 2.x minor or patch release. Retain the migration guidance above when
+upgrading. SDK API validation remains enabled against stable 2.1.2 even across a
 major-version change. Any intentional API exception needs a reviewed narrow suppression or a
 new verified baseline; a version change alone does not turn validation off.
 
@@ -80,5 +79,5 @@ The schema drop remains the irreversible boundary outside the local delete trans
 before a successful drop preserves the organization and queue for retry. A crash after a successful
 drop can still require an idempotent retry to finish database bookkeeping.
 
-These changes are Unreleased source behavior. The package quickstart remains pinned to published
+These changes are introduced in 3.0.0. The package quickstart remains pinned to published
 2.1.2 and makes no claim to exercise these worker or lifecycle fixes.
