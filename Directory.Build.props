@@ -67,7 +67,7 @@
     <_LakeWrightProjectArea>$([System.IO.Path]::GetFileName('$(_LakeWrightProjectParent)'))</_LakeWrightProjectArea>
   </PropertyGroup>
   <PropertyGroup Condition="'$(_LakeWrightProjectArea)' == 'src'">
-    <PackageValidationBaselineVersion>2.1.2</PackageValidationBaselineVersion>
+    <PackageValidationBaselineVersion>3.0.0</PackageValidationBaselineVersion>
     <EnablePackageValidation>true</EnablePackageValidation>
   </PropertyGroup>
 

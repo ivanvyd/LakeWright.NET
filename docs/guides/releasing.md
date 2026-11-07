@@ -60,7 +60,7 @@ Before tagging a candidate, run the locked restore, Release build, non-live and 
 tests, and package validation against the current stable baseline. `scripts/test-package-validation.py`
 also demonstrates that removing a public baseline member fails compatibility validation. Run
 that fixture with `python scripts/test-package-validation.py --evidence artifacts/package-validation`.
-The current baseline is published 2.1.2. API validation remains enabled across major-version
+The current baseline is published 3.0.0. API validation remains enabled across major-version
 changes; intentional breaks need reviewed narrow suppressions or a new verified baseline.
 Behavioral compatibility still requires its regression tests and the correct SemVer release.
 

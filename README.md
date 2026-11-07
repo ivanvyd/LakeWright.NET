@@ -33,7 +33,7 @@ identities you can run locally.
 
 For an existing application, start with the [published-package quickstart](examples/package-quickstart/README.md):
 trusted membership resolution, one tenant-scoped SQL query, and wrong-tenant denial in a standalone
-.NET 8 consumer of 2.1.2. Its offline HTTP fixture needs no workspace or PostgreSQL.
+.NET 8 consumer of 3.0.0. Its offline HTTP fixture needs no workspace or PostgreSQL.
 
 To run Signalboard, you need Docker. No .NET SDK, Databricks account, or configuration is required.
 
@@ -124,9 +124,9 @@ The sample includes opt-in OpenTelemetry export wiring. Currency attribution has
 implementation, and Azure deployment has Bicep templates and a workflow. Their live verification
 boundaries are recorded in [the compatibility matrix](docs/compatibility.md).
 
-Verified stable release at this source snapshot: [v2.1.2](https://github.com/ivanvyd/LakeWright.NET/releases/tag/v2.1.2).
+Verified stable release at this source snapshot: [v3.0.0](https://github.com/ivanvyd/LakeWright.NET/releases/tag/v3.0.0).
 The source tree may contain changes for a later candidate; published packages retain the behavior
-documented in [the release evidence](docs/release-evidence/v2.1.2.md).
+documented in [the release evidence](docs/release-evidence/v3.0.0.md).
 
 ## Documentation
 

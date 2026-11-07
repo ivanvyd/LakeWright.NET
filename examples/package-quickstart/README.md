@@ -1,7 +1,7 @@
 # Add tenant-scoped Databricks SQL to an existing .NET app
 
 This standalone .NET 8 console consumer uses published `LakeWright.Core` and
-`LakeWright.Databricks` **2.1.2** packages. Keep your application's identity provider,
+`LakeWright.Databricks` **3.0.0** packages. Keep your application's identity provider,
 membership store, and hosting. PostgreSQL, Signalboard, Docker, and a repository build are
 not required for this path.
 
@@ -24,7 +24,7 @@ Expected output:
 ```text
 ALLOW: member-alice -> Acme; tenant-scoped query returned 1.
 DENY: member-alice -> Globex; membership denied; no statement sent; transport requests remain 1.
-OFFLINE_OK: published 2.1.2; no workspace credentials or external network calls.
+OFFLINE_OK: published 3.0.0; no workspace credentials or external network calls.
 ```
 
 `MembershipResolver` checks a server-owned `(tenant, principal)` membership mapping before
@@ -46,7 +46,8 @@ request boundary; live workspace execution is a separate, unverified step in thi
 
 The [ExternalTenancy source sample](../../samples/ExternalTenancy) remains available for
 source builds. The worker and tenant-deletion fixes are introduced in **3.0.0**.
-Those fixes are not part of the pinned 2.1.2 packages used here.
+These fixes belong to the optional application modules and are not exercised by this
+Core/Databricks package example.
 
 For the latest stable .NET 10 target, use the [tested adaptation](../../docs/guides/add-to-existing-app.md#use-the-latest-stable-net-target).
 It changes the target and aligns the direct Microsoft.Extensions references to 10.0.11;
