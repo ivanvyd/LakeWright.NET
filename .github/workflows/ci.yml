@@ -120,6 +120,7 @@ jobs:
         run: |
           python3 scripts/test-ci-shell-inputs.py
           python3 scripts/test-refresh-lock-files.py
+          python3 scripts/test-nuget-availability.py
       - name: Restore
         run: |
           set -euo pipefail
