@@ -13,8 +13,9 @@ namespace LakeWright.Embedding.Ops;
 public interface IDashboardCacheBuster
 {
     /// <summary>
-    /// Adds the stable <c>-- refresh {runId}</c> marker to a dashboard draft and publishes it.
-    /// Repeating the call for the same run makes no workspace mutation.
+    /// Adds the stable <c>-- refresh {runId}</c> marker and publishes the current draft.
+    /// A repeat skips mutation when revision metadata proves the marked draft is already published.
+    /// Missing, older, or unknown publication metadata causes the current draft to be published again.
     /// </summary>
     Task<DashboardCacheBustResult> BustOnceAsync(
         string dashboardId,
@@ -22,7 +23,7 @@ public interface IDashboardCacheBuster
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Busts a group of dashboards once for a caller-defined schedule bucket. The bucket is a
+    /// Busts a group of dashboards for a caller-defined schedule bucket. The bucket is a
     /// stable identifier, not wall-clock text, and is validated before it reaches dashboard SQL.
     /// </summary>
     Task<IReadOnlyList<DashboardCacheBustResult>> ScheduledBustAsync(
