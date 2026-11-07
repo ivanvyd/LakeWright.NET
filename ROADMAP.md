@@ -12,6 +12,7 @@ where.
 
 | Open item | Recorded in | Blocked on |
 |---|---|---|
+| Current-package live acceptance | [3.0.0 release evidence](docs/release-evidence/v3.0.0.md) | An existing, explicitly approved nonproduction workspace and identity. The offline package quickstart remains usable without a workspace. |
 | Live currency attribution verification | [Threat model, T5](docs/security/threat-model.md) | The billing reader and attribution adapter are implemented and locally tested. Live system-table validation needs the required `system.billing` grant; elapsed-time attribution remains the default. |
 | Per-tenant token metering | [Compatibility](docs/compatibility.md) | The same grant — it belongs with cost attribution |
 | Offering the streaming shim upstream | [ADR 0009](docs/decisions/0009-a-separate-optional-ai-module.md) | Nothing but doing it. `LiveChatTests` holds the reproduction |
@@ -24,28 +25,31 @@ where.
 If this table and [docs/compatibility.md](docs/compatibility.md) ever disagree, the matrix wins — it
 records what was executed, and this one records what is intended.
 
-### What nobody has checked
+### Verification limits
 
-The table above is work someone chose not to do yet. This is the other kind: things nobody has
-measured, so the honest answer to "is it right?" is that we do not know.
+The table above records open work. These limits distinguish the existing checks from the claims
+they cannot establish.
 
-- **Live-workspace tests cannot run in CI.** The non-live coverage collection was rerun on
+- **Default CI excludes live-workspace tests.** The non-live coverage collection was rerun on
   2026-09-02: shipped libraries reached **84.7%** line coverage, with
-  `LakeWright.Databricks` at 68.1% and `LakeWright.Conversations` at 87.0%. The remaining
-  `Category=Live` Databricks tests need a workspace and cost money. A green CI run therefore
-  strongly supports tenancy and the package floor, but it does not replace a live workspace
-  exercise of the SDK wrappers.
-- **No independent human has read this code.** Every pull request has been opened and merged by the
-  maintainer with zero approvals. The reviews have been thorough and adversarial, and they have all
-  been briefed by the person whose work they reviewed, who then chose what to act on.
-- **Nothing has ever been deployed.** Every claim is verified locally or against a development
-  workspace. The managed-identity path in a hosted process rests on
-  [spike 04](docs/planning/spike-04-managed-identity.md) alone, and the ingress half of encryption
-  in transit has nothing to configure because there is no ingress.
-- **Nothing is load-tested.** Fair claim ordering and the per-tenant ceiling are proven by tests over
-  small data and by one review's measurements. Neither has run under real concurrency, and the
-  numbers in [the threat model](docs/security/threat-model.md) come from reasoning about the queue
-  rather than from watching it.
+  `LakeWright.Databricks` at 68.1% and `LakeWright.Conversations` at 87.0%. Those percentages describe
+  that revision. The `Category=Live` Databricks tests need a workspace and cost money. A green CI
+  run therefore strongly supports tenancy and the package floor, but it does not replace a live
+  workspace exercise of the SDK wrappers.
+- **Independent human PR review remains unverified.** The current Scorecard review check reports
+  no approved changesets in the recent history it inspects. Maintainer review and automated checks
+  do not establish independent human review.
+- **The hosted reference application has not been deployed.** Historical Databricks development
+  checks include bundle deployment and destruction, as recorded in the
+  [compatibility matrix](docs/compatibility.md). The Azure Container Apps reference application
+  remains unverified. Its hosted managed-identity path rests on
+  [spike 04](docs/planning/spike-04-managed-identity.md); ingress and encryption in transit still
+  need deployment-specific checks.
+- **Load evidence is bounded.** The [load harness](scripts/load/README.md) exercises ASP.NET Core
+  and disposable PostgreSQL. A [CI run on 2026-11-07](https://github.com/ivanvyd/LakeWright.NET/actions/runs/42392295904)
+  passed its configured 50 RPS, 30-second smoke profile. The harness's local sustained target is
+  500 RPS for five minutes. The smoke result does not establish that target, production capacity,
+  remote TLS/ingress, multi-host fairness or real Databricks job completion.
 - **The streaming shim depends on undocumented behaviour.** Databricks may change the payload
   without notice, in either direction. `LiveChatTests` fails loudly if the bug disappears; nothing
   warns if it changes shape instead.
