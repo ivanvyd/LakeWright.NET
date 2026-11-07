@@ -42,10 +42,25 @@ jobs:
       # so nothing else in this workflow inherits it.
       contents: write
     steps:
+      - name: Validate the maintenance branch
+        shell: bash
+        env:
+          BRANCH: ${{ inputs.branch }}
+        run: |
+          set -euo pipefail
+          git check-ref-format --branch "$BRANCH"
+          case "$BRANCH" in
+            dependabot/nuget/*) ;;
+            *)
+              echo "::error::Only a dependabot/nuget/* branch can be refreshed."
+              exit 1
+              ;;
+          esac
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ inputs.branch }}
-          persist-credentials: true
+          ref: refs/heads/${{ inputs.branch }}
+          persist-credentials: false
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
@@ -60,6 +75,9 @@ jobs:
       - run: dotnet build --no-restore -c Release
 
       - name: Commit the refreshed lock files
+        env:
+          BRANCH: ${{ inputs.branch }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           # Named paths, never `git add -A`: this job can write, so it says exactly what it writes.
@@ -70,12 +88,13 @@ jobs:
           git config user.name  'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -- '*packages.lock.json'
-          git commit -m 'Refresh the lock files for this bump
+          git commit --only -m 'Refresh the lock files for this bump
 
           Regenerated with `dotnet restore --force-evaluate`, then verified with
           `--locked-mode` and a Release build. Dependabot cannot write these under
-          central package management; see .github/workflows/refresh-lock-files.yml.'
-          git push origin HEAD:'${{ inputs.branch }}'
+          central package management; see .github/workflows/refresh-lock-files.yml.' -- '*packages.lock.json'
+          gh auth setup-git
+          git push origin "HEAD:refs/heads/$BRANCH"
           cat <<'NOTE'
           Pushed.
 
