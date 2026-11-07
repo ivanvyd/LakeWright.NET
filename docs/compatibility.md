@@ -5,21 +5,28 @@ What has been run against a real system, what has only been read in documentatio
 Anything not listed as **Verified** should be treated as unverified regardless of how confident the
 surrounding prose sounds.
 
-Last updated 2026-09-29 for the v2.1.1 package publication and public net8 consumer verification.
-The live-system dates below are unchanged. The v2.1.1 release workflow passed its non-live tests,
-and a fresh net8 consumer restored and ran against the public stable packages. The earlier v2.1.0
-reviewed merge also covered the complete local suite, load harness, Docker, HTTP and browser checks.
-Databricks CLI authenticated to the active development workspace for that earlier verification;
-bundle validation and the non-mutating plan passed. CI independently validated the bundle with
-setup-cli 1.14.1. The currency path is implemented and locally verified, but its system-table read
-remains blocked because the verification identity lacks `USE SCHEMA` on `system.billing`.
-A `Documented` row is not promoted to `Verified` by a stable version number; the matrix
-records the work that has been done, not a claim about future work.
+Package evidence updated 2026-11-07 for the published 3.0.0 release. All thirteen stable package
+versions passed public-feed, signature and payload verification. Public .NET 8 and .NET 10
+consumers passed the membership, query and denied-tenant fixtures. Installed
+`LakeWright.Tooling` 3.0.0 also passed `verify-floor` against the public Core, Databricks and
+Embedding packages.
+
+The 3.0.0 release checks did not run a live Databricks workspace or deploy the Azure application.
+The live-system observations below retain their original dates. A stable version does not advance
+those dates or verify another environment.
 
 The current package-publication and consumer evidence is in the
-[2.1.1 release evidence](release-evidence/v2.1.1.md). Earlier evidence remains available for
+[3.0.0 release evidence](release-evidence/v3.0.0.md). Earlier evidence remains available for
+[2.1.2](release-evidence/v2.1.2.md), [2.1.1](release-evidence/v2.1.1.md),
 [2.1.0](release-evidence/v2.1.0.md), [2.0.0](release-evidence/v2.0.0.md), [1.2.0](release-evidence/v1.2.0.md), [1.1.1](release-evidence/v1.1.1.md), and
 [1.1.0](release-evidence/v1.1.0.md).
+
+The 2026-09-29 documentation update recorded the v2.1.1 non-live release checks and a fresh net8
+public-package consumer. The earlier v2.1.0 reviewed merge covered the complete local suite, load
+harness, Docker, HTTP and browser checks. Databricks CLI authenticated to the development workspace
+for that earlier verification; bundle validation and the non-mutating plan passed. CI independently
+validated the bundle with setup-cli 1.14.1. Live currency attribution remains unverified because the
+verification identity lacked `USE SCHEMA` on `system.billing`.
 
 ## Legend
 
@@ -30,13 +37,17 @@ The current package-publication and consumer evidence is in the
 | **Unverified** | Believed to work by inference. No evidence either way. |
 | **Not supported** | Established as not working, with the reason. |
 
-## Environments
+## Recorded verification environments
+
+These are the environments recorded by the earlier checks. They do not establish an available
+target for current-package live acceptance. That check needs an existing, explicitly approved
+nonproduction workspace. The offline package quickstart needs no workspace.
 
 | | |
 |---|---|
-| Current verification workspace | Authenticated Azure development workspace, premium SKU; identifier intentionally omitted |
+| Last recorded verification workspace | Authenticated Azure development workspace, premium SKU; identifier intentionally omitted |
 | Earlier specialized verification workspace | `lakewright-dev`, Azure, eastus2, premium SKU |
-| Current warehouse | Serverless PRO, 10 minute auto-stop |
+| Last recorded warehouse | Serverless PRO, 10 minute auto-stop |
 | .NET | 10.0.400 |
 | Docker Desktop / engine | 4.88.1 / 29.7.2, WSL 2 Linux containers |
 | `Microsoft.Azure.Databricks.Client` | 2.9.3 |
@@ -72,7 +83,7 @@ dotnet test --no-build -c Release --filter "FullyQualifiedName~LiveDatabricksTes
 ```
 
 The live run used a temporary validation catalog with a `reference` schema, SQL notebook and job. All three
-were removed after the three tests passed. The current workspace does not contain the model-serving
+were removed after the three tests passed. That verification workspace lacked the model-serving
 endpoint, Genie space, published dashboard and service-principal credentials required by
 `LiveChatTests`, `LiveGenieTests` and `LiveEmbeddingTests`, so those historical rows were not dated
 forward. Bundle deployment was not repeated; only authenticated validation was rerun. The complete
@@ -125,7 +136,7 @@ request, package-consumer, publication and cleanup commands are in the
 
 | Cloud | Status | Notes |
 |---|---|---|
-| Azure | **Verified** for the rows above | The reference deployment |
+| Azure | **Verified** for the dated rows above | The hosted reference application remains unverified. |
 | AWS | Unverified | OAuth federation documented; nobody here has run it |
 | GCP | Unverified | Same |
 | Free Edition | **Service principal OAuth does not work** | Free Edition exposes no account console or account-level API, and service principal OAuth depends on account-level identity infrastructure — confirmed by Databricks on the community forum, 2026-08-01. Contributors use their own user identity there, or need no workspace at all: the sample runs without one |
@@ -143,11 +154,20 @@ request, package-consumer, publication and cleanup commands are in the
 | An operation is invisible to a tenant that does not own it | **Verified** | 2026-07-31 |
 | EF Core model on Lakebase | Unverified | Standard Postgres only; no Lakebase-specific feature is used |
 
+## Bounded load evidence
+
+The [2026-11-07 CI run](https://github.com/ivanvyd/LakeWright.NET/actions/runs/42392295904)
+passed the configured 50 RPS, 30-second smoke profile and its accounting checks. This profile uses
+in-process ASP.NET Core and disposable PostgreSQL. It does not call a live Databricks workspace.
+The [load guide](../scripts/load/README.md) records the local sustained target and interpretation
+limits. This smoke result does not establish sustained production capacity, remote TLS/ingress,
+multi-host fairness or completion of real Databricks jobs.
+
 ## Known gaps
 
 - Billing attribution is not live-verified in the development workspace. The implementation ships
-  as an opt-in, but the development identity still lacks access to `system.billing.usage` and
-  `system.billing.list_prices`; the proxy remains the default. See the
+  as an opt-in. Earlier verification was blocked by missing access to `system.billing.usage` and
+  `system.billing.list_prices`; elapsed-time attribution remains the default. See the
   [billing runbook](guides/billing-cost-attribution.md), T5 in the threat model and ADR 0012.
 - No reference deployment *executed*. The Bicep template in `infra/azure-container-apps/`
   compiles; the workflow in `.github/workflows/deploy-azure.yml` is in place; no one has run a
