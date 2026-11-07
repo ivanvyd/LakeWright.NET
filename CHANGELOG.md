@@ -8,6 +8,22 @@ note.
 
 ## [Unreleased]
 
+## [2.1.2] — 2026-11-07
+
+### Fixed
+
+- Keep timed-out job operations claimed until Databricks reports a terminal state. Rejected
+  cancellation and status requests preserve the operation for reconciliation; exceptions retain
+  the HTTP status without exposing response bodies.
+- Retry dashboard publication when a refresh marker reached the draft but publishing failed.
+  Repeated calls skip mutation only when revision metadata confirms the marked draft is published.
+
+### Changed
+
+- Update Azure Core, Microsoft.Extensions AI, OpenAI, test tooling, CI actions, and the pinned
+  Signalboard SDK image. Regenerate package lock files while retaining the .NET 8 dependency floors.
+- Correct the project-site link and remove stale comments and unused imports.
+
 ## [2.1.1] — 2026-09-29
 
 ### Changed
