@@ -455,7 +455,7 @@ jobs:
                           break
                       print("Waiting for NuGet indexing of: " + ", ".join(missing))
                       time.sleep(min(60, remaining))
-              raise TimeoutError("NuGet public indexing exceeded one hour. Missing: " + ", ".join(missing))
+              raise TimeoutError("NuGet accepted the upload, but public indexing exceeded one hour. Missing: " + ", ".join(missing))
 
           if __name__ == "__main__":
               try:
