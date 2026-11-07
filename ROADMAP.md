@@ -12,7 +12,7 @@ where.
 
 | Open item | Recorded in | Blocked on |
 |---|---|---|
-| Current-package live acceptance | [3.0.0 release evidence](docs/release-evidence/v3.0.0.md) | An existing, explicitly approved nonproduction workspace and identity. The offline package quickstart remains usable without a workspace. |
+| Broader current-package live acceptance | [2026-11-07 AWS check](docs/compatibility.md#2026-11-07-installed-package-aws-check), [3.0.0 release evidence](docs/release-evidence/v3.0.0.md) | The public .NET 8 Core/Databricks statement path and local denial checks passed with a custom CLI user OAuth adapter. Separate tenant schemas/RBAC, LakeWright M2M, billing, jobs, Azure hosted identity and .NET 10 live execution remain outside that check. Further checks need explicit scope and authorized identities; the offline quickstart needs no workspace. |
 | Live currency attribution verification | [Threat model, T5](docs/security/threat-model.md) | The billing reader and attribution adapter are implemented and locally tested. Live system-table validation needs the required `system.billing` grant; elapsed-time attribution remains the default. |
 | Per-tenant token metering | [Compatibility](docs/compatibility.md) | The same grant — it belongs with cost attribution |
 | Offering the streaming shim upstream | [ADR 0009](docs/decisions/0009-a-separate-optional-ai-module.md) | Nothing but doing it. `LiveChatTests` holds the reproduction |
@@ -35,7 +35,9 @@ they cannot establish.
   `LakeWright.Databricks` at 68.1% and `LakeWright.Conversations` at 87.0%. Those percentages describe
   that revision. The `Category=Live` Databricks tests need a workspace and cost money. A green CI
   run therefore strongly supports tenancy and the package floor, but it does not replace a live
-  workspace exercise of the SDK wrappers.
+  workspace exercise of the SDK wrappers. A separate [2026-11-07 AWS check](docs/compatibility.md#2026-11-07-installed-package-aws-check)
+  exercised the published .NET 8 Core/Databricks packages with one bound statement and two local
+  rejection checks. It does not establish the broader live surfaces listed above.
 - **Independent human PR review remains unverified.** The current Scorecard review check reports
   no approved changesets in the recent history it inspects. Maintainer review and automated checks
   do not establish independent human review.
@@ -84,7 +86,7 @@ The three assumptions that would invalidate the plan are tested before anything 
 | Statement Execution through the client library | Does `Microsoft.Azure.Databricks.Client` support parameters, `EXTERNAL_LINKS` and `ARROW_STREAM`? | **Done.** Kill condition not triggered. [spike 01](docs/planning/spike-01-statement-execution.md) |
 | Interpolation guard | Can interpolated SQL be made a compile error? | **Done**, after the first attempt turned out to be inert. [spike 02](docs/planning/spike-02-interpolation-guard.md) |
 | Managed identity to Databricks | Does an Entra token work as a Databricks bearer token end to end? | **Done.** A container with a user-assigned managed identity called the REST API with no stored secret; Databricks resolved the caller as the identity itself. ADR 0006 stands. [spike 04](docs/planning/spike-04-managed-identity.md) |
-| Free Edition service principals | Can a contributor authenticate as a service principal on Free Edition? | **Closed, negative.** Free Edition has no account-level identity infrastructure, which service principal OAuth requires. The contributor story no longer depends on it: the sample needs no workspace. |
+| Free Edition service principals | Can a contributor authenticate as a service principal on Free Edition? | **Historical negative assessment, 2026-08-01.** That assessment relied on the account-level identity limitation. On 2026-11-07, [LakeSpeak's hosted run](https://github.com/ivanvyd/LakeSpeak.NET/actions/runs/42409476224) passed nine M2M live tests in Free Edition with an existing client ID/secret pair. LakeWright M2M remains unverified by that result. The sample needs no workspace. |
 | `Microsoft.Extensions.AI.OpenAI` against Databricks | Does chat, streaming and tool calling round-trip? | **Done, partly.** Chat and tool calling work with no client code. Streaming fails: Databricks sends a malformed `usage` on every chunk. Module stays in v0.1; streaming needs a shim, and it is a well-evidenced upstream contribution. [spike 03](docs/planning/spike-03-openai-compatibility.md) |
 
 Also in this window: solution skeleton, EF Core model, Postgres via Testcontainers, CI green.

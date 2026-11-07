@@ -109,9 +109,17 @@ Register exactly one credential source. Workspace OAuth with both `Databricks:Cl
 `TokenCredential`. Keep secrets in your application's secret store. The reference deployment
 uses [secretless authentication](../decisions/0006-secretless-authentication.md).
 
-No live workspace was used to verify this quickstart. Run an allowed query and the wrong-tenant
-request against your own explicitly authorized non-production workspace before relying on that
-integration. The denied request should produce no Databricks call or application mutation.
+The executable quickstart remains offline. A separate [2026-11-07 live check](../compatibility.md#2026-11-07-installed-package-aws-check)
+used the public Core/Databricks 3.0.0 packages on .NET 8 in an existing AWS Free Edition workspace.
+It forwarded a CLI user OAuth token through a custom `TokenCredential` adapter. One bound query
+returned `1` with one SQL POST and one total SQL request. Wrong-tenant membership denial and default
+statement rejection each added zero SQL requests. That consumer used sample catalog/schema
+metadata, so it did not verify separate server-side tenant schemas or RBAC.
+
+That result does not verify the Azure credential recipe above, hosted managed identity, M2M,
+billing, jobs or .NET 10 live execution. Run an allowed query and the wrong-tenant request against
+your own explicitly authorized non-production workspace before relying on your integration.
+The denied request should produce no Databricks call or application mutation.
 
 ## Optional application modules
 
