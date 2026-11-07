@@ -16,7 +16,9 @@ def main():
     args = parser.parse_args()
     artifacts = args.artifacts.resolve()
     artifacts.mkdir(parents=True, exist_ok=True)
-    source = Path(__file__).resolve().parents[1] / "examples" / "package-quickstart"
+    root = Path(__file__).resolve().parents[1]
+    version = json.loads((root / "scripts/released-version.json").read_text(encoding="utf-8"))["version"]
+    source = root / "examples" / "package-quickstart"
     with tempfile.TemporaryDirectory(prefix="consumer-", dir=artifacts) as scratch:
         consumer = Path(scratch)
         environment = dict(os.environ, NUGET_PACKAGES=str(consumer / "packages"))
@@ -34,12 +36,12 @@ def main():
             if result.returncode:
                 raise RuntimeError(f"{' '.join(command)} failed:\n{result.stdout}{result.stderr}")
             if index == 2:
-                if "OFFLINE_OK: published 2.1.2" not in result.stdout or "transport requests remain 1" not in result.stdout:
+                if f"OFFLINE_OK: published {version}" not in result.stdout or "transport requests remain 1" not in result.stdout:
                     raise RuntimeError("The consumer did not prove allow and deny behavior.")
                 print(result.stdout, end="")
         assets = json.loads((consumer / "obj" / "project.assets.json").read_text(encoding="utf-8"))
         packages = {name for name in assets["libraries"] if name.startswith("LakeWright.")}
-        if packages != {"LakeWright.Core/2.1.2", "LakeWright.Databricks/2.1.2"}:
+        if packages != {f"LakeWright.Core/{version}", f"LakeWright.Databricks/{version}"}:
             raise RuntimeError(f"Unexpected LakeWright package identities: {sorted(packages)}")
         references = assets["project"]["restore"]["frameworks"]["net8.0"].get("projectReferences", {})
         if references:
@@ -55,7 +57,7 @@ def main():
             "targetFramework": "net8.0", "packageSources": sources, "packageFolders": folders,
             "lakeWrightPackages": sorted(packages), "projectReferences": references,
         }, indent=2) + "\n", encoding="utf-8")
-        print("PUBLISHED_CONSUMER_OK: net8.0; exact 2.1.2 packages; fresh package cache; nuget.org only; no project references.")
+        print(f"PUBLISHED_CONSUMER_OK: net8.0; exact {version} packages; fresh package cache; nuget.org only; no project references.")
 
 
 if __name__ == "__main__":

@@ -8,8 +8,8 @@
     <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="LakeWright.Core" Version="[2.1.2]" />
-    <PackageReference Include="LakeWright.Databricks" Version="[2.1.2]" />
+    <PackageReference Include="LakeWright.Core" Version="[3.0.0]" />
+    <PackageReference Include="LakeWright.Databricks" Version="[3.0.0]" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="[8.0.0]" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="[8.0.1]" />
   </ItemGroup>

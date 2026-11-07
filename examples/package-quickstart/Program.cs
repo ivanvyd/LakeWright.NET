@@ -53,7 +53,7 @@ if (workspace.Requests != before || before != 1 || success.Rows.Single().Single(
     throw new InvalidOperationException("Denial changed fixture state.");
 }
 Console.WriteLine("DENY: member-alice -> Globex; membership denied; no statement sent; transport requests remain 1.");
-Console.WriteLine("OFFLINE_OK: published 2.1.2; no workspace credentials or external network calls.");
+Console.WriteLine("OFFLINE_OK: published 3.0.0; no workspace credentials or external network calls.");
 return 0;
 
 internal sealed class MembershipResolver(ITenantContextFactory contexts) : ITenantContextResolver

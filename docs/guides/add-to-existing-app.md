@@ -1,7 +1,7 @@
 # Add LakeWright to an existing application
 
 Start with the [published-package quickstart](../../examples/package-quickstart/README.md).
-It targets .NET 8 and pins the published 2.1.2 packages. You can use the tenant-scoped SQL
+It targets .NET 8 and pins the published 3.0.0 packages. You can use the tenant-scoped SQL
 layer without adopting the reference application's database, identity provider, or UI.
 
 ## Register the packages
@@ -9,8 +9,8 @@ layer without adopting the reference application's database, identity provider, 
 In your application's project directory:
 
 ```bash
-dotnet add package LakeWright.Core --version 2.1.2
-dotnet add package LakeWright.Databricks --version 2.1.2
+dotnet add package LakeWright.Core --version 3.0.0
+dotnet add package LakeWright.Databricks --version 3.0.0
 ```
 
 Keep your normal DI and configuration packages. For an Azure application that uses the
@@ -31,7 +31,7 @@ As checked on 7 November 2026, [.NET 10 is the latest stable release](https://do
 the .NET 8 consumer floor; .NET 10 consumers select the packages' `lib/net10.0` assets.
 
 To adapt a copy of the quickstart, install a released .NET 10 SDK and change these entries
-in `PackageQuickstart.csproj`, keeping the LakeWright packages pinned to 2.1.2:
+in `PackageQuickstart.csproj`, keeping the LakeWright packages pinned to 3.0.0:
 
 ```xml
 <TargetFramework>net10.0</TargetFramework>
@@ -43,7 +43,7 @@ Then run the same `dotnet restore --configfile NuGet.Config` and
 `dotnet run -c Release -- --offline` commands. Changing only the target while keeping the
 example's exact 8.x Extensions pins causes package downgrade errors; align those direct
 references with the .NET 10 dependency graph. This adaptation was compiled and ran the
-same offline membership/query/denial fixture using the published 2.1.2 .NET 10 assets.
+same offline membership/query/denial fixture using the published 3.0.0 .NET 10 assets.
 It does not establish a live credential or workspace integration.
 
 ## Resolve membership before reaching data
@@ -124,5 +124,5 @@ Worker admission and deletion changes are introduced in **3.0.0**. In that versi
 `ClaimNextAsync` requires ReadCommitted admission (including PostgreSQL's equivalent
 ReadUncommitted mode), and purge discards never-submitted queued work only after the deletion
 grace period. See
-[ADR 0033](../decisions/0033-operation-admission-and-deletion-liveness.md). Published 2.1.2
-retains its released behavior; this package smoke check does not test those source changes.
+[ADR 0033](../decisions/0033-operation-admission-and-deletion-liveness.md). The Core/Databricks
+package smoke check does not exercise these optional application modules.
