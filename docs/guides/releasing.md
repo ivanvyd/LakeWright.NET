@@ -118,6 +118,9 @@ to check those references together. A candidate package alone is not evidence of
    claims a version consumers cannot restore. Tagged build hooks never execute with release or OIDC
    permissions.
 
+   The availability gate accepts only a JSON object with a `versions` array of strings. Each request
+   has a 15-second limit and a 1 MiB response limit. Request time counts against the one-hour deadline.
+
 ## If a release goes wrong
 
 Before the nuget.org push, delete the tag, fix the release, and tag again. After the push it is not

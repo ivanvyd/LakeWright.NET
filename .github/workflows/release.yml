@@ -381,39 +381,89 @@ jobs:
         env:
           VERSION: ${{ needs.build-release-candidate.outputs.version }}
         run: |
-          set -euo pipefail
-          packages=()
-          while IFS= read -r package; do
-            packages+=("${package%.$VERSION.nupkg}")
-          done < <(find artifacts -maxdepth 1 -type f -name '*.nupkg' -printf '%f\n' | sort)
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          import tempfile
+          import time
 
-          # NuGet documents validation and indexing as taking up to one hour. Poll
-          # the endpoint a fresh restore consumes throughout that full window.
-          for attempt in $(seq 1 60); do
-            missing=()
-            for package in "${packages[@]}"; do
-              package_id=${package,,}
-              index="https://api.nuget.org/v3-flatcontainer/$package_id/index.json"
-              if ! curl --fail --silent --show-error "$index" | \
-                python3 -c 'import json, sys; raise SystemExit(0 if sys.argv[1] in json.load(sys.stdin).get("versions", []) else 1)' \
-                  "$VERSION"; then
-                missing+=("$package")
-              fi
-            done
+          MAX_BYTES = 1024 * 1024
 
-            if [ "${#missing[@]}" -eq 0 ]; then
-              echo "All ${#packages[@]} packages are publicly available from nuget.org."
-              exit 0
-            fi
+          def unique_object(pairs):
+              value = dict(pairs)
+              if len(value) != len(pairs):
+                  raise ValueError("Duplicate index keys")
+              return value
 
-            echo "Attempt $attempt of 60: waiting for NuGet indexing of: ${missing[*]}"
-            if [ "$attempt" -lt 60 ]; then
-              sleep 60
-            fi
-          done
+          def reject_constant(value):
+              raise ValueError("Invalid JSON constant: " + value)
 
-          echo "::error::NuGet accepted the upload, but the public flat-container index did not list $VERSION within its documented one-hour validation window. Missing: ${missing[*]}"
-          exit 1
+          def package_ids(directory, version):
+              suffix = f".{version}.nupkg"
+              packages = []
+              for path in sorted(directory.glob("*.nupkg")):
+                  package = path.name[:-len(suffix)]
+                  if (not version or not path.name.endswith(suffix) or not path.is_file()
+                          or path.is_symlink() or not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,99}", package)):
+                      raise ValueError("Invalid publication artifact: " + path.name)
+                  packages.append(package.lower())
+              if not packages or len(packages) != len(set(packages)):
+                  raise ValueError("Publication requires a nonempty, unique package set")
+              return packages
+
+          def available(package, version, destination, timeout):
+              try:
+                  response = subprocess.run([
+                      "curl", "--fail", "--silent", "--show-error", "--proto", "=https",
+                      "--connect-timeout", str(min(5, timeout)), "--max-time", str(timeout),
+                      "--max-filesize", str(MAX_BYTES), "--output", str(destination),
+                      f"https://api.nuget.org/v3-flatcontainer/{package}/index.json",
+                  ], check=False, stderr=subprocess.DEVNULL, timeout=timeout)
+                  if response.returncode != 0:
+                      return False
+                  with destination.open("rb") as stream:
+                      body = stream.read(MAX_BYTES + 1)
+                  if len(body) > MAX_BYTES:
+                      return False
+                  index = json.loads(body, object_pairs_hook=unique_object, parse_constant=reject_constant)
+                  versions = index.get("versions") if isinstance(index, dict) else None
+                  return (isinstance(versions, list) and all(isinstance(item, str) for item in versions)
+                          and version in versions)
+              except (ValueError, subprocess.TimeoutExpired):
+                  return False
+
+          def wait_for_packages(directory, version):
+              packages = package_ids(directory, version)
+              deadline = time.monotonic() + 3600
+              missing = packages
+              with tempfile.TemporaryDirectory() as temporary:
+                  destination = Path(temporary) / "index.json"
+                  while time.monotonic() < deadline:
+                      missing = []
+                      for package in packages:
+                          remaining = deadline - time.monotonic()
+                          if remaining <= 0 or not available(package, version, destination, min(15, remaining)):
+                              missing.append(package)
+                      remaining = deadline - time.monotonic()
+                      if not missing and remaining > 0:
+                          print(f"All {len(packages)} packages are publicly available from nuget.org.")
+                          return
+                      if remaining <= 0:
+                          break
+                      print("Waiting for NuGet indexing of: " + ", ".join(missing))
+                      time.sleep(min(60, remaining))
+              raise TimeoutError("NuGet public indexing exceeded one hour. Missing: " + ", ".join(missing))
+
+          if __name__ == "__main__":
+              try:
+                  wait_for_packages(Path("artifacts"), os.environ["VERSION"])
+              except (OSError, ValueError) as error:
+                  print("::error::" + str(error))
+                  raise SystemExit(1) from error
+          PY
 
       - name: Create GitHub release
         env:
