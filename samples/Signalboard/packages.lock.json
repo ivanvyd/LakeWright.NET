@@ -4,9 +4,9 @@
     "net10.0": {
       "Azure.Core": {
         "type": "Direct",
-        "requested": "[1.63.0, )",
-        "resolved": "1.63.0",
-        "contentHash": "5egODg5yWcRV0kkAv22jQL7YmsfupX7intDYbxZMu8giASSQVfG5+mwC+BdJOWvhFT1Y+9KzuvbUGqAVEBzsfw==",
+        "requested": "[1.64.0, )",
+        "resolved": "1.64.0",
+        "contentHash": "SMmFWcTyRMdwdoLk+3yN9PrnxznDis1T8PpOeDFuB3/56ipMDYkPl7P8z5qNRzWWd9LL0lFJ5qhkhmomYamWUQ==",
         "dependencies": {
           "Microsoft.Bcl.AsyncInterfaces": "10.0.10",
           "Microsoft.Identity.Client": "4.90.0",
@@ -155,7 +155,7 @@
       "lakewright.databricks": {
         "type": "Project",
         "dependencies": {
-          "Azure.Core": "[1.63.0, )",
+          "Azure.Core": "[1.64.0, )",
           "LakeWright.Core": "[3.0.0, )",
           "Microsoft.Azure.Databricks.Client": "[2.9.3, )"
         }
