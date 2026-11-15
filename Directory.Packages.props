@@ -94,7 +94,7 @@
     <!-- SSH.NET 2026.0.0 is pinned once in the Extensions group above (for the Databricks SDK
          transitive); Central Package Management requires a single PackageVersion entry, and the
          version is the same. -->
-    <PackageVersion Include="WireMock.Net" Version="2.30.0" />
+    <PackageVersion Include="WireMock.Net" Version="2.31.0" />
     <!-- WireMock resolves WebUtilities 2.3.0 through AspNetCore.Http. GHSA-6527-9fp8-r4x6 is fixed in 2.3.14. -->
     <PackageVersion Include="Microsoft.AspNetCore.WebUtilities" Version="2.3.14" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.11" />
