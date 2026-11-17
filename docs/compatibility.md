@@ -22,6 +22,14 @@ The current package-publication and consumer evidence is in the
 [2.1.0](release-evidence/v2.1.0.md), [2.0.0](release-evidence/v2.0.0.md), [1.2.0](release-evidence/v1.2.0.md), [1.1.1](release-evidence/v1.1.1.md), and
 [1.1.0](release-evidence/v1.1.0.md).
 
+For the 3.1.0 changes, [main CI](https://github.com/ivanvyd/LakeWright.NET/actions/runs/44184251974)
+passed at `137ba981f19a28a855ee11ddd86d7ea004f12e97`, including package validation against 3.0.0
+and the .NET 8 consumer floor. The separate [conversation package fixture](../tests/conversation-consumer/README.md)
+passed on .NET 8 and .NET 10 against locally packed packages. It verified authorized GET-only resume,
+legacy adapter compatibility, and credential-safe logging through eleven HTTP client factories.
+Those tests used synthetic responses. They do not establish live Genie compatibility or package
+availability on nuget.org.
+
 The 2026-09-29 documentation update recorded the v2.1.1 non-live release checks and a fresh net8
 public-package consumer. The earlier v2.1.0 reviewed merge covered the complete local suite, load
 harness, Docker, HTTP and browser checks. Databricks CLI authenticated to the development workspace

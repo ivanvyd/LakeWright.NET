@@ -8,6 +8,8 @@ note.
 
 ## [Unreleased]
 
+## [3.1.0] — 2026-11-18
+
 ### Added
 
 - Separate Genie submission, single-read and wait operations for checkpointing accepted message IDs
@@ -20,6 +22,13 @@ note.
   and signed query values with the .NET 8 dependency floor. Host-added loggers remain host-owned.
 - Correct security guidance about OAuth custom identity claims, conversation history ownership and
   the client-secret token-exchange boundary. The built-in tenant and credential models are unchanged.
+
+### Changed
+
+- Configure custom named-client HTTP loggers after LakeWright registration. The logging fix removes
+  earlier loggers for the affected clients.
+- Update Azure.Core and Microsoft.Extensions dependency injection packages on .NET 10, keeping the
+  .NET 8 dependency floor.
 
 ## [3.0.0] — 2026-11-07
 
