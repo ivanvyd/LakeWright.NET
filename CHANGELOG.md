@@ -8,6 +8,19 @@ note.
 
 ## [Unreleased]
 
+### Added
+
+- Separate Genie submission, single-read and wait operations for checkpointing accepted message IDs
+  and resuming with GET requests. Existing interface adapters retain compatible default methods.
+
+### Fixed
+
+- Reject conflicting Genie conversation and message IDs instead of following a mismatched response.
+- Disable default request logging for library-owned HTTP client factories, which exposed credentials
+  and signed query values with the .NET 8 dependency floor. Host-added loggers remain host-owned.
+- Correct security guidance about OAuth custom identity claims, conversation history ownership and
+  the client-secret token-exchange boundary. The built-in tenant and credential models are unchanged.
+
 ## [3.0.0] — 2026-11-07
 
 ### Added

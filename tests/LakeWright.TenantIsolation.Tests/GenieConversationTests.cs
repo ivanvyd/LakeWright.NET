@@ -15,8 +15,8 @@ namespace LakeWright.TenantIsolation.Tests;
 /// Genie conversations, scoped to a tenant's own agent.
 /// </summary>
 /// <remarks>
-/// The Conversation API takes no filter and no viewer identity, so the agent is the only tenancy
-/// boundary there is. These assert that the agent in the URL always comes from the resolved tenant,
+/// This registration does not mint custom-claim tokens. These assert that the agent in the URL
+/// always comes from the resolved tenant,
 /// and that an unmapped tenant is refused rather than served from something else.
 /// </remarks>
 [Trait("Category", "TenantIsolation")]

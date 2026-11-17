@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework />
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <IsPackable>false</IsPackable>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+    <LakeWrightVersion Condition="'$(LakeWrightVersion)' == ''">3.0.0-consumer-check</LakeWrightVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="LakeWright.Conversations" Version="[$(LakeWrightVersion)]" />
+    <PackageReference Include="LakeWright.Databricks" Version="[$(LakeWrightVersion)]" />
+    <PackageReference Include="LakeWright.Embedding.Ops" Version="[$(LakeWrightVersion)]" />
+  </ItemGroup>
+</Project>

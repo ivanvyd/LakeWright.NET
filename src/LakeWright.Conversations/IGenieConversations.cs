@@ -7,6 +7,54 @@ namespace LakeWright.Conversations;
 /// </summary>
 public interface IGenieConversations
 {
+    /// <summary>Submits one question and returns its accepted identifiers without polling.</summary>
+    /// <remarks>
+    /// Ownership is recorded before returning. Persist these identifiers in the application before
+    /// waiting. Cancellation after known acceptance does not undo the ownership write or cancel
+    /// remote work. A failed submission may have been accepted remotely; do not retry it blindly.
+    /// The default implementation throws <see cref="NotSupportedException"/> for older adapters.
+    /// </remarks>
+    Task<GenieAcceptedMessage> StartConversationAsync(
+        TenantContext tenant,
+        string ownerKey,
+        string question,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("This adapter does not support separate Genie message operations.");
+
+    /// <summary>Submits one follow-up to an owned conversation without polling.</summary>
+    /// <remarks>No automatic submission retry is performed. Older adapters throw <see cref="NotSupportedException"/>.</remarks>
+    Task<GenieAcceptedMessage> SendMessageAsync(
+        TenantContext tenant,
+        string ownerKey,
+        string conversationId,
+        string question,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("This adapter does not support separate Genie message operations.");
+
+    /// <summary>Reads an owned message once with GET, without submitting a question.</summary>
+    /// <remarks>Older adapters throw <see cref="NotSupportedException"/>.</remarks>
+    Task<GenieMessageSnapshot> GetMessageAsync(
+        TenantContext tenant,
+        string ownerKey,
+        string conversationId,
+        string messageId,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("This adapter does not support separate Genie message operations.");
+
+    /// <summary>Waits for an owned message using GET requests, without submitting a question.</summary>
+    /// <remarks>
+    /// Each call has its own <see cref="GenieOptions.ResponseTimeout"/>. Cancellation stops local
+    /// waiting only. IDs do not grant access: ownership and the tenant's agent mapping are checked.
+    /// Older adapters throw <see cref="NotSupportedException"/>.
+    /// </remarks>
+    Task<GenieAnswer> WaitForResponseAsync(
+        TenantContext tenant,
+        string ownerKey,
+        string conversationId,
+        string messageId,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("This adapter does not support separate Genie message operations.");
+
     /// <summary>Starts a conversation in the agent <paramref name="tenant"/> is mapped to.</summary>
     /// <remarks>
     /// Once the workspace accepts a conversation, its ownership is persisted for
@@ -43,6 +91,23 @@ public interface IGenieConversations
         string conversationId,
         CancellationToken cancellationToken = default);
 }
+
+/// <summary>An accepted message. Identifiers support checkpointing; they are not authorization.</summary>
+public sealed record GenieAcceptedMessage(string ConversationId, string MessageId);
+
+/// <summary>A single observation, including the platform status and whether waiting has ended.</summary>
+/// <remarks>
+/// An unfamiliar platform status maps to <see cref="GenieOutcome.Unknown"/>. An accompanying
+/// error makes it terminal; use <see cref="IsTerminal"/> rather than treating Unknown as pending.
+/// </remarks>
+public sealed record GenieMessageSnapshot(
+    string ConversationId,
+    string MessageId,
+    string? Status,
+    bool IsTerminal,
+    GenieOutcome Outcome,
+    string? Text,
+    string? GeneratedSql);
 
 /// <summary>What a Genie Agent answered, and how to continue from it.</summary>
 public sealed record GenieAnswer(

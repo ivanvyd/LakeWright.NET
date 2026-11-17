@@ -2,6 +2,10 @@
 
 Research date: 2026-07-31. Limits are quoted from Databricks docs and marked where undocumented.
 
+Update, 2026-11-17: [OAuth custom identity claims](https://learn.microsoft.com/en-us/azure/databricks/dev-tools/auth/oauth-custom-identity-claims)
+allow governed row filtering with a shared principal. The constraints below describe filters based
+only on principal identity. LakeWright still uses schema-per-tenant and does not mint these claims.
+
 ## The constraint that eliminates the obvious design
 
 Unity Catalog row filters resolve the caller with `session_user()`, evaluated as the invoker. A
@@ -11,12 +15,13 @@ Consequences, stated plainly because this is where teams lose data:
 
 - A filter of the form `tenant_id = (SELECT tenant_id FROM map WHERE username = session_user())`
   resolves to the same row set on every call.
-- Either the service principal maps to one tenant, and every other tenant sees nothing, or it is
-  unmapped, and every tenant sees everything.
+- A fail-closed mapping returns no rows for an unmapped principal. A permissive fallback can expose
+  all rows; neither distinguishes the tenants using that same principal.
 - `is_account_group_member()` fails the same way. The service principal sits in the union of all
   tenants' groups simultaneously, so a group-based filter grants the union on every query.
 
-**Row filters are only a tenancy control when the connection carries a per-tenant identity.**
+**Row filters need trusted tenant context in the authenticated connection**, such as a distinct
+principal or a custom identity claim. A shared `session_user()` alone supplies no such context.
 
 ## The five models
 
@@ -50,9 +55,8 @@ test suite that runs on every commit.
 
 **Defence in depth where it is real.** For tenants on the isolated tier that have their own service
 principal, row filters are added as a genuine second control, because there `session_user()` is the
-tenant. For shared-tier tenants, row filters are deliberately not used: the only correct
-configuration for a shared principal is "sees everything", so a filter would be decoration that
-reads like a control. Decoration that reads like a control is worse than no control.
+tenant. The shared tier has no claim-aware credential path or provisioned claim policy, so it does
+not rely on row filters as a second tenant control.
 
 ## Documented alternatives
 

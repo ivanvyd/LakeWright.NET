@@ -10,8 +10,8 @@ namespace LakeWright.Core.Tenancy;
 /// the factory required to mint one; no other service does. That is what stops a caller from
 /// manufacturing a context for a tenant the current principal does not belong to.
 ///
-/// See ADR 0002. Unity Catalog row filters resolve the caller with <c>session_user()</c>, so a
-/// shared service principal makes them a no-op. Isolation lives here instead.
+/// See ADR 0002. Filters based only on a shared <c>session_user()</c> cannot distinguish tenants.
+/// This library enforces schema-per-tenant rather than minting OAuth custom identity claims.
 /// </remarks>
 public sealed class TenantContext
 {

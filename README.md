@@ -53,25 +53,20 @@ the tests, the DI wiring, and a live workspace.
 
 ## What problem this solves
 
-Unity Catalog row filters resolve the caller with `session_user()`. When an ASP.NET Core backend
-connects with one service principal for every tenant, that function returns the same value on every
-request, so the filter predicate is identical for all of them. The result is a system that either
-shows every tenant nothing or shows every tenant everything.
+A row filter based only on `session_user()` cannot distinguish tenants that share one service
+principal. LakeWright resolves tenant membership in the application and scopes SQL to that tenant's
+catalog and schema. It also provides durable asynchronous operations, compute limits and auditing.
 
-Databricks documents the trade-off directly, for Databricks Apps:
+Databricks now supports [OAuth custom identity claims](https://learn.microsoft.com/en-us/azure/databricks/dev-tools/auth/oauth-custom-identity-claims).
+Governed views or ABAC policies can use
+[`current_oauth_custom_identity_claim()`](https://learn.microsoft.com/en-us/azure/databricks/sql/language-manual/functions/current_oauth_custom_identity_claim)
+to filter rows under app identity. The server must derive the claim from authenticated membership,
+deny rows when it is absent, and restrict grants so callers cannot bypass the policy. LakeWright's
+built-in credentials do not mint these claims; its schema-per-tenant contract is unchanged.
 
-> All actions initiated by the app use the service principal's permissions... it doesn't support
-> user-level access control. All users who interact with the app share the same permissions defined
-> for the service principal, which prevents the app from enforcing fine-grained policies based on
-> individual user identity.
-
-App identity means you filter. User identity means Unity Catalog filters. There is no third option,
-and there is no general on-behalf-of flow for a service hosted outside Databricks.
-
-You find this in an audit rather than in testing, because every tenant's request returns a
-plausible-looking result. LakeWright.NET handles it in the query layer, along with the pieces such a
-product needs anyway: durable asynchronous operations, a per-tenant ceiling on Databricks compute,
-an audit trail, and the Databricks side deployed as code.
+SQL filtering does not isolate Genie conversation history. The application must authorize tenant
+and owner access before reading or continuing a conversation, including when resuming accepted
+messages. See [the conversation guide](docs/guides/genie-conversations.md).
 
 ## What this is not
 

@@ -78,6 +78,14 @@ public sealed class FeatureGateTests
             TestContext.Current.CancellationToken));
         var conversationError = await Should.ThrowAsync<FeatureDisabledException>(() => conversations.AskAsync(
             Tenant(), "owner", "question", TestContext.Current.CancellationToken));
+        await Should.ThrowAsync<FeatureDisabledException>(() => conversations.StartConversationAsync(
+            Tenant(), "owner", "question", TestContext.Current.CancellationToken));
+        await Should.ThrowAsync<FeatureDisabledException>(() => conversations.SendMessageAsync(
+            Tenant(), "owner", "conversation", "question", TestContext.Current.CancellationToken));
+        await Should.ThrowAsync<FeatureDisabledException>(() => conversations.GetMessageAsync(
+            Tenant(), "owner", "conversation", "message", TestContext.Current.CancellationToken));
+        await Should.ThrowAsync<FeatureDisabledException>(() => conversations.WaitForResponseAsync(
+            Tenant(), "owner", "conversation", "message", TestContext.Current.CancellationToken));
 
         statementError.Feature.ShouldBe(LakeWrightFeatures.Statements);
         conversationError.Feature.ShouldBe(LakeWrightFeatures.Conversations);

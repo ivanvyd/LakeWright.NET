@@ -58,14 +58,16 @@ public sealed class GenieDeadlineAndOwnershipTests
     }
 
     [Fact]
-    public async Task Accepted_conversation_remains_resumable_after_a_poll_failure()
+    public async Task Continue_submits_another_question_after_a_poll_failure()
     {
         var polls = 0;
+        var submissions = 0;
         var ownership = new TestOwnership();
         var handler = new DelegateHandler((request, _) =>
         {
             if (request.Method == HttpMethod.Post)
             {
+                submissions++;
                 return Response("""{"conversation_id":"conv-1","message_id":"msg-1"}""");
             }
 
@@ -83,6 +85,24 @@ public sealed class GenieDeadlineAndOwnershipTests
         var resumed = await genie.ContinueAsync(
             Tenant, "owner-a", "conv-1", "continue", TestContext.Current.CancellationToken);
         resumed.Outcome.ShouldBe(GenieOutcome.Completed);
+        submissions.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task Separate_submission_returns_accepted_ids_after_caller_cancellation_during_ownership_persistence()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var ownership = new CancellingOwnership(cancellation);
+        var handler = new DelegateHandler((_, _) =>
+            Response("""{"conversation_id":"conv-1","message_id":"msg-1"}"""));
+        var genie = Conversations(handler, new FakeTimeProvider(), ownership, TimeSpan.FromSeconds(5));
+
+        var accepted = await genie.StartConversationAsync(Tenant, "owner-a", "question", cancellation.Token);
+
+        accepted.ShouldBe(new GenieAcceptedMessage("conv-1", "msg-1"));
+        cancellation.IsCancellationRequested.ShouldBeTrue();
+        (await ownership.ListAsync("owner-a", TestContext.Current.CancellationToken)).ShouldBe(["conv-1"]);
+        handler.Calls.ShouldBe(1);
     }
 
     [Fact]

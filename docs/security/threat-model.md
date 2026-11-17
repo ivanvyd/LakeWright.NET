@@ -48,9 +48,12 @@ The whole product risk. Four ways in, and the controls against each:
 | A statement id is used to read results | `OperationStore` binds the id to its tenant; no lookup by id alone | `OperationOwnershipTests` |
 | A dashboard token is requested for an unassigned or unproven board | Strict embedding checks host assignment and revision-bound, source-owned isolation evidence before token exchange | `DashboardPublishVerifierTests` |
 
-**Accepted residual:** Unity Catalog does not enforce this. With a shared service principal its row
-filters are a no-op (ADR 0002), so the application tier is the only control. There is no second line
-of defence, which is why the isolation suite is a required check and why it is demonstrated failing.
+**Accepted residual:** this deployment does not configure claim-based tenant policies in Unity
+Catalog. Filters based only on the shared `session_user()` cannot distinguish tenants. Databricks
+supports [OAuth custom identity claims](https://learn.microsoft.com/en-us/azure/databricks/dev-tools/auth/oauth-custom-identity-claims)
+for governed data filtering, but LakeWright does not mint them. The application's tenant checks
+remain required. Genie history also requires conversation-owner authorization; data policies do
+not provide it. This corrects the earlier blanket platform claim as of 2026-11-17.
 
 **Embedding boundary:** `DashboardMarkerLint` detects an executable claim marker but does not prove
 row ownership. A host that exposes `IDashboardTokenBroker` must compose
@@ -69,11 +72,14 @@ compiler stops the interpolation footgun, not all dynamic SQL. See spike 02.
 
 ### T3. Databricks credential disclosure
 
-No long-lived credential exists to disclose: the application uses a managed identity (spike 04). The
-remaining exposure is sending the Entra token somewhere it should not go — specifically to presigned
-result storage, which Azure rejects with HTTP 400, so the mistake fails rather than leaks.
+The reference managed-identity deployment has no long-lived Databricks secret (spike 04). The
+library also supports client-secret credentials (ADR 0023), so those hosts must protect and rotate
+the secret. Bearer tokens must never be sent to presigned result storage; result downloads use a
+separate unauthenticated transport.
 
-Logging never includes SQL text, parameter values or tokens.
+Library-owned HTTP client factories disable default request logging on both supported targets.
+A packaged .NET 8 fixture reproduced credential and signed-query disclosure in the previous defaults.
+Hosts must protect custom logging and telemetry, including separately configured upstream SDK clients.
 
 ### T4. Audit tampering
 

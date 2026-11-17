@@ -9,9 +9,9 @@ namespace LakeWright.Conversations;
 /// <remarks>
 /// <para>
 /// <b>One agent per tenant, and no default.</b> The Conversation API takes no filter, no row
-/// predicate and no viewer identity — a question is answered against whatever tables the agent was
-/// curated with. So the agent boundary is the only tenancy boundary available, and a shared agent
-/// serving two tenants is a cross-tenant read waiting for someone to ask the right question.
+/// predicate. This library does not mint tenant-bound OAuth custom identity claims or configure
+/// governed data policies, so it requires separate agents unless the staff-only shared mode is
+/// acknowledged. Conversation-owner authorization remains required with either data model.
 /// </para>
 /// <para>
 /// There is deliberately no implicit fallback agent. A tenant missing from <see cref="Spaces"/> is
