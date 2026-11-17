@@ -183,6 +183,11 @@ jobs:
           echo "CANDIDATE_VERSION=$version" >> "$GITHUB_ENV"
       - name: Pack the candidate packages
         run: dotnet pack LakeWright.slnx -c Release -o consumer-floor-packages -p:Version="$CANDIDATE_VERSION"
+      - name: Exercise packaged Genie message operations on both supported runtimes
+        run: |
+          dotnet restore tests/conversation-consumer/ConversationConsumer.csproj -p:RestoreAdditionalProjectSources="$GITHUB_WORKSPACE/consumer-floor-packages" -p:LakeWrightVersion="$CANDIDATE_VERSION"
+          dotnet run --project tests/conversation-consumer/ConversationConsumer.csproj -c Release -f net8.0 --no-restore -p:LakeWrightVersion="$CANDIDATE_VERSION"
+          dotnet run --project tests/conversation-consumer/ConversationConsumer.csproj -c Release -f net10.0 --no-restore -p:LakeWrightVersion="$CANDIDATE_VERSION"
       - name: Verify every packed package has a publication order
         run: |
           python3 scripts/package-publish-order.py consumer-floor-packages "$CANDIDATE_VERSION" > consumer-floor-packages/publish-order.txt

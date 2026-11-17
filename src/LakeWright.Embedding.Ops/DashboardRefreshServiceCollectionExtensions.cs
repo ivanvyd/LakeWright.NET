@@ -36,7 +36,7 @@ public static class DashboardRefreshServiceCollectionExtensions
         {
             var options = provider.GetRequiredService<IOptions<DashboardOpsOptions>>().Value;
             client.BaseAddress = new Uri(options.WorkspaceUrl.TrimEnd('/') + "/");
-        });
+        }).RemoveAllLoggers();
         configureClient?.Invoke(builder);
         services.AddOptions<DashboardCacheBustOptions>();
         services.AddOptions<DashboardPublishVerifierOptions>()
@@ -52,25 +52,25 @@ public static class DashboardRefreshServiceCollectionExtensions
         {
             var options = provider.GetRequiredService<IOptions<DashboardOpsOptions>>().Value;
             client.BaseAddress = new Uri(options.WorkspaceUrl.TrimEnd('/') + "/");
-        });
+        }).RemoveAllLoggers();
         configureClient?.Invoke(dashboardBuilder);
         var verifierBuilder = services.AddHttpClient<IPublishVerificationApi, DatabricksPublishVerificationApi>((provider, client) =>
         {
             var options = provider.GetRequiredService<IOptions<DashboardOpsOptions>>().Value;
             client.BaseAddress = new Uri(options.WorkspaceUrl.TrimEnd('/') + "/");
-        });
+        }).RemoveAllLoggers();
         configureClient?.Invoke(verifierBuilder);
         var metadataBuilder = services.AddHttpClient<IDashboardMetadataApi, DatabricksDashboardMetadataApi>((provider, client) =>
         {
             var options = provider.GetRequiredService<IOptions<DashboardOpsOptions>>().Value;
             client.BaseAddress = new Uri(options.WorkspaceUrl.TrimEnd('/') + "/");
-        });
+        }).RemoveAllLoggers();
         configureClient?.Invoke(metadataBuilder);
         var warmerBuilder = services.AddHttpClient<IWarehouseWarmApi, DatabricksWarehouseWarmApi>((provider, client) =>
         {
             var options = provider.GetRequiredService<IOptions<DashboardOpsOptions>>().Value;
             client.BaseAddress = new Uri(options.WorkspaceUrl.TrimEnd('/') + "/");
-        });
+        }).RemoveAllLoggers();
         configureClient?.Invoke(warmerBuilder);
         services.AddSingleton<IDashboardRefresher, DashboardRefresher>();
         services.AddSingleton<IDashboardCacheBuster, DashboardCacheBuster>();

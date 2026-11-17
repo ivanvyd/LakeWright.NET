@@ -26,8 +26,9 @@ the expiry returned by the workspace.
 ## Consequences
 
 - Managed identity remains the preferred production choice where it is available.
-- A service principal secret stays in application configuration or a secret store; it is never
-  copied into requests, logs, or the public API surface.
+- A service principal secret stays in configuration or a secret store and is sent only to the
+  OAuth token endpoint. It is never added to SQL/API requests or logs. This wording was corrected
+  on 2026-11-17 to distinguish token exchange from ordinary API requests.
 - Credential rotation creates a different cache key when it changes the client ID. A process must
   still be restarted after secret-only rotation so it reads the new configuration.
 - The cache is process-local. It avoids a stampede without distributing bearer tokens across hosts.

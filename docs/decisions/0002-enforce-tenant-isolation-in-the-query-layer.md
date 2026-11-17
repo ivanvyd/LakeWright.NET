@@ -41,10 +41,13 @@ Provisioning a tenant becomes a DDL operation with a failure mode and a rollback
 The ceiling is 10,000 schemas per catalog, and 10,000 users plus service principals per account
 combined, which caps every design that gives each tenant its own identity.
 
-Row filters are used only for tenants that have their own service principal, where `session_user()`
-genuinely is the tenant. They are deliberately absent on the shared tier: the only correct
-configuration for a shared principal is "sees everything", so a filter there would be decoration
-that reads like a control, which is worse than no control.
+Row filters in this design are used only for tenants with their own service principal. The shared
+tier does not configure a second tenant control in Unity Catalog.
+
+Clarification, 2026-11-17: the original rationale overstated the platform restriction. Databricks
+supports [custom identity claims](https://learn.microsoft.com/en-us/azure/databricks/dev-tools/auth/oauth-custom-identity-claims)
+for governed filtering under a shared principal. This does not change the schema-per-tenant decision
+or add claim-aware credentials to LakeWright.
 
 The whole model rests on one enforcement point, so it gets a dedicated cross-tenant test suite as a
 required CI check rather than test cases scattered through the suite.

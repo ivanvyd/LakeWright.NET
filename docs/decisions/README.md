@@ -17,3 +17,4 @@ renumbered on 2026-09-02; links to the old filenames should be updated to the ca
 - [ADR 0032: accepted Genie ownership and deadlines](0032-genie-accepted-conversation-ownership-and-deadlines.md)
 - [ADR 0033: operation admission and deletion liveness](0033-operation-admission-and-deletion-liveness.md)
 - [ADR 0034: maintenance lock refresh isolation](0034-isolate-maintenance-lock-refresh.md)
+- [ADR 0035: checkpointable Genie messages](0035-checkpointable-genie-messages.md)

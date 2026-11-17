@@ -52,13 +52,7 @@ public static class EmbeddingServiceCollectionExtensions
             // Trailing slash: without it a relative request path replaces the last segment rather
             // than appending to it, and every call would go to the workspace root.
             client.BaseAddress = new Uri(options.WorkspaceUrl.TrimEnd('/') + "/");
-
-            // Deliberately no RedactLoggedHeaders. Since .NET 9, IHttpClientFactory redacts every
-            // header value in its Trace logs unless that method is called — and calling it with a
-            // list *un-redacts* everything not named. So the obvious hardening here would widen the
-            // exposure it looks like it closes. Query strings are redacted by default too, which is
-            // what keeps external_viewer_id and external_value out of the logs.
-        });
+        }).RemoveAllLoggers();
         configureClient?.Invoke(clientBuilder);
         services.TryAddTransient<IWorkspaceTokenProbe>(provider =>
             (IWorkspaceTokenProbe)provider.GetRequiredService<IDashboardTokenBroker>());
@@ -106,7 +100,7 @@ public static class EmbeddingServiceCollectionExtensions
                 .GetRequiredService<IOptions<DashboardOpsOptions>>()
                 .Value;
             client.BaseAddress = new Uri(options.WorkspaceUrl.TrimEnd('/') + "/");
-        });
+        }).RemoveAllLoggers();
         configureClient?.Invoke(tokenClientBuilder);
 
         var catalogClientBuilder = services.AddHttpClient<IDashboardCatalog, DashboardCatalog>((provider, client) =>
@@ -115,7 +109,7 @@ public static class EmbeddingServiceCollectionExtensions
                 .GetRequiredService<IOptions<DashboardOpsOptions>>()
                 .Value;
             client.BaseAddress = new Uri(options.WorkspaceUrl.TrimEnd('/') + "/");
-        });
+        }).RemoveAllLoggers();
         configureClient?.Invoke(catalogClientBuilder);
 
         return services;

@@ -45,7 +45,7 @@ public static class DatabricksServiceCollectionExtensions
         {
             var options = provider.GetRequiredService<IOptions<DatabricksOptions>>().Value;
             client.BaseAddress = new Uri(options.WorkspaceUrl.TrimEnd('/') + "/", UriKind.Absolute);
-        });
+        }).RemoveAllLoggers();
         services.AddSingleton<ServicePrincipalDatabricksCredential>(provider =>
             new ServicePrincipalDatabricksCredential(
                 provider.GetRequiredService<IHttpClientFactory>().CreateClient("LakeWright.Databricks.Credentials"),
