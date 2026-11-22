@@ -1,7 +1,7 @@
 # Add LakeWright to an existing application
 
 Start with the [published-package quickstart](../../examples/package-quickstart/README.md).
-It targets .NET 8 and pins the published 3.0.0 packages. You can use the tenant-scoped SQL
+It targets .NET 8 and pins the published 3.1.0 packages. You can use the tenant-scoped SQL
 layer without adopting the reference application's database, identity provider, or UI.
 
 ## Register the packages
@@ -9,8 +9,8 @@ layer without adopting the reference application's database, identity provider, 
 In your application's project directory:
 
 ```bash
-dotnet add package LakeWright.Core --version 3.0.0
-dotnet add package LakeWright.Databricks --version 3.0.0
+dotnet add package LakeWright.Core --version 3.1.0
+dotnet add package LakeWright.Databricks --version 3.1.0
 ```
 
 Keep your normal DI and configuration packages. For an Azure application that uses the
@@ -24,26 +24,25 @@ credential dependency graph. This repository uses `Azure.Identity` only for .NET
 Choose a credential package compatible with your application's target and verify that graph
 separately; installing the newest credential package can change its transitive dependency floor.
 
-## Use the latest stable .NET target
+## Use the .NET 10 target
 
-As checked on 7 November 2026, [.NET 10 is the latest stable release](https://dotnet.microsoft.com/en-us/platform/support/policy/dotnet-core).
-.NET 11 RC3 is a prerelease, not the stable support target. The canonical quickstart retains
-the .NET 8 consumer floor; .NET 10 consumers select the packages' `lib/net10.0` assets.
+.NET 10 consumers select the packages' `lib/net10.0` assets. The canonical quickstart
+continues to exercise the .NET 8 consumer floor.
 
 To adapt a copy of the quickstart, install a released .NET 10 SDK and change these entries
-in `PackageQuickstart.csproj`, keeping the LakeWright packages pinned to 3.0.0:
+in `PackageQuickstart.csproj`, keeping the LakeWright packages pinned to 3.1.0:
 
 ```xml
 <TargetFramework>net10.0</TargetFramework>
 <PackageReference Include="Microsoft.Extensions.Configuration" Version="[10.0.11]" />
-<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="[10.0.11]" />
+<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="[10.0.14]" />
 ```
 
 Then run the same `dotnet restore --configfile NuGet.Config` and
 `dotnet run -c Release -- --offline` commands. Changing only the target while keeping the
 example's exact 8.x Extensions pins causes package downgrade errors; align those direct
 references with the .NET 10 dependency graph. This adaptation was compiled and ran the
-same offline membership/query/denial fixture using the published 3.0.0 .NET 10 assets.
+same offline membership/query/denial fixture using the published 3.1.0 .NET 10 assets.
 It does not establish a live credential or workspace integration.
 
 ## Resolve membership before reaching data
