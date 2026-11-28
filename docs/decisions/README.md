@@ -19,3 +19,4 @@ renumbered on 2026-09-02; links to the old filenames should be updated to the ca
 - [ADR 0034: maintenance lock refresh isolation](0034-isolate-maintenance-lock-refresh.md)
 - [ADR 0035: checkpointable Genie messages](0035-checkpointable-genie-messages.md)
 - [ADR 0036: tenant-bound Genie ownership](0036-tenant-bound-genie-ownership.md)
+- [ADR 0037: public fold criterion and nomination bar](0037-public-fold-criterion-and-nomination-bar.md)

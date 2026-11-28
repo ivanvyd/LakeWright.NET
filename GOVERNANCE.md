@@ -60,3 +60,11 @@ publishing nothing turned out to cost more than it saved, while
 
 If the maintainer becomes unresponsive for 6 months, the README will be updated to say so. An
 unmaintained project that says it is unmaintained is more useful than one that pretends otherwise.
+
+## Demand
+
+[ADR 0037](docs/decisions/0037-public-fold-criterion-and-nomination-bar.md) fixes in advance when the
+project goes maintenance-only for lack of users, and what has to be true before it is put forward
+to any Databricks programme. The counts it uses are recorded in
+[`docs/adoption/signals.md`](docs/adoption/signals.md). If you use LakeWright, telling us is the
+most useful contribution you can make: see [ADOPTERS.md](ADOPTERS.md).
