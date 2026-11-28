@@ -86,6 +86,11 @@ note.
   about live-verified rows that predate the current major version.
 - State that host-wide `ConfigureHttpClientDefaults` loggers are removed from library clients as
   well.
+- Record [ADR 0037](docs/decisions/0037-public-fold-criterion-and-nomination-bar.md): the project
+  goes maintenance-only on 2027-11-30 unless it has 5 external issue or pull request authors or 2
+  adopter reports, and approaches no Databricks programme before 3 independent acceptance reports
+  from 2 clouds. Add an opt-in [ADOPTERS.md](ADOPTERS.md) with a private-report path, and the
+  dated [adoption-signal record](docs/adoption/signals.md) the decision is made against.
 
 ## [3.1.0] — 2026-11-18
 
