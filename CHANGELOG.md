@@ -77,6 +77,13 @@ note.
 
 ### Documentation
 
+- Add [When not to use LakeWright](docs/guides/when-not-to-use-lakewright.md), a decision table that
+  sends readers to Databricks Apps, AI/BI external embedding, Lakebase or a Databricks SDK when
+  those fit. Its quotes are recorded in a dated evidence file, and ADR 0001 is amended where the
+  Apps premises moved.
+- Give every row of the compatibility matrix a stable claim ID (`LW-Cnnn`). README claims cite them,
+  and `scripts/check-claim-ledger.py` fails CI on a missing, duplicated or unknown ID. It warns
+  about live-verified rows that predate the current major version.
 - State that host-wide `ConfigureHttpClientDefaults` loggers are removed from library clients as
   well.
 

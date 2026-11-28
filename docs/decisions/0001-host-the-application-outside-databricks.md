@@ -37,3 +37,19 @@ model still forbids customer-facing use. It is recorded here so nobody re-derive
 
 Databricks Apps remains the right answer for internal tooling, and the README says so rather than
 implying the product is wrong.
+
+## Amendment: 2026-11-28, premises rechecked
+
+Two of the three further constraints have moved, and the decision does not change:
+
+- Compute now reaches an XLarge size of up to 12 vCPU, in some regions only. Horizontal scaling
+  became generally available on 2026-09-29, with one to five instances per app.
+- An app's own address is still fixed, but account-level Custom URLs are in Public Preview and
+  give the account one branded domain.
+- The runtime is still Python 3.11 and Node.js 22 with no .NET and no custom container.
+
+The deciding premise is unchanged and was re-fetched verbatim: Apps cannot be made public, and every
+user must be an identity in the Databricks account. The sources are in
+[the 2026-11-28 evidence record](../release-evidence/databricks-platform-2026-11-28.md), and
+[When not to use LakeWright](../guides/when-not-to-use-lakewright.md) turns them into a decision
+table.

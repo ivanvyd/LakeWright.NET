@@ -4,6 +4,7 @@
 
 | If you want to | Read |
 |---|---|
+| Decide whether it fits | [When not to use LakeWright](guides/when-not-to-use-lakewright.md) |
 | Get it running | [Getting started](guides/getting-started.md) |
 | Add published packages to an existing application | [Package quickstart](../examples/package-quickstart/README.md) and [integration guide](guides/add-to-existing-app.md) |
 | Run local publish, scope, and package checks | [Local verification tooling](guides/local-verification-tooling.md) |
