@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using LakeWright.Caching.Redis;
 using LakeWright.Conversations;
+using static LakeWright.TenantIsolation.Tests.GenieTestKit;
 
 namespace LakeWright.TenantIsolation.Tests;
 
@@ -37,6 +38,61 @@ public sealed class RedisConversationOwnershipTests
 
         await owner.RemoveAsync("conversation-1", "owner-a", TestContext.Current.CancellationToken);
         (await owner.IsOwnerAsync("conversation-1", "owner-a", TestContext.Current.CancellationToken)).ShouldBeFalse();
+        (await owner.ListAsync("owner-a", TestContext.Current.CancellationToken)).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task A_claim_recorded_in_one_tenant_refuses_the_same_owner_in_another()
+    {
+        var redis = new InMemoryRedis();
+        var firstReplica = new RedisConversationOwnership(redis);
+        var secondReplica = new RedisConversationOwnership(redis);
+
+        await firstReplica.RecordAsync(AcmeId, "conversation-1", "owner-a", TestContext.Current.CancellationToken);
+
+        (await secondReplica.IsOwnerAsync(AcmeId, "conversation-1", "owner-a", TestContext.Current.CancellationToken)).ShouldBeTrue();
+        (await secondReplica.IsOwnerAsync(GlobexId, "conversation-1", "owner-a", TestContext.Current.CancellationToken)).ShouldBeFalse();
+        (await secondReplica.IsOwnerAsync(AcmeId, "conversation-1", "owner-b", TestContext.Current.CancellationToken)).ShouldBeFalse();
+        (await secondReplica.IsOwnerAsync("conversation-1", "owner-a", TestContext.Current.CancellationToken)).ShouldBeTrue();
+        await Should.ThrowAsync<ConversationOwnershipException>(async () => await secondReplica.RecordAsync(
+            GlobexId, "conversation-1", "owner-a", TestContext.Current.CancellationToken));
+        await Should.ThrowAsync<ConversationOwnershipException>(async () => await secondReplica.RecordAsync(
+            AcmeId, "conversation-1", "owner-b", TestContext.Current.CancellationToken));
+
+        await secondReplica.RecordAsync(AcmeId, "conversation-1", "owner-a", TestContext.Current.CancellationToken);
+        await secondReplica.RecordAsync("conversation-1", "owner-a", TestContext.Current.CancellationToken);
+        (await secondReplica.IsOwnerAsync(GlobexId, "conversation-1", "owner-a", TestContext.Current.CancellationToken)).ShouldBeFalse();
+        (await secondReplica.ListAsync("owner-a", TestContext.Current.CancellationToken)).ShouldBe(["conversation-1"]);
+        redis.Values.ShouldAllBe(value => !value.Contains(AcmeId.ToString(), StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task A_claim_written_without_a_tenant_still_authorizes_its_owner_in_any_tenant()
+    {
+        var redis = new InMemoryRedis();
+        var owner = new RedisConversationOwnership(redis);
+        await owner.RecordAsync("conversation-1", "owner-a", TestContext.Current.CancellationToken);
+
+        await owner.RecordAsync(AcmeId, "conversation-1", "owner-a", TestContext.Current.CancellationToken);
+        (await owner.IsOwnerAsync(AcmeId, "conversation-1", "owner-a", TestContext.Current.CancellationToken)).ShouldBeTrue();
+        (await owner.IsOwnerAsync(GlobexId, "conversation-1", "owner-a", TestContext.Current.CancellationToken)).ShouldBeTrue();
+        (await owner.IsOwnerAsync(AcmeId, "conversation-1", "owner-b", TestContext.Current.CancellationToken)).ShouldBeFalse();
+        await Should.ThrowAsync<ConversationOwnershipException>(async () => await owner.RecordAsync(
+            AcmeId, "conversation-1", "owner-b", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Removing_a_tenant_bound_claim_checks_only_its_owner()
+    {
+        var redis = new InMemoryRedis();
+        var owner = new RedisConversationOwnership(redis);
+        await owner.RecordAsync(AcmeId, "conversation-1", "owner-a", TestContext.Current.CancellationToken);
+
+        await owner.RemoveAsync("conversation-1", "owner-b", TestContext.Current.CancellationToken);
+        (await owner.IsOwnerAsync(AcmeId, "conversation-1", "owner-a", TestContext.Current.CancellationToken)).ShouldBeTrue();
+
+        await owner.RemoveAsync("conversation-1", "owner-a", TestContext.Current.CancellationToken);
+        (await owner.IsOwnerAsync(AcmeId, "conversation-1", "owner-a", TestContext.Current.CancellationToken)).ShouldBeFalse();
         (await owner.ListAsync("owner-a", TestContext.Current.CancellationToken)).ShouldBeEmpty();
     }
 
@@ -77,6 +133,8 @@ public sealed class RedisConversationOwnershipTests
         }
 
         public IReadOnlyCollection<string> Keys => [.. _strings.Keys, .. _sets.Keys];
+
+        public IReadOnlyCollection<string> Values => [.. _strings.Values];
 
     }
 }

@@ -73,6 +73,47 @@ public sealed class DashboardRefresherTests
     }
 
     [Fact]
+    public async Task Two_tenants_that_choose_the_same_key_get_separate_runs()
+    {
+        var api = new FakeJobsApi();
+        var ownership = new MemoryRefreshRunOwnership();
+        var refresher = Refresher(api, ownership);
+        var ct = TestContext.Current.CancellationToken;
+
+        var first = await refresher.StartOrJoinAsync(FirstTenant, RefreshJob.FromId(42), "nightly", ct);
+        var second = await refresher.StartOrJoinAsync(SecondTenant, RefreshJob.FromId(42), "nightly", ct);
+
+        second.RunId.ShouldNotBe(first.RunId);
+        api.RunsByToken.Keys.ShouldNotContain("nightly");
+        (await refresher.StatusAsync(FirstTenant, [first.RunId], ct)).Single().RunId.ShouldBe(first.RunId);
+    }
+
+    [Fact]
+    public async Task A_repeated_key_from_the_same_tenant_returns_the_same_run()
+    {
+        var api = new FakeJobsApi();
+        var refresher = Refresher(api);
+        var ct = TestContext.Current.CancellationToken;
+
+        var first = await refresher.StartOrJoinAsync(FirstTenant, RefreshJob.FromId(42), "nightly", ct);
+        var again = await refresher.StartOrJoinAsync(FirstTenant, RefreshJob.FromId(42), "nightly", ct);
+
+        again.RunId.ShouldBe(first.RunId);
+    }
+
+    [Fact]
+    public void A_recorded_run_is_never_moved_to_another_tenant()
+    {
+        var ownership = new MemoryRefreshRunOwnership();
+        ownership.Record(FirstTenant, 7);
+
+        Should.Throw<InvalidOperationException>(() => ownership.Record(SecondTenant, 7));
+
+        ownership.IsOwner(FirstTenant, 7).ShouldBeTrue();
+        ownership.IsOwner(SecondTenant, 7).ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task Invalidates_a_named_job_lookup_after_the_workspace_reports_it_missing()
     {
         var api = new FakeJobsApi { FailFirstRunNowAsMissing = true };
@@ -183,6 +224,9 @@ public sealed class DashboardRefresherTests
         public bool FailFirstRunNowAsMissing { get; init; }
         public string? LastIdempotencyToken { get; private set; }
 
+        /// <summary>Databricks returns the existing run for a repeated token, workspace-wide.</summary>
+        public Dictionary<string, long> RunsByToken { get; } = new(StringComparer.Ordinal);
+
         public Task<long> ResolveJobIdAsync(RefreshJob job, CancellationToken cancellationToken)
         {
             ResolveCalls++;
@@ -200,7 +244,15 @@ public sealed class DashboardRefresherTests
             {
                 throw new JobsApiException(HttpStatusCode.BadRequest, "job does not exist");
             }
-            return Task.FromResult(99L);
+
+            if (!RunsByToken.TryGetValue(idempotencyToken, out var runId))
+            {
+                runId = 99 + RunsByToken.Count;
+                RunsByToken[idempotencyToken] = runId;
+                Runs[runId] = Run(runId, tenant, RefreshRunState.Running);
+            }
+
+            return Task.FromResult(runId);
         }
 
         public Task<JobsRun> GetRunAsync(long runId, CancellationToken cancellationToken) =>

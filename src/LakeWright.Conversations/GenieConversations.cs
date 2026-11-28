@@ -26,6 +26,13 @@ public sealed class GenieConversations : IGenieConversations
     private static readonly TimeSpan FirstPollDelay = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan MaxPollDelay = TimeSpan.FromMinutes(1);
 
+    /// <summary>
+    /// The tenant that conversations in the acknowledged shared space are bound to. Every tenant
+    /// there addresses the same space, and a conversation bound to a real tenant stays out of reach.
+    /// <see cref="GenieSharedSpaceOptionsValidator"/> refuses a real tenant with this id in shared mode.
+    /// </summary>
+    internal static readonly TenantId SharedSpaceTenant = new(Guid.Empty);
+
     private readonly HttpClient _http;
     private readonly TokenCredential _credential;
     private readonly GenieOptions _options;
@@ -55,9 +62,9 @@ public sealed class GenieConversations : IGenieConversations
         string question,
         CancellationToken cancellationToken = default)
     {
-        var space = await AuthorizeAsync(tenant, ownerKey, null, null, cancellationToken).ConfigureAwait(false);
+        var (space, binding) = await AuthorizeAsync(tenant, ownerKey, null, null, cancellationToken).ConfigureAwait(false);
         using var deadline = new ResponseDeadline(_time, _options.ResponseTimeout, cancellationToken);
-        var accepted = await StartConversationCoreAsync(space, ownerKey, question, deadline).ConfigureAwait(false);
+        var accepted = await StartConversationCoreAsync(space, binding, ownerKey, question, deadline).ConfigureAwait(false);
         return await PollAsync(space, accepted.ConversationId, accepted.MessageId, deadline, cancellationToken)
             .ConfigureAwait(false);
     }
@@ -69,7 +76,7 @@ public sealed class GenieConversations : IGenieConversations
         string question,
         CancellationToken cancellationToken = default)
     {
-        var space = await AuthorizeAsync(tenant, ownerKey, conversationId, null, cancellationToken).ConfigureAwait(false);
+        var (space, _) = await AuthorizeAsync(tenant, ownerKey, conversationId, null, cancellationToken).ConfigureAwait(false);
         using var deadline = new ResponseDeadline(_time, _options.ResponseTimeout, cancellationToken);
         var accepted = await SubmitAsync(space, conversationId, question, deadline).ConfigureAwait(false);
         return await PollAsync(space, accepted.ConversationId, accepted.MessageId, deadline, cancellationToken)
@@ -82,9 +89,9 @@ public sealed class GenieConversations : IGenieConversations
         string question,
         CancellationToken cancellationToken = default)
     {
-        var space = await AuthorizeAsync(tenant, ownerKey, null, null, cancellationToken).ConfigureAwait(false);
+        var (space, binding) = await AuthorizeAsync(tenant, ownerKey, null, null, cancellationToken).ConfigureAwait(false);
         using var deadline = new ResponseDeadline(_time, _options.ResponseTimeout, cancellationToken);
-        return await StartConversationCoreAsync(space, ownerKey, question, deadline).ConfigureAwait(false);
+        return await StartConversationCoreAsync(space, binding, ownerKey, question, deadline).ConfigureAwait(false);
     }
 
     public async Task<GenieAcceptedMessage> SendMessageAsync(
@@ -94,7 +101,7 @@ public sealed class GenieConversations : IGenieConversations
         string question,
         CancellationToken cancellationToken = default)
     {
-        var space = await AuthorizeAsync(tenant, ownerKey, conversationId, null, cancellationToken).ConfigureAwait(false);
+        var (space, _) = await AuthorizeAsync(tenant, ownerKey, conversationId, null, cancellationToken).ConfigureAwait(false);
         using var deadline = new ResponseDeadline(_time, _options.ResponseTimeout, cancellationToken);
         return await SubmitAsync(space, conversationId, question, deadline).ConfigureAwait(false);
     }
@@ -106,7 +113,7 @@ public sealed class GenieConversations : IGenieConversations
         string messageId,
         CancellationToken cancellationToken = default)
     {
-        var space = await AuthorizeAsync(tenant, ownerKey, conversationId, messageId, cancellationToken).ConfigureAwait(false);
+        var (space, _) = await AuthorizeAsync(tenant, ownerKey, conversationId, messageId, cancellationToken).ConfigureAwait(false);
         using var deadline = new ResponseDeadline(_time, _options.ResponseTimeout, cancellationToken);
         return await ReadMessageAsync(space, conversationId, messageId, deadline).ConfigureAwait(false);
     }
@@ -118,7 +125,7 @@ public sealed class GenieConversations : IGenieConversations
         string messageId,
         CancellationToken cancellationToken = default)
     {
-        var space = await AuthorizeAsync(tenant, ownerKey, conversationId, messageId, cancellationToken).ConfigureAwait(false);
+        var (space, _) = await AuthorizeAsync(tenant, ownerKey, conversationId, messageId, cancellationToken).ConfigureAwait(false);
         using var deadline = new ResponseDeadline(_time, _options.ResponseTimeout, cancellationToken);
         return await PollAsync(space, conversationId, messageId, deadline, cancellationToken).ConfigureAwait(false);
     }
@@ -135,7 +142,7 @@ public sealed class GenieConversations : IGenieConversations
         string conversationId,
         CancellationToken cancellationToken = default)
     {
-        var space = await AuthorizeAsync(tenant, ownerKey, conversationId, null, cancellationToken).ConfigureAwait(false);
+        var (space, _) = await AuthorizeAsync(tenant, ownerKey, conversationId, null, cancellationToken).ConfigureAwait(false);
         using var request = new HttpRequestMessage(HttpMethod.Delete, ConversationPath(space, conversationId));
         await AuthenticateAsync(request, cancellationToken).ConfigureAwait(false);
         using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
@@ -147,8 +154,9 @@ public sealed class GenieConversations : IGenieConversations
     /// The checks every operation makes, in the order the isolation suite pins: feature gate,
     /// identifiers, ownership, then the tenant's agent. All of them run before credentials or HTTP.
     /// A null <paramref name="conversationId"/> starts a new conversation, so there is no owner yet.
+    /// Returns the agent and the tenant that ownership records are bound to.
     /// </summary>
-    private async ValueTask<string> AuthorizeAsync(
+    private async ValueTask<(string Space, TenantId Binding)> AuthorizeAsync(
         TenantContext tenant,
         string ownerKey,
         string? conversationId,
@@ -164,19 +172,20 @@ public sealed class GenieConversations : IGenieConversations
             {
                 ValidateId(messageId, nameof(messageId));
             }
-
-            if (!await _ownership.IsOwnerAsync(conversationId, ownerKey, cancellationToken).ConfigureAwait(false))
-            {
-                throw new ConversationOwnershipException(conversationId);
-            }
         }
 
-        return ResolveSpace(tenant);
-    }
+        // A configuration lookup only: an unmapped tenant is refused after the ownership check.
+        var resolved = _options.TryResolveSpace(tenant, out var space, out var shared);
+        // The acknowledged shared space has no tenant isolation and every tenant addresses it, so
+        // its conversations are bound to one shared tenant rather than to the caller's.
+        var binding = shared ? SharedSpaceTenant : tenant.TenantId;
+        if (conversationId is not null
+            && !await _ownership.IsOwnerAsync(binding, conversationId, ownerKey, cancellationToken).ConfigureAwait(false))
+        {
+            throw new ConversationOwnershipException(conversationId);
+        }
 
-    private string ResolveSpace(TenantContext tenant)
-    {
-        if (!_options.TryResolveSpace(tenant, out var space))
+        if (!resolved)
         {
             throw new InvalidOperationException(
                 $"Tenant {tenant.TenantId} has no Genie Agent configured. Add it to GenieOptions.Spaces; " +
@@ -184,14 +193,14 @@ public sealed class GenieConversations : IGenieConversations
                 "than not answering.");
         }
 
-        return space;
+        return (space, binding);
     }
 
     private async Task<GenieAcceptedMessage> StartConversationCoreAsync(
-        string space, string ownerKey, string question, ResponseDeadline deadline)
+        string space, TenantId binding, string ownerKey, string question, ResponseDeadline deadline)
     {
         var accepted = await SubmitAsync(space, null, question, deadline).ConfigureAwait(false);
-        await RecordAcceptedConversationAsync(accepted, ownerKey).ConfigureAwait(false);
+        await RecordAcceptedConversationAsync(accepted, binding, ownerKey).ConfigureAwait(false);
         return accepted;
     }
 
@@ -329,7 +338,7 @@ public sealed class GenieConversations : IGenieConversations
         }
     }
 
-    private async Task RecordAcceptedConversationAsync(GenieAcceptedMessage accepted, string ownerKey)
+    private async Task RecordAcceptedConversationAsync(GenieAcceptedMessage accepted, TenantId binding, string ownerKey)
     {
         // The caller token is deliberately excluded: acceptance has happened and cancellation
         // must not make the id orphaned. The independent bounded deadline still prevents a failed
@@ -337,7 +346,7 @@ public sealed class GenieConversations : IGenieConversations
         using var persistenceDeadline = new ResponseDeadline(_time, _options.ResponseTimeout, CancellationToken.None);
         try
         {
-            await _ownership.RecordAsync(accepted.ConversationId, ownerKey, persistenceDeadline.Token).ConfigureAwait(false);
+            await _ownership.RecordAsync(binding, accepted.ConversationId, ownerKey, persistenceDeadline.Token).ConfigureAwait(false);
             persistenceDeadline.ThrowIfExpired();
         }
         catch (ConversationOwnershipException)
