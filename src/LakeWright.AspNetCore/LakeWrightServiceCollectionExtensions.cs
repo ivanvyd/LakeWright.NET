@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace LakeWright.AspNetCore;
 
@@ -176,6 +177,10 @@ public static class LakeWrightServiceCollectionExtensions
     public static IApplicationBuilder UseLakeWrightTenancy(this IApplicationBuilder app)
     {
         ArgumentNullException.ThrowIfNull(app);
+        // Fail at startup, not on the first refusal: an invalid budget must not turn a refusal
+        // into a 500 that writes no audit row.
+        (app.ApplicationServices.GetService<IOptions<TenantDenialAuditOptions>>()?.Value ?? new TenantDenialAuditOptions())
+            .Validate();
         return app.UseMiddleware<TenantResolutionMiddleware>();
     }
 }

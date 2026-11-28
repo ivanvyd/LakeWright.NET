@@ -45,8 +45,11 @@ public interface IGenieConversations
     /// <remarks>
     /// Each call has its own <see cref="GenieOptions.ResponseTimeout"/>. Cancellation stops local
     /// waiting only. IDs do not grant access: ownership is checked, and the request is addressed
-    /// through the agent mapped to <paramref name="tenant"/>. Ownership records carry no tenant, so
-    /// an <c>ownerKey</c> must be unique across tenants. Older adapters throw
+    /// through the agent mapped to <paramref name="tenant"/>. The built-in ownership stores bind a
+    /// conversation to the tenant it was started in, so the same <c>ownerKey</c> cannot reach it
+    /// from another tenant. A custom <see cref="IConversationOwnership"/> binds it only if it
+    /// overrides the tenant-aware members. Conversations in the acknowledged shared space are
+    /// shared by every tenant that resolves to it. Older adapters throw
     /// <see cref="NotSupportedException"/>.
     /// </remarks>
     Task<GenieAnswer> WaitForResponseAsync(

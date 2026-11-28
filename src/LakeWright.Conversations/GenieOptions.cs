@@ -49,8 +49,12 @@ public sealed class GenieOptions
     /// </remarks>
     public TimeSpan ResponseTimeout { get; set; } = TimeSpan.FromMinutes(10);
 
-    internal bool TryResolveSpace(TenantContext tenant, out string spaceId)
+    /// <param name="tenant">The resolved tenant.</param>
+    /// <param name="spaceId">The tenant's own space, or the acknowledged shared space.</param>
+    /// <param name="shared">Whether <paramref name="spaceId"/> is the shared space.</param>
+    internal bool TryResolveSpace(TenantContext tenant, out string spaceId, out bool shared)
     {
+        shared = false;
         if (Spaces.TryGetValue(tenant.TenantId.ToString(), out spaceId!) && !string.IsNullOrWhiteSpace(spaceId))
         {
             return true;
@@ -59,6 +63,7 @@ public sealed class GenieOptions
         if (AcknowledgeNoTenantIsolation && !string.IsNullOrWhiteSpace(SharedSpaceId))
         {
             spaceId = SharedSpaceId;
+            shared = true;
             return true;
         }
 

@@ -70,6 +70,12 @@ public static class AuditActions
     /// only place the attempt is visible.
     /// </summary>
     public const string TenantAccessDenied = "tenant.access_denied";
+
+    /// <summary>
+    /// The principal used up its budget of recorded refusals for the current window. Further
+    /// refusals in that window are counted by telemetry but not recorded one by one.
+    /// </summary>
+    public const string TenantAccessDeniedSuppressed = "tenant.access_denied_suppressed";
 }
 
 /// <summary>

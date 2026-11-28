@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using Azure.Core;
 using LakeWright.Conversations;
 using LakeWright.Core.Tenancy;
 using Microsoft.Extensions.Configuration;
@@ -8,6 +7,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using WireMock.ResponseBuilders;
 using WireMock.Server;
+using static LakeWright.TenantIsolation.Tests.GenieTestKit;
 using WireMockRequest = WireMock.RequestBuilders.Request;
 
 namespace LakeWright.TenantIsolation.Tests;
@@ -27,8 +27,6 @@ public class GenieConversationTests : IDisposable
     private const string AcmeSpace = "space-acme";
     private const string GlobexSpace = "space-globex";
 
-    private static readonly TenantId AcmeId = TenantId.Parse("0198f000-0000-7000-8000-00000000ac11");
-    private static readonly TenantId GlobexId = TenantId.Parse("0198f000-0000-7000-8000-00000000617b");
     private static readonly TenantId StrangerId = TenantId.Parse("0198f000-0000-7000-8000-0000000057a2");
 
     private readonly WireMockServer _workspace = WireMockServer.Start();
@@ -62,7 +60,7 @@ public class GenieConversationTests : IDisposable
     {
         // Arrange
         StubConversation(AcmeSpace, "COMPLETED");
-        StubConversation(GlobexSpace, "COMPLETED");
+        StubConversation(GlobexSpace, "COMPLETED", "conv-2");
         var genie = Conversations();
 
         // Act — the same question from two tenants.
@@ -108,11 +106,8 @@ public class GenieConversationTests : IDisposable
             SharedSpaceId = sharedSpace,
             AcknowledgeNoTenantIsolation = true,
         };
-        var genie = new GenieConversations(
-            new HttpClient { BaseAddress = new Uri(_workspace.Urls[0] + "/") },
-            new StubCredential(),
-            Options.Create(options),
-            new FakeTimeProvider());
+        var genie = GenieTestKit.Conversations(
+            new HttpClient { BaseAddress = new Uri(_workspace.Urls[0] + "/") }, options, new FakeTimeProvider());
 
         var answer = await genie.AskAsync(
             Tenant(AcmeId), "staff-user", "how many orders?", TestContext.Current.CancellationToken);
@@ -190,6 +185,27 @@ public class GenieConversationTests : IDisposable
 
         validate.ShouldThrow<OptionsValidationException>()
             .Message.ShouldContain("AcknowledgeNoTenantIsolation");
+    }
+
+    [Fact]
+    public void Shared_space_refuses_a_mapped_tenant_whose_id_is_the_shared_space_owner_tenant_at_startup()
+    {
+        var services = new ServiceCollection();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Genie:WorkspaceUrl"] = "https://workspace.example",
+            ["Genie:SharedSpaceId"] = "staff-only-space",
+            ["Genie:AcknowledgeNoTenantIsolation"] = "true",
+            ["Genie:Spaces:00000000-0000-0000-0000-000000000000"] = "space-empty",
+        }).Build();
+        services.AddLakeWrightGenie(configuration);
+
+        var validate = () => services.BuildServiceProvider()
+            .GetRequiredService<IStartupValidator>()
+            .Validate();
+
+        validate.ShouldThrow<OptionsValidationException>()
+            .Message.ShouldContain("00000000-0000-0000-0000-000000000000");
     }
 
     [Theory]
@@ -313,15 +329,19 @@ public class GenieConversationTests : IDisposable
     }
     """;
 
-    private void StubConversation(string space, string status)
+    /// <summary>
+    /// Databricks conversation ids are unique across agents, so stub two agents with different
+    /// ids: ownership binds an id to the tenant that started it.
+    /// </summary>
+    private void StubConversation(string space, string status, string conversationId = "conv-1")
     {
         _workspace
             .Given(WireMockRequest.Create().WithPath($"/api/2.0/genie/spaces/{space}/start-conversation").UsingPost())
-            .RespondWith(Json("""{"conversation_id":"conv-1","message_id":"msg-1"}"""));
+            .RespondWith(Json($$"""{"conversation_id":"{{conversationId}}","message_id":"msg-1"}"""));
 
         _workspace
             .Given(WireMockRequest.Create().WithPath($"/api/2.0/genie/spaces/{space}/conversations/*/messages").UsingPost())
-            .RespondWith(Json("""{"conversation_id":"conv-1","message_id":"msg-1"}"""));
+            .RespondWith(Json($$"""{"conversation_id":"{{conversationId}}","message_id":"msg-1"}"""));
 
         _workspace
             .Given(WireMockRequest.Create().WithPath($"/api/2.0/genie/spaces/{space}/conversations/*/messages/msg-1").UsingGet())
@@ -342,23 +362,7 @@ public class GenieConversationTests : IDisposable
         options.Spaces[AcmeId.ToString()] = AcmeSpace;
         options.Spaces[GlobexId.ToString()] = GlobexSpace;
 
-        return new GenieConversations(
-            new HttpClient { BaseAddress = new Uri(_workspace.Urls[0] + "/") },
-            new StubCredential(),
-            Options.Create(options),
-            time ?? new FakeTimeProvider());
-    }
-
-    private static TenantContext Tenant(TenantId id) =>
-        TenantContextFactory.ForTenant(id, "lakewright_dev", "analytics");
-
-    private sealed class StubCredential : TokenCredential
-    {
-        public override AccessToken GetToken(TokenRequestContext context, CancellationToken cancellationToken) =>
-            new("a-token", DateTimeOffset.MaxValue);
-
-        public override ValueTask<AccessToken> GetTokenAsync(
-            TokenRequestContext context, CancellationToken cancellationToken) =>
-            new(GetToken(context, cancellationToken));
+        return GenieTestKit.Conversations(
+            new HttpClient { BaseAddress = new Uri(_workspace.Urls[0] + "/") }, options, time ?? new FakeTimeProvider());
     }
 }

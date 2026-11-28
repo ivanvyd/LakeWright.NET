@@ -21,9 +21,14 @@ An unfamiliar status has `GenieOutcome.Unknown`; it is terminal if Genie also re
 `WaitForResponseAsync` polls with GET only. Calling it again resumes that same message.
 
 Resolve `tenant` from authenticated membership. Use an opaque, stable `ownerKey` that identifies
-the application's authorized principal within its tenant. Ownership records carry no tenant, so
-build the key from both, for example the tenant ID and the principal ID: a principal's key from
-one tenant must not match its key in another. All read, wait and follow-up operations
+the application's authorized principal, and build it from the tenant ID and the principal ID:
+`ListAsync` takes no tenant, so a key shared across tenants lists every tenant's conversation IDs.
+The built-in ownership stores also record the tenant a conversation was started in, so even a
+shared key cannot reach it while another tenant is resolved. A custom `IConversationOwnership`
+gets that binding only if it overrides the tenant-aware `RecordAsync` and `IsOwnerAsync` members.
+Conversations in the acknowledged shared space are shared by every tenant that resolves to it
+([ADR 0036](../decisions/0036-tenant-bound-genie-ownership.md)). All read, wait and follow-up
+operations
 check ownership before acquiring credentials or calling Databricks. Identifiers alone grant no
 access. Keep tenant-to-agent mappings and owner-key construction consistent across processes.
 

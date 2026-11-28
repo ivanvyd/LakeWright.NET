@@ -124,3 +124,21 @@ library's.
 - Other test failures in the suite are environmental: Testcontainers
   (Docker not running) and `LiveEmbeddingTests` (no live workspace).
   They are unaffected by this change.
+
+## Amendment: 2026-11-28, encrypted distributed entries
+
+The "Why not `IDistributedCache`?" section left distributed caching to consumers. The library
+later shipped it anyway, as the opt-in `LakeWright.Caching.Distributed` package. That package
+stored each token as plain JSON. A reader of the cache could take any viewer's downscoped token, or
+the embed service principal's workspace token, and use it until it expired.
+
+Cached values are now encrypted with ASP.NET Core Data Protection, under one purpose string per
+package version. `AddLakeWrightDistributedTokenCaches` calls `AddDataProtection`, which leaves an
+existing host configuration in place. A value that does not decrypt is a miss: the token is minted
+again and the entry overwritten. That covers entries from another key ring, altered entries and
+entries written before encryption. Replicas share entries only when they share a Data Protection key
+ring. Without one, each replica caches only what it minted itself, which is safe but slower.
+
+The cache keys were already hashed and stay as they are. The trade-off in the original section still
+applies to the key ring: whoever can read both the cache and the key ring can read the tokens.
+

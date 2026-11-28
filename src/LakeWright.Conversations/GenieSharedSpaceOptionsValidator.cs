@@ -29,6 +29,12 @@ internal sealed class GenieSharedSpaceOptionsValidator(ILoggerFactory? loggerFac
 
         if (hasSharedSpace)
         {
+            if (options.Spaces.ContainsKey(GenieConversations.SharedSpaceTenant.ToString()))
+            {
+                return ValidateOptionsResult.Fail(
+                    $"Genie:Spaces cannot map tenant {GenieConversations.SharedSpaceTenant} while Genie:SharedSpaceId is set, because shared-space conversations are owned under that tenant id.");
+            }
+
             if (_logger is not null)
             {
                 SharedSpaceWarning(_logger, null);

@@ -4,6 +4,7 @@ using LakeWright.Multitenancy;
 using LakeWright.Multitenancy.Model;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace LakeWright.AspNetCore;
 
@@ -21,11 +22,15 @@ namespace LakeWright.AspNetCore;
 ///
 /// Because the refusal is a 404, the audit row it writes is the only trace of the attempt. A
 /// tenant probing for another tenant's identifiers looks like ordinary traffic in an access log.
+/// Each principal has a bounded budget of those rows per window; see
+/// <see cref="TenantDenialAuditOptions"/>.
 /// </remarks>
 public sealed class TenantResolutionMiddleware(RequestDelegate next)
 {
     /// <summary>Route value carrying the tenant. Endpoints that omit it are not tenant-scoped.</summary>
     public const string RouteValue = "organizationId";
+
+    private TenantDenialAuditBudget? _budget;
 
     public async Task InvokeAsync(
         HttpContext context,
@@ -64,11 +69,14 @@ public sealed class TenantResolutionMiddleware(RequestDelegate next)
             {
                 // Recorded against the tenant the caller asked for, not one it belongs to: the
                 // question "who tried to reach Acme" is the one an incident asks.
-                audit.Record(
-                    new TenantId(parsed), principalId, AuditActions.TenantAccessDenied,
-                    resourceType: nameof(Organization), resourceId: parsed.ToString());
+                if (TenantDenialAuditBudget.ActionFor(Budget(context).Decide(principalId)) is { } action)
+                {
+                    audit.Record(
+                        new TenantId(parsed), principalId, action,
+                        resourceType: nameof(Organization), resourceId: parsed.ToString());
 
-                await db.SaveChangesAsync(context.RequestAborted);
+                    await db.SaveChangesAsync(context.RequestAborted);
+                }
 
                 LakeWrightTelemetry.TenantAccessDenied.Add(1);
                 await WriteNotFoundAsync(context);
@@ -80,6 +88,13 @@ public sealed class TenantResolutionMiddleware(RequestDelegate next)
 
         await next(context);
     }
+
+    // One budget per pipeline, built on first use, so hosts that register services by hand get it
+    // without a new registration call.
+    private TenantDenialAuditBudget Budget(HttpContext context) =>
+        LazyInitializer.EnsureInitialized(ref _budget, () => new TenantDenialAuditBudget(
+            context.RequestServices.GetService<IOptions<TenantDenialAuditOptions>>()?.Value
+            ?? new TenantDenialAuditOptions()));
 
     private static Task WriteNotFoundAsync(HttpContext context)
     {

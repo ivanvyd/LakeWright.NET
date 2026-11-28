@@ -263,10 +263,13 @@ list before retrying startup.
 
 For multiple application replicas, install `LakeWright.Caching.Distributed`, register your host's
 `IDistributedCache`, then call `AddLakeWrightDistributedTokenCaches()`. Its cache keys are hashed
-before reaching the cache provider and `EvictTenant` uses a shared generation marker, so an updated
-scope makes earlier viewer tokens unreachable on every replica. Generic `IDistributedCache` has no
-atomic lock primitive; the package collapses concurrent requests within each process, while a host
-that needs global cold-miss coalescing must supply its cache provider's lease mechanism.
+before reaching the cache provider, and its values are encrypted with ASP.NET Core Data Protection.
+Replicas share cached tokens only when they share a Data Protection key ring, configured with
+`PersistKeysTo...` and `ProtectKeysWith...`; without one, each replica mints its own tokens.
+`EvictTenant` uses a shared generation marker, so an updated scope makes earlier viewer tokens
+unreachable on every replica. Generic `IDistributedCache` has no atomic lock primitive; the package
+collapses concurrent requests within each process, while a host that needs global cold-miss
+coalescing must supply its cache provider's lease mechanism.
 
 For Genie conversation continuation, listing, or deletion across replicas, install
 `LakeWright.Caching.Redis`, register a shared `IConnectionMultiplexer`, then call
@@ -307,7 +310,7 @@ builder.Services.AddOpenTelemetry()
 | `lakewright.operations.started` | Accepted operations, by kind. A replayed idempotency key does not count. |
 | `lakewright.operations.completed` | Terminal operations, tagged with the state reached, so failure rate is a ratio of two series. |
 | `lakewright.operations.queue_wait` | Seconds from accepted to claimed. A rising p99 against a flat median is one tenant's backlog pushing everyone back. |
-| `lakewright.tenant.access_denied` | Refused tenant resolutions. These answer 404, so nothing in an access log separates them from a stale bookmark. |
+| `lakewright.tenant.access_denied` | Refused tenant resolutions. These answer 404, so nothing in an access log separates them from a stale bookmark. It counts every refusal, including those past a principal's audit budget (`TenantDenialAuditOptions`). |
 
 None of them carries a tenant identifier. It is the first tag anyone reaches for and it is a
 cardinality bomb in a system built to have many tenants: a thousand tenants turns four instruments

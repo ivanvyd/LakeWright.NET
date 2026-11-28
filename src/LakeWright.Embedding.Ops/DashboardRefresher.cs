@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using LakeWright.Core.Features;
@@ -59,7 +60,14 @@ internal sealed class DashboardRefresher(
             throw new RefreshNotAdmittedException("The most recent successful refresh is still within the configured minimum interval.");
         }
 
-        var token = idempotencyKey ?? CreateBucketToken(tenant, jobId, timeProvider.GetUtcNow(), _options.Policy.MinimumInterval);
+        // Databricks scopes an idempotency token to the workspace, not the tenant. A caller's key is
+        // therefore namespaced too: two tenants that pick the same key must not share one run.
+        var token = CreateTenantToken(
+            tenant,
+            jobId,
+            idempotencyKey is null
+                ? (timeProvider.GetUtcNow().Ticks / _options.Policy.MinimumInterval.Ticks).ToString(CultureInfo.InvariantCulture)
+                : "key:" + idempotencyKey);
         try
         {
             var runId = await jobs.RunNowAsync(jobId, tenant, token, cancellationToken).ConfigureAwait(false);
@@ -120,11 +128,10 @@ internal sealed class DashboardRefresher(
     private static bool TenantMatches(JobsRun run, TenantContext tenant) =>
         string.Equals(run.TenantId, tenant.TenantId.ToString(), StringComparison.Ordinal);
 
-    private static string CreateBucketToken(TenantContext tenant, long jobId, DateTimeOffset now, TimeSpan interval)
+    private static string CreateTenantToken(TenantContext tenant, long jobId, string discriminator)
     {
-        var bucket = now.Ticks / interval.Ticks;
-        var material = $"{tenant.TenantId}|{jobId}|{bucket}";
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(material))).ToLowerInvariant()[..64];
+        var material = $"{tenant.TenantId}|{jobId}|{discriminator}";
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(material))).ToLowerInvariant();
     }
 }
 
@@ -136,7 +143,10 @@ internal sealed class MemoryRefreshRunOwnership : IRefreshRunOwnership
     {
         ArgumentNullException.ThrowIfNull(tenant);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(runId);
-        _owners[runId] = tenant.TenantId;
+        if (_owners.GetOrAdd(runId, tenant.TenantId) != tenant.TenantId)
+        {
+            throw new InvalidOperationException($"Refresh run {runId} is already recorded for another tenant.");
+        }
     }
 
     public bool IsOwner(TenantContext tenant, long runId)

@@ -1,3 +1,4 @@
+using LakeWright.AspNetCore;
 using LakeWright.Core.Tenancy;
 using LakeWright.Multitenancy;
 using LakeWright.Multitenancy.Model;
@@ -114,6 +115,49 @@ public class AuditTrailTests(PostgresFixture postgres)
         var audit = await db.AuditEvents.SingleAsync(a => a.PrincipalId == Bob, ct);
         audit.Action.ShouldBe(AuditActions.TenantAccessDenied);
         audit.OrganizationId.ShouldBe(AcmeId);
+    }
+
+    [Fact]
+    public async Task An_invalid_refusal_budget_fails_at_startup()
+    {
+        await Should.ThrowAsync<ArgumentOutOfRangeException>(async () =>
+        {
+            var (host, _) = await StartAsync(postgres, services =>
+                services.Configure<TenantDenialAuditOptions>(o => o.PermitLimit = 0));
+            host.Dispose();
+        });
+    }
+
+    [Fact]
+    public async Task Refusals_past_the_principal_budget_leave_one_suppression_row()
+    {
+        // Arrange
+        var ct = TestContext.Current.CancellationToken;
+        var (host, client) = await StartAsync(postgres, services => services.Configure<TenantDenialAuditOptions>(o =>
+        {
+            o.PermitLimit = 2;
+            o.Window = TimeSpan.FromHours(1);
+        }));
+        using var _h = host;
+
+        // Act — five different identifiers, the shape of someone walking them.
+        var statuses = new List<System.Net.HttpStatusCode>();
+        for (var i = 0; i < 5; i++)
+        {
+            using var response = await client.SendAsync(
+                As(Bob, HttpMethod.Get, $"/organizations/{Guid.CreateVersion7()}/operations/{Guid.CreateVersion7()}"), ct);
+            statuses.Add(response.StatusCode);
+        }
+
+        // Assert — the caller cannot tell recorded refusals from suppressed ones.
+        statuses.ShouldAllBe(status => status == System.Net.HttpStatusCode.NotFound);
+
+        await using var scope = host.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<LakeWrightDbContext>();
+        var actions = await db.AuditEvents.Where(a => a.PrincipalId == Bob).Select(a => a.Action).ToListAsync(ct);
+        actions.Count(a => a == AuditActions.TenantAccessDenied).ShouldBe(2);
+        actions.Count(a => a == AuditActions.TenantAccessDeniedSuppressed).ShouldBe(1);
+        actions.Count.ShouldBe(3);
     }
 
     private async Task<LakeWrightDbContext> SeededAsync()

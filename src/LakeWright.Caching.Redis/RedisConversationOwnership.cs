@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using LakeWright.Conversations;
+using LakeWright.Core.Tenancy;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using StackExchange.Redis;
@@ -31,9 +32,13 @@ public sealed class RedisConversationOwnershipOptions
 /// Ownership is claimed with Redis <c>SET NX</c>, so a second owner can never overwrite an
 /// existing claim. Redis keys contain SHA-256 hashes; only the owner-specific Redis set stores a
 /// conversation id, because <see cref="IConversationOwnership.ListAsync"/> must return it.
+/// A claim recorded with a tenant binds the conversation to that tenant; a claim written by 3.0
+/// carries no tenant and keeps working.
 /// </remarks>
 public sealed class RedisConversationOwnership : IConversationOwnership
 {
+    private const char TenantSeparator = ':';
+
     private readonly IRedisConversationOwnershipStore _store;
     private readonly RedisConversationOwnershipOptions _options;
 
@@ -54,32 +59,19 @@ public sealed class RedisConversationOwnership : IConversationOwnership
         _options.Validate();
     }
 
-    public async ValueTask RecordAsync(string conversationId, string ownerKey, CancellationToken cancellationToken = default)
-    {
-        Validate(conversationId, ownerKey);
-        cancellationToken.ThrowIfCancellationRequested();
-        var ownerHash = Hash(ownerKey);
-        var ownershipKey = OwnershipKey(conversationId);
-        var claimed = await _store.ClaimAsync(ownershipKey, ownerHash).ConfigureAwait(false);
-        if (!claimed)
-        {
-            var existing = await _store.GetOwnerAsync(ownershipKey).ConfigureAwait(false);
-            if (!OwnerMatches(existing, ownerHash))
-            {
-                throw new ConversationOwnershipException(conversationId);
-            }
-        }
+    public ValueTask RecordAsync(string conversationId, string ownerKey, CancellationToken cancellationToken = default) =>
+        RecordCoreAsync(conversationId, ownerKey, null, cancellationToken);
 
-        cancellationToken.ThrowIfCancellationRequested();
-        await _store.AddToOwnerAsync(OwnerSetKey(ownerKey), conversationId).ConfigureAwait(false);
-    }
+    public ValueTask RecordAsync(
+        TenantId tenantId, string conversationId, string ownerKey, CancellationToken cancellationToken = default) =>
+        RecordCoreAsync(conversationId, ownerKey, Hash(tenantId.ToString()), cancellationToken);
 
-    public async ValueTask<bool> IsOwnerAsync(string conversationId, string ownerKey, CancellationToken cancellationToken = default)
-    {
-        Validate(conversationId, ownerKey);
-        cancellationToken.ThrowIfCancellationRequested();
-        return OwnerMatches(await _store.GetOwnerAsync(OwnershipKey(conversationId)).ConfigureAwait(false), Hash(ownerKey));
-    }
+    public ValueTask<bool> IsOwnerAsync(string conversationId, string ownerKey, CancellationToken cancellationToken = default) =>
+        IsOwnerCoreAsync(conversationId, ownerKey, null, cancellationToken);
+
+    public ValueTask<bool> IsOwnerAsync(
+        TenantId tenantId, string conversationId, string ownerKey, CancellationToken cancellationToken = default) =>
+        IsOwnerCoreAsync(conversationId, ownerKey, Hash(tenantId.ToString()), cancellationToken);
 
     public async ValueTask<IReadOnlyList<string>> ListAsync(string ownerKey, CancellationToken cancellationToken = default)
     {
@@ -96,7 +88,7 @@ public sealed class RedisConversationOwnership : IConversationOwnership
         cancellationToken.ThrowIfCancellationRequested();
         var ownerHash = Hash(ownerKey);
         var ownershipKey = OwnershipKey(conversationId);
-        if (!OwnerMatches(await _store.GetOwnerAsync(ownershipKey).ConfigureAwait(false), ownerHash))
+        if (!Admits(await _store.GetOwnerAsync(ownershipKey).ConfigureAwait(false), ownerHash, null))
         {
             return;
         }
@@ -107,14 +99,64 @@ public sealed class RedisConversationOwnership : IConversationOwnership
         await _store.RemoveFromOwnerAsync(OwnerSetKey(ownerKey), conversationId).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Claims with <c>SET NX</c>; an existing claim must admit the same owner and tenant.
+    /// A null <paramref name="tenantHash"/> writes a 3.0 claim and checks the owner only.
+    /// </summary>
+    private async ValueTask RecordCoreAsync(
+        string conversationId, string ownerKey, string? tenantHash, CancellationToken cancellationToken)
+    {
+        Validate(conversationId, ownerKey);
+        cancellationToken.ThrowIfCancellationRequested();
+        var ownerHash = Hash(ownerKey);
+        var ownershipKey = OwnershipKey(conversationId);
+        var claim = tenantHash is null ? ownerHash : $"{ownerHash}{TenantSeparator}{tenantHash}";
+        var claimed = await _store.ClaimAsync(ownershipKey, claim).ConfigureAwait(false);
+        if (!claimed)
+        {
+            var existing = await _store.GetOwnerAsync(ownershipKey).ConfigureAwait(false);
+            if (!Admits(existing, ownerHash, tenantHash))
+            {
+                throw new ConversationOwnershipException(conversationId);
+            }
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        await _store.AddToOwnerAsync(OwnerSetKey(ownerKey), conversationId).ConfigureAwait(false);
+    }
+
+    private async ValueTask<bool> IsOwnerCoreAsync(
+        string conversationId, string ownerKey, string? tenantHash, CancellationToken cancellationToken)
+    {
+        Validate(conversationId, ownerKey);
+        cancellationToken.ThrowIfCancellationRequested();
+        return Admits(await _store.GetOwnerAsync(OwnershipKey(conversationId)).ConfigureAwait(false), Hash(ownerKey), tenantHash);
+    }
+
     private string OwnershipKey(string conversationId) => $"{_options.Prefix}:claim:{Hash(conversationId)}";
 
     private string OwnerSetKey(string ownerKey) => $"{_options.Prefix}:owner:{Hash(ownerKey)}";
 
-    private static bool OwnerMatches(string? stored, string expected) =>
-        stored is not null && CryptographicOperations.FixedTimeEquals(
-            Encoding.UTF8.GetBytes(stored),
-            Encoding.UTF8.GetBytes(expected));
+    /// <summary>
+    /// A claim is <c>ownerHash</c> (3.0, no tenant) or <c>ownerHash:tenantHash</c>. The owner part
+    /// must match. A null <paramref name="tenantHash"/> checks the owner only; otherwise a claim
+    /// without a tenant matches any tenant, and a claim with one must match it.
+    /// </summary>
+    private static bool Admits(string? stored, string ownerHash, string? tenantHash)
+    {
+        if (stored is null)
+        {
+            return false;
+        }
+
+        var separator = stored.IndexOf(TenantSeparator, StringComparison.Ordinal);
+        var ownerMatches = FixedTimeEquals(separator < 0 ? stored : stored[..separator], ownerHash);
+        var tenantMatches = tenantHash is null || separator < 0 || FixedTimeEquals(stored[(separator + 1)..], tenantHash);
+        return ownerMatches && tenantMatches;
+    }
+
+    private static bool FixedTimeEquals(string stored, string expected) =>
+        CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(stored), Encoding.UTF8.GetBytes(expected));
 
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
 

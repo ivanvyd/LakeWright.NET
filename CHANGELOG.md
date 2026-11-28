@@ -28,6 +28,27 @@ note.
   `check-jsonschema` 0.40.0. The live .NET 8 validation runs only from the default branch, in the
   `live-validation` environment. ADR 0006 records the CI client secrets that OIDC federation has
   not yet replaced.
+- `LakeWright.Caching.Distributed` encrypts cached tokens with ASP.NET Core Data Protection.
+  Before, a reader of the cache could take any cached workspace or viewer token as plain JSON.
+  `AddLakeWrightDistributedTokenCaches` now calls `AddDataProtection`, and the package depends on
+  `Microsoft.AspNetCore.DataProtection` (8.0.34 on .NET 8, 10.0.15 on .NET 10). Replicas share
+  entries only through a shared key ring; an entry that does not decrypt, including one written by
+  an earlier version, is minted again. The constructors without an `IDataProtectionProvider` are
+  obsolete and use a per-process key. See the ADR 0018 amendment.
+- Genie conversations started through a tenant's own space are bound to that tenant. The same
+  owner key can no longer continue, read or delete them while another tenant is resolved. The
+  built-in in-memory and Redis stores record the tenant; `IConversationOwnership` gains
+  tenant-aware default members that a custom store overrides to get the binding. Records written
+  before this version still work for their owner. See
+  [ADR 0036](docs/decisions/0036-tenant-bound-genie-ownership.md).
+- `IDashboardRefresher.StartOrJoinAsync` namespaces a caller's idempotency key by tenant and job
+  before sending it to Databricks, whose tokens are workspace-wide. Two tenants that chose the same
+  key previously shared one run, and the second took the first's status access away. The built-in
+  run-ownership store also refuses to move a run to another tenant.
+- Tenant resolution records at most 20 refusals per principal per minute on each application
+  instance, then one `tenant.access_denied_suppressed` row for the rest of the window. The response is still 404
+  and the `lakewright.tenant.access_denied` counter counts every refusal. Configure the budget with
+  `TenantDenialAuditOptions`; `UseLakeWrightTenancy` rejects an invalid budget at startup.
 
 ### Fixed
 
@@ -55,9 +76,8 @@ note.
 
 ### Documentation
 
-- State that Genie ownership records carry no tenant, so an owner key must be unique across
-  tenants, and that host-wide `ConfigureHttpClientDefaults` loggers are removed from library
-  clients as well.
+- State that host-wide `ConfigureHttpClientDefaults` loggers are removed from library clients as
+  well.
 
 ## [3.1.0] — 2026-11-18
 

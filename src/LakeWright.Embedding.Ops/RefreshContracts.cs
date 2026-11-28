@@ -34,6 +34,10 @@ public interface IDashboardRefresher
 public interface IRefreshRunOwnership
 {
     /// <summary>Records the tenant that owns a run returned by <see cref="IDashboardRefresher"/>.</summary>
+    /// <remarks>
+    /// An implementation must never move a recorded run to a different tenant. Throw instead, so
+    /// that one tenant cannot take another tenant's status access away.
+    /// </remarks>
     void Record(TenantContext tenant, long runId);
 
     /// <summary>Returns whether this application recorded the run for the supplied tenant.</summary>
