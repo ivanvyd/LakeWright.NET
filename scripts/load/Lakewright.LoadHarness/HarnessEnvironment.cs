@@ -122,6 +122,8 @@ public sealed class HarnessEnvironment : IAsyncDisposable
                         ["Multitenancy:Catalog"] = "analytics",
                         ["Databricks:WorkspaceUrl"] = "",
                         ["Lakewright:OpenTelemetry:Enabled"] = "false",
+                        // In-process test host: the demo header is how the harness authenticates.
+                        ["Signalboard:AllowDemoAuthentication"] = "true",
                     });
                 });
             });

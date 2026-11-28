@@ -96,6 +96,31 @@ public static class DemoAuthenticationExtensions
         return services;
     }
 
+    /// <summary>Configuration key that lets a non-Development host run the demo schemes.</summary>
+    public const string AllowSetting = "Signalboard:AllowDemoAuthentication";
+
+    /// <summary>
+    /// Refuses to start outside Development unless <see cref="AllowSetting"/> is true.
+    /// </summary>
+    /// <remarks>
+    /// The header scheme authenticates any subject a caller names, so a host reachable from the
+    /// internet would let anyone act as any member. The local container and the load harness opt in
+    /// explicitly; a deployment that has not replaced this with a real identity provider fails at
+    /// startup instead of serving.
+    /// </remarks>
+    public static void EnsureDemoAuthenticationAllowed(this WebApplication app)
+    {
+        ArgumentNullException.ThrowIfNull(app);
+
+        if (!app.Environment.IsDevelopment() && !app.Configuration.GetValue(AllowSetting, false))
+        {
+            throw new InvalidOperationException(
+                $"Signalboard's demo authentication accepts any {DemoAuthenticationHandler.PrincipalHeader} " +
+                $"header and must not be reachable by real users. Run in Development, set {AllowSetting}=true " +
+                "for a local-only host, or replace AddDemoAuthentication with a real identity provider.");
+        }
+    }
+
     /// <summary>
     /// The two form posts that sign a visitor in and out.
     /// </summary>
