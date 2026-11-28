@@ -34,6 +34,9 @@ services:
     environment:
       # Inside the network the database answers to its service name, not to localhost.
       ConnectionStrings__LakeWright: Host=postgres;Database=lakewright;Username=postgres;Password=postgres
+      # The container runs as Production, where the demo header authentication refuses to start.
+      # This host only listens on your machine, so it opts in; never set this on a deployed host.
+      Signalboard__AllowDemoAuthentication: "true"
       # Set Databricks__WorkspaceUrl, Databricks__WarehouseId, Databricks__Token and
       # OperationWorker__Jobs__analysis to have operations actually run. Without them the app
       # starts, isolation still demonstrates, and operations stay Pending.

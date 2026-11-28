@@ -64,6 +64,7 @@ builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
+app.EnsureDemoAuthenticationAllowed();
 await app.Services.SeedDemoTenantsAsync();
 
 app.UseStaticFiles();

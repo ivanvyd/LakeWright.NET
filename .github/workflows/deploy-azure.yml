@@ -55,6 +55,35 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      # A parameters file, not a space-separated `name=value` string: the secrets then never sit in
+      # the action's argument list, and a password containing a space or `=` cannot split the list.
+      # The file lives in the runner's temp directory, which is discarded with the job.
+      - name: Write deployment parameters
+        id: parameters
+        env:
+          DATABRICKS_WORKSPACE_URL: ${{ secrets.DATABRICKS_WORKSPACE_URL }}
+          DATABRICKS_CATALOG: ${{ secrets.DATABRICKS_CATALOG }}
+          POSTGRES_ADMIN_LOGIN: ${{ secrets.POSTGRES_ADMIN_LOGIN }}
+          POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+          POSTGRES_APP_PASSWORD: ${{ secrets.POSTGRES_APP_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          file="$RUNNER_TEMP/main.parameters.json"
+          umask 077
+          jq -n '{
+            "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+            contentVersion: "1.0.0.0",
+            parameters: {
+              databricksWorkspaceUrl: { value: env.DATABRICKS_WORKSPACE_URL },
+              databricksCatalog: { value: env.DATABRICKS_CATALOG },
+              postgresAdminLogin: { value: env.POSTGRES_ADMIN_LOGIN },
+              postgresAdminPassword: { value: env.POSTGRES_ADMIN_PASSWORD },
+              postgresAppPassword: { value: env.POSTGRES_APP_PASSWORD }
+            }
+          }' > "$file"
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+
       - name: Deploy reference infrastructure
         uses: azure/arm-deploy@a1361c2c2cd398621955b16ca32e01c65ea340f5 # v2.0.0
         with:
@@ -62,5 +91,5 @@ jobs:
           resourceGroupName: ${{ secrets.AZURE_RESOURCE_GROUP }}
           deploymentMode: Incremental
           template: infra/azure-container-apps/main.bicep
-          parameters: databricksWorkspaceUrl=${{ secrets.DATABRICKS_WORKSPACE_URL }} databricksCatalog=${{ secrets.DATABRICKS_CATALOG }} postgresAdminLogin=${{ secrets.POSTGRES_ADMIN_LOGIN }} postgresAdminPassword=${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+          parameters: ${{ steps.parameters.outputs.file }}
           failOnStdErr: true

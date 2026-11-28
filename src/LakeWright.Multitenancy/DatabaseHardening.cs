@@ -20,12 +20,17 @@ namespace LakeWright.Multitenancy;
 public static class DatabaseHardening
 {
     /// <summary>
-    /// Creates the application role if absent and grants it exactly what the application needs.
+    /// Creates the application role if absent, sets its password, and grants it exactly what the
+    /// application needs.
     /// </summary>
     /// <param name="db">Context connected as a role that owns the tables.</param>
     /// <param name="applicationRole">Role the application connects as. Must not own the tables.</param>
-    /// <param name="password">Password for the role when it is being created.</param>
+    /// <param name="password">The role's password, set on every call so a rotated password takes effect.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <exception cref="InvalidOperationException">
+    /// <paramref name="applicationRole"/> is a superuser or a member of the role that owns
+    /// <c>audit_events</c>, so no grant could make the table append-only for it.
+    /// </exception>
     public static async Task ApplyAsync(
         LakeWrightDbContext db,
         string applicationRole,
@@ -41,21 +46,36 @@ public static class DatabaseHardening
             .SqlQueryRaw<int>("SELECT 1 AS \"Value\" FROM pg_roles WHERE rolname = {0}", applicationRole)
             .AnyAsync(cancellationToken);
 
+        // A member of the owning role inherits the owner's implicit privileges, and a superuser
+        // bypasses grants entirely. Either would make every REVOKE below a no-op.
+        var bypassesGrants = exists && await db.Database
+            .SqlQueryRaw<int>(
+                """
+                SELECT 1 AS "Value" FROM pg_class c JOIN pg_roles r ON r.rolname = {0}
+                WHERE c.oid = 'audit_events'::regclass
+                  AND (r.rolsuper OR pg_has_role(r.oid, c.relowner, 'MEMBER'))
+                """,
+                applicationRole)
+            .AnyAsync(cancellationToken);
+        if (bypassesGrants)
+        {
+            throw new InvalidOperationException(
+                $"Role '{applicationRole}' is a superuser or owns audit_events, so the database cannot " +
+                "make the audit table append-only for it. Use a separate role for the application.");
+        }
+
         // EF1002/EF1003 warn about raw SQL, correctly. This is DDL: Postgres has no parameter form
         // for a role or table name, so `GRANT ... TO {role}` cannot be parameterised by anything.
         // The role name is validated against an identifier pattern above and the password is
         // quote-escaped. This is the only place in the codebase that builds SQL from a string, and
         // it runs at deployment rather than on a request.
 #pragma warning disable EF1002, EF1003
-        if (!exists)
-        {
-            // The role name is validated as an identifier because Postgres has no parameter form
-            // for one. The password does have one nowhere it is used here, so it is escaped the
-            // way quote_literal would.
-            await db.Database.ExecuteSqlRawAsync(
-                "CREATE ROLE " + applicationRole + " LOGIN PASSWORD " + QuoteLiteral(password),
-                cancellationToken);
-        }
+        // The role name is validated as an identifier because Postgres has no parameter form
+        // for one. The password does have one nowhere it is used here, so it is escaped the
+        // way quote_literal would.
+        await db.Database.ExecuteSqlRawAsync(
+            (exists ? "ALTER ROLE " : "CREATE ROLE ") + applicationRole + " LOGIN PASSWORD " + QuoteLiteral(password),
+            cancellationToken);
 
         await db.Database.ExecuteSqlRawAsync(
             $"""

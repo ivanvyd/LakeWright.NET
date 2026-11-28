@@ -89,6 +89,11 @@ The OpenAPI document is at `/openapi/v1.json`.
 password. Never ship either. They exist so the sample runs with one container instead of an identity
 provider — see the remarks on the class for why it is an honest demonstration in spite of that.
 
+To make that hard to get wrong, the sample refuses to start outside Development unless
+`Signalboard:AllowDemoAuthentication` is `true`. `compose.yaml` sets it, because that container only
+listens on your machine. A deployed host must not set it; replace the demo schemes with a real
+identity provider instead.
+
 ## With a workspace
 
 Without Databricks configured, no worker starts and operations stay `Pending`. Nothing here fakes a
