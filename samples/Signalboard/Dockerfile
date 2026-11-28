@@ -5,7 +5,10 @@
 # Pinned by digest, not by tag. A tag is a moving pointer, so `10.0-noble` today and `10.0-noble`
 # next month are different images, and the build that was reviewed is not the image that ships.
 # Dependabot watches this directory and raises the digest bumps, so pinning does not mean freezing.
-FROM mcr.microsoft.com/dotnet/sdk:10.0-noble@sha256:e70cdb7f80b0348f5cb85f19a8f670fca061f033d57eed12fa003d58b0e06317 AS build
+# The SDK tag names the exact version in global.json, which disables roll-forward: a `10.0-noble`
+# digest moved to SDK 10.0.401 and the image stopped building. scripts/check-sdk-pins.py fails CI
+# when the two disagree.
+FROM mcr.microsoft.com/dotnet/sdk:10.0.400-noble@sha256:4beef5b8919dcaa2dc924233bd069257e883cc7a061e09088a97d152d6a48510 AS build
 WORKDIR /src
 
 # The whole source before restore, not the project files first. The usual manifests-first trick

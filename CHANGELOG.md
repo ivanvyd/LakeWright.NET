@@ -64,6 +64,10 @@ note.
 - Return a faulted task, rather than throwing synchronously, from the default
   `IGenieConversations` methods that older adapters inherit. Awaiting still throws
   `NotSupportedException`.
+- The Signalboard image builds again. Since 2026-11-07 its SDK base image carried SDK 10.0.401,
+  while `global.json` pins 10.0.400 with roll-forward disabled, so `docker compose up` failed at
+  restore. The Dockerfile now names `sdk:10.0.400-noble`, and `scripts/check-sdk-pins.py` fails CI
+  when a Dockerfile SDK image and `global.json` disagree.
 
 ### Changed
 
@@ -91,6 +95,11 @@ note.
   adopter reports, and approaches no Databricks programme before 3 independent acceptance reports
   from 2 clouds. Add an opt-in [ADOPTERS.md](ADOPTERS.md) with a private-report path, and the
   dated [adoption-signal record](docs/adoption/signals.md) the decision is made against.
+- Add ledger rows LW-C054 to LW-C065 for the README statements that had none: the operation worker,
+  per-tenant compute limits, role policies, idempotency, telemetry, the dependency direction, the
+  Signalboard sample, the package quickstart and the Databricks client dependency, each marked
+  **Verified locally**, plus three **Documented** vendor rows. The README no longer says external
+  embedding has no per-viewer fee, because the Databricks documentation does not state its pricing.
 
 ## [3.1.0] — 2026-11-18
 

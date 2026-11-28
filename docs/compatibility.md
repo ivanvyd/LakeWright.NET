@@ -42,6 +42,7 @@ verification identity lacked `USE SCHEMA` on `system.billing`.
 | Status | Meaning |
 |---|---|
 | **Verified** | Executed against a live system on the date shown, with the evidence linked. |
+| **Verified locally** | Executed by this repository's own tests or sample, locally or in CI, with no live Databricks workspace. |
 | **Documented** | The vendor documents it. Nobody here has run it. |
 | **Unverified** | Believed to work by inference. No evidence either way. |
 | **Not supported** | Established as not working, with the reason. |
@@ -146,6 +147,9 @@ request, package-consumer, publication and cleanup commands are in the
 | <a id="lw-c039"></a>LW-C039 | Service principal OAuth secrets from a **workspace** admin | **Verified** | 2026-08-06 | `service-principal-secrets-proxy` issues them at workspace level; the account console is not required. An earlier reading of this said it was, because the account API answered 303 to a workspace token |
 | <a id="lw-c040"></a>LW-C040 | Entra token accepted after `az login` to a non-default tenant | **Not supported** | 2026-08-05 | Databricks refuses it with `IncorrectClaimException: Expected iss claim to be .../A/, but was .../B/` — an HTTP 400 naming neither the workspace nor the fix. `LiveCredential` now honours `AZURE_TENANT_ID` |
 | <a id="lw-c041"></a>LW-C041 | Creating a **catalog** via bundle or SQL on a Default Storage metastore | **Not supported** | 2026-08-01 | `INVALID_STATE: Metastore storage root URL does not exist`. Needs the UI or an explicit `MANAGED LOCATION`, so the catalog is a documented prerequisite. |
+| <a id="lw-c063"></a>LW-C063 | Databricks Apps runtime: Python 3.11 and Node.js 22, no .NET | **Documented** | 2026-11-28 | [Platform evidence](release-evidence/databricks-platform-2026-11-28.md), "Apps runtime" row. No .NET runtime or custom container is documented. |
+| <a id="lw-c064"></a>LW-C064 | AI/BI external embedding filters rows per viewer through `__aibi_external_value` | **Documented** | 2026-11-28 | [Platform evidence](release-evidence/databricks-platform-2026-11-28.md), "External embedding filters per viewer" row. LW-C038 verified that the tenant reaches `external_value`; filtering inside a dashboard dataset has not been run here. The documentation does not state a price for external viewers. |
+| <a id="lw-c065"></a>LW-C065 | OAuth custom identity claims for row filtering under app identity | **Documented** | 2026-11-28 | [Platform evidence](release-evidence/databricks-platform-2026-11-28.md), "OAuth custom identity claims" row. LakeWright's credentials do not mint the claim; nothing here has run it. |
 
 ### 2026-11-07 installed-package AWS check
 
@@ -186,6 +190,24 @@ above retain their original scope and dates.
 | <a id="lw-c051"></a>LW-C051 | Populated `audit_events` migration, monthly retention, ACL/RLS preservation and rollback | **Verified** | 2026-09-01, PostgreSQL 17 through `AuditPartitionTests`; scheduling the maintenance command remains an adopter operation. ADR 0020. |
 | <a id="lw-c052"></a>LW-C052 | An operation is invisible to a tenant that does not own it | **Verified** | 2026-07-31 |
 | <a id="lw-c053"></a>LW-C053 | EF Core model on Lakebase | Unverified | Standard Postgres only; no Lakebase-specific feature is used |
+
+## Application tier
+
+These rows were run by the repository's tests and sample, against PostgreSQL 17 in Testcontainers
+or Docker, at `4898c2a` plus the Signalboard SDK image fix. Databricks is a test double in all of
+them, so none of them is evidence about a live workspace.
+
+| ID | Capability | Status | Date | Evidence |
+|---|---|---|---|---|
+| <a id="lw-c054"></a>LW-C054 | Operation worker: crash reconciliation and resumed polling | **Verified locally** | 2026-11-28 | `OperationWorkerTests`, including `A_worker_that_stopped_polling_resumes_rather_than_resubmitting` and `A_rejected_timeout_cancellation_preserves_the_running_operation_for_reconciliation`. A live job interrupted by a crash has not been run. |
+| <a id="lw-c055"></a>LW-C055 | Per-tenant compute limit: at most `OperationWorker:MaxInFlightPerTenant` operations in flight (default 4) | **Verified locally** | 2026-11-28 | `OperationClaimTests`: `A_tenant_at_its_ceiling_is_skipped_rather_than_failed`, `Completing_work_frees_the_ceiling_for_the_next_operation`, `One_tenants_backlog_does_not_starve_another`. It caps concurrency; currency budgets are not built. |
+| <a id="lw-c056"></a>LW-C056 | Tenant middleware and role policies (Viewer, Member, Admin) | **Verified locally** | 2026-11-28 | `PermissionMatrixTests` compares the committed permission matrix with the routing table; `HttpIsolationTests`. In the running sample a Viewer read an operation (200) and was refused starting one (403). |
+| <a id="lw-c057"></a>LW-C057 | Operations API client idempotency | **Verified locally** | 2026-11-28 | `OperationIdempotencyTests`. In the running sample a repeated `Idempotency-Key` returned the same operation, and the same key with another kind returned 422. |
+| <a id="lw-c058"></a>LW-C058 | Telemetry instruments with low-cardinality tags | **Verified locally** | 2026-11-28 | `TelemetryTests` and `DatabricksTelemetryTests`: operation started and completed counters, queue wait, refused tenants counted, and no tenant instrument on the statement meter. Export to a collector is LW-C008. |
+| <a id="lw-c059"></a>LW-C059 | `LakeWright.Multitenancy` does not reference `LakeWright.Databricks` | **Verified locally** | 2026-11-28 | `DependencyDirectionTests`. |
+| <a id="lw-c060"></a>LW-C060 | Signalboard runs from `docker compose up` with no .NET SDK, workspace or configuration | **Verified locally** | 2026-11-28 | Docker 29.8.1: landing page 200, and another organization's operation answered 404. From 2026-11-07 the image did not build, because its SDK image carried 10.0.401 and `global.json` pins 10.0.400. No CI job builds the image; `scripts/check-sdk-pins.py` fails CI on that mismatch. |
+| <a id="lw-c061"></a>LW-C061 | Published-package quickstart: a .NET 8 consumer of the released packages, offline | **Verified locally** | 2026-11-28 | `scripts/verify-package-quickstart.py` in the [main CI run](https://github.com/ivanvyd/LakeWright.NET/actions/runs/46142150789) at `4898c2a`: exact 3.1.0 packages, fresh package cache, nuget.org only, no project references. |
+| <a id="lw-c062"></a>LW-C062 | Built on `Microsoft.Azure.Databricks.Client`, MIT-licensed | **Verified locally** | 2026-11-28 | `Directory.Packages.props` pins 2.9.3, and its nuspec declares the `MIT` license expression. LakeWright calls its Statement Execution and Jobs APIs (LW-C012, LW-C019). Its Unity Catalog coverage is the package's own description. |
 
 ## Bounded load evidence
 
