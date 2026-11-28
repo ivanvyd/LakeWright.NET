@@ -225,6 +225,13 @@ jobs:
       # written and passing, which is why its rules match the subject rather than the sentence.
       - if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || github.actor == 'dependabot[bot]'
         run: bash scripts/check-doc-claims.sh
+      # A README citation to a ledger row that does not exist reads as evidence and is not. Stale
+      # live verification only warns: the dated row stays true as history.
+      - name: Check the claim ledger
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || github.actor == 'dependabot[bot]'
+        run: |
+          python3 scripts/test-check-claim-ledger.py
+          python3 scripts/check-claim-ledger.py
 
   # Its own required check, so a skipped or filtered-out isolation suite fails
   # the build instead of passing quietly inside the general test job.
