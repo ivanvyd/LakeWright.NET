@@ -63,6 +63,11 @@ Passed!  - Failed: 0, Passed: 13, Total: 13
 Two tests failed and they were the two that should have. The other eleven passing is the useful
 part: it means the suite localises the break rather than going uniformly red.
 
+Re-run 2026-11-28 on the 3.1.0 code with the same predicate removed. The suite has grown to 482
+`TenantIsolation` tests, and 17 failed: both tests above, plus HTTP, dashboard and cost-endpoint
+tests whose requests now match more than one membership and throw "Sequence contains more than one
+element". Every failure is a refusal or an error, not a cross-tenant read. Restored, all 482 passed.
+
 ## A test can pass for the wrong reason
 
 Breaking the control is not enough on its own; you have to break the *specific* thing the test
