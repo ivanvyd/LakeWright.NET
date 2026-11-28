@@ -27,7 +27,7 @@
     <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="10.0.15" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.15" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.15" />
-    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.4" />
   </ItemGroup>
 
   <ItemGroup Label="Extensions">
@@ -103,7 +103,7 @@
          utilisation. Same major.minor as the existing Npgsql.EntityFrameworkCore.PostgreSQL
          pin; pulling the bare ADO.NET package in addition is the only way to get the raw
          connection from outside the EF Core model. -->
-    <PackageVersion Include="Npgsql" Version="10.0.3" />
+    <PackageVersion Include="Npgsql" Version="10.0.4" />
     <PackageVersion Include="coverlet.collector" Version="10.1.0" />
     <!-- Property-based tests over the one value that reaches Databricks unparameterised: a Unity
          Catalog identifier. Example-based tests check the cases someone thought of; this checks
