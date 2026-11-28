@@ -17,6 +17,11 @@ note.
   (`postgresAppLogin`/`postgresAppPassword`), no longer as the PostgreSQL administrator. As
   administrator, the database could not enforce the append-only audit table. The new
   `LakeWright.DatabaseMaintenance provision-app-role` command creates that role and its grants.
+  The template quotes the password in the connection string, so a `;` in it no longer breaks it.
+- `DatabaseHardening.ApplyAsync` throws `InvalidOperationException` for a role that is a superuser
+  or a member of the role owning `audit_events`, because no grant can make the table append-only
+  for it. It also sets the password of an existing role, so a rotated password takes effect.
+  Previously it set the password only when it created the role.
 - The deploy workflow passes its secrets through a parameters file instead of an inline argument
   string.
 - CI installs the bundle schema validator from PyPI in a job without secrets, pinned to

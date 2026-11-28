@@ -172,8 +172,9 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           // ADR 0015: Maximum Pool Size=12 caps each replica's EF Core / Npgsql pool so
           // 15 replicas × 12 = 180 fits under 200 server-side max_connections. The Bicep
           // sets the server ceiling and the connection string sets the client ceiling;
-          // the gap between them is the SLO the harness measures.
-          value: 'Host=${postgres.properties.fullyQualifiedDomainName};Database=${postgresDbName};Username=${postgresAppLogin};Password=${postgresAppPassword};Maximum Pool Size=12;Timeout=15;Command Timeout=30'
+          // the gap between them is the SLO the harness measures. The password is quoted, with
+          // embedded quotes doubled, so a `;` in it cannot end the value early.
+          value: 'Host=${postgres.properties.fullyQualifiedDomainName};Database=${postgresDbName};Username=${postgresAppLogin};Password="${replace(postgresAppPassword, '"', '""')}";Maximum Pool Size=12;Timeout=15;Command Timeout=30'
         }
       ]
       ingress: {

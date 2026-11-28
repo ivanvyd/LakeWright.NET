@@ -100,7 +100,10 @@ must match the environment the deploy job uses.
    table owner and never with the application connection string. `provision-app-role` creates
    the LakeWright tables if the database has none, then the role named by `postgresAppLogin`
    with exactly the grants the application needs: insert and read on `audit_events`, nothing
-   that can amend them. Run it before the application first starts:
+   that can amend them. It refuses a role that is a superuser or owns the tables, and it sets the
+   password on every run, so run it again after rotating `postgresAppPassword`. The template
+   deploy starts the Container App before this step can run, so expect the application to fail
+   its database connection until the role exists:
 
    ```bash
    export LAKEWRIGHT_MIGRATION_CONNECTION_STRING='<migration-role connection string>'
