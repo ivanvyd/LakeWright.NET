@@ -14,24 +14,32 @@ permissions:
 
 jobs:
   validate:
-    # workflow_dispatch can select any ref, and this job holds a client secret. Only the default
-    # branch's copy runs it. Because a dispatched branch supplies its own copy of this file, the
-    # binding control is the environment: its secrets and a deployment-branch rule limited to the
-    # default branch, configured in the repository settings (docs/decisions/0006).
+    # workflow_dispatch can select any ref. Only the default branch's copy runs this. Because a
+    # dispatched branch supplies its own copy of this file, the binding control is the environment:
+    # a deployment-branch rule limited to the default branch, and an Entra federated credential
+    # whose subject names this environment (docs/decisions/0006). No client secret is stored.
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     environment: live-validation
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
         with:
           global-json-file: global.json
+      # DefaultAzureCredential reaches the workspace through this Azure CLI session.
+      - name: Azure login via OIDC
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
       - name: Run the net8 workspace validation
         env:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
           LAKEWRIGHT_WAREHOUSE_ID: ${{ secrets.LAKEWRIGHT_WAREHOUSE_ID }}
           LAKEWRIGHT_CATALOG: ${{ secrets.LAKEWRIGHT_CATALOG }}

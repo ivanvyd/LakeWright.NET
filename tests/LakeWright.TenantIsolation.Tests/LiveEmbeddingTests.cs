@@ -1,3 +1,4 @@
+using LakeWright.Core;
 using LakeWright.Core.Tenancy;
 using LakeWright.Embedding;
 using Microsoft.Extensions.Configuration;
@@ -110,8 +111,9 @@ public class LiveEmbeddingTests
             TestContext.Current.CancellationToken);
 
         // Assert — and the reason travels, because the status code alone does not distinguish
-        // "no such dashboard" from "no CAN RUN on it".
-        var error = await act.ShouldThrowAsync<HttpRequestException>();
+        // "no such dashboard" from "no CAN RUN on it". The broker reports both as typed
+        // LakeWright exceptions rather than a bare HttpRequestException.
+        var error = await act.ShouldThrowAsync<LakeWrightException>();
         error.Message.ShouldNotBeNullOrWhiteSpace();
     }
 }

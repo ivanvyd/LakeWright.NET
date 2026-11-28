@@ -24,10 +24,18 @@ note.
   Previously it set the password only when it created the role.
 - The deploy workflow passes its secrets through a parameters file instead of an inline argument
   string.
+- The Azure reference template adds the PostgreSQL firewall rule that admits Azure addresses.
+  Deployed without it, the server had no rule and refused every client, the application
+  included. The rule also admits other Azure customers' addresses, so the restricted application
+  role is the barrier; the template comment and deployment guide name private networking as the
+  stricter option.
 - CI installs the bundle schema validator from PyPI in a job without secrets, pinned to
   `check-jsonschema` 0.40.0. The live .NET 8 validation runs only from the default branch, in the
   `live-validation` environment. ADR 0006 records the CI client secrets that OIDC federation has
   not yet replaced.
+- The live .NET 8 validation signs in through GitHub Actions OIDC and a federated credential
+  scoped to the `live-validation` environment, so it no longer reads `AZURE_CLIENT_SECRET`. The
+  `bundle` job still uses a client secret.
 - `LakeWright.Caching.Distributed` encrypts cached tokens with ASP.NET Core Data Protection.
   Before, a reader of the cache could take any cached workspace or viewer token as plain JSON.
   `AddLakeWrightDistributedTokenCaches` now calls `AddDataProtection`, and the package depends on
@@ -106,6 +114,15 @@ note.
   from 29 to 9. LW-C017 (multi-chunk reads) is verified for the first time. LW-C028 is now
   **Differs by environment**: on AWS the stock OpenAI client streams without the shim. LW-C066
   records that the bundle cannot be fully deployed to Free Edition.
+- Re-verify the Azure rows against a new premium workspace: Entra user and managed identity tokens,
+  statements, jobs, model serving, external embedding and the bundle lifecycle. No row is stale for
+  the current major any more. LW-C028 is now **Differs by model**: Claude endpoints still need the
+  streaming shim, and Llama 3.3 does not on either cloud. `LiveEmbeddingTests` expects the
+  `LakeWrightException` the broker has thrown since 3.0.0, and the getting started guide lists the
+  entitlements, permission and approved embed domain that external embedding needs.
+- Record the first deploy of the Azure reference template (LW-C007), with the placeholder image:
+  ingress, `provision-app-role`, `migrate` and `validate` passed. The deployment guide adds the
+  temporary operator firewall rule those commands need.
 
 ## [3.1.0] — 2026-11-18
 
