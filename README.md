@@ -18,12 +18,15 @@ identities you can run locally.
 > Implemented and tested: the tenant model ([LW-C047](docs/compatibility.md#lw-c047)), the
 > tenant-scoped Databricks query layer ([LW-C003](docs/compatibility.md#lw-c003),
 > [LW-C012](docs/compatibility.md#lw-c012)), the asynchronous operation worker with crash
-> reconciliation and resumed polling, the ASP.NET Core tier (tenant middleware, role policies, the
-> operations API with client idempotency), the audit trail
+> reconciliation and resumed polling ([LW-C054](docs/compatibility.md#lw-c054)), the ASP.NET Core
+> tier (tenant middleware, role policies, the operations API with client idempotency;
+> [LW-C056](docs/compatibility.md#lw-c056), [LW-C057](docs/compatibility.md#lw-c057)), the audit trail
 > ([LW-C049](docs/compatibility.md#lw-c049), [LW-C050](docs/compatibility.md#lw-c050),
 > [LW-C051](docs/compatibility.md#lw-c051)), the Declarative Automation Bundle
-> ([LW-C031](docs/compatibility.md#lw-c031)), telemetry instruments, and the Signalboard sample —
-> two organizations, three people, a Blazor dashboard and the same API from a terminal.
+> ([LW-C031](docs/compatibility.md#lw-c031)), telemetry instruments
+> ([LW-C058](docs/compatibility.md#lw-c058)), and the Signalboard sample
+> ([LW-C060](docs/compatibility.md#lw-c060)) — two organizations, three people, a Blazor dashboard
+> and the same API from a terminal.
 > Opt-in OpenTelemetry export wiring ([LW-C008](docs/compatibility.md#lw-c008)) and an Azure
 > reference deployment template ([LW-C007](docs/compatibility.md#lw-c007)) are included.
 > Currency billing integration is implemented locally; its live system-table read
@@ -39,9 +42,11 @@ identities you can run locally.
 
 For an existing application, start with the [published-package quickstart](examples/package-quickstart/README.md):
 trusted membership resolution, one tenant-scoped SQL query, and wrong-tenant denial in a standalone
-.NET 8 consumer of 3.1.0. Its offline HTTP fixture needs no workspace or PostgreSQL.
+.NET 8 consumer of 3.1.0. Its offline HTTP fixture needs no workspace or PostgreSQL
+([LW-C061](docs/compatibility.md#lw-c061)).
 
-To run Signalboard, you need Docker. No .NET SDK, Databricks account, or configuration is required.
+To run Signalboard, you need Docker. No .NET SDK, Databricks account, or configuration is required
+([LW-C060](docs/compatibility.md#lw-c060)).
 
 ```bash
 git clone https://github.com/ivanvyd/LakeWright.NET
@@ -63,14 +68,17 @@ the tests, the DI wiring, and a live workspace.
 A row filter based only on `session_user()` cannot distinguish tenants that share one service
 principal ([LW-C022](docs/compatibility.md#lw-c022)). LakeWright resolves tenant membership in the
 application and scopes SQL to that tenant's catalog and schema
-([LW-C003](docs/compatibility.md#lw-c003), [LW-C047](docs/compatibility.md#lw-c047)). It also provides durable asynchronous operations, compute limits and auditing.
+([LW-C003](docs/compatibility.md#lw-c003), [LW-C047](docs/compatibility.md#lw-c047)). It also
+provides durable asynchronous operations ([LW-C054](docs/compatibility.md#lw-c054)), per-tenant
+compute limits ([LW-C055](docs/compatibility.md#lw-c055)) and auditing.
 
 Databricks now supports [OAuth custom identity claims](https://learn.microsoft.com/en-us/azure/databricks/dev-tools/auth/oauth-custom-identity-claims).
 Governed views or ABAC policies can use
 [`current_oauth_custom_identity_claim()`](https://learn.microsoft.com/en-us/azure/databricks/sql/language-manual/functions/current_oauth_custom_identity_claim)
 to filter rows under app identity. The server must derive the claim from authenticated membership,
 deny rows when it is absent, and restrict grants so callers cannot bypass the policy. LakeWright's
-built-in credentials do not mint these claims; its schema-per-tenant contract is unchanged.
+built-in credentials do not mint these claims; its schema-per-tenant contract is unchanged
+([LW-C065](docs/compatibility.md#lw-c065)).
 
 SQL filtering does not isolate Genie conversation history
 ([LW-C035](docs/compatibility.md#lw-c035)). The application must authorize tenant
@@ -80,9 +88,10 @@ messages. See [the conversation guide](docs/guides/genie-conversations.md).
 ## What this is not
 
 - Not a Databricks SDK. [`Microsoft.Azure.Databricks.Client`](https://www.nuget.org/packages/Microsoft.Azure.Databricks.Client)
-  already covers Unity Catalog, Statement Execution and Jobs under MIT. This project depends on it.
-- Not a dashboard embedding library. Databricks AI/BI external embedding ships today, with row-level
-  security and no per-viewer fee. Use it. `LakeWright.Embedding` brokers the *token* that flow needs
+  already covers Unity Catalog, Statement Execution and Jobs under MIT. This project depends on it
+  ([LW-C062](docs/compatibility.md#lw-c062)).
+- Not a dashboard embedding library. Databricks AI/BI external embedding ships today and filters
+  rows per viewer ([LW-C064](docs/compatibility.md#lw-c064)). Use it. `LakeWright.Embedding` brokers the *token* that flow needs
   ([LW-C037](docs/compatibility.md#lw-c037)) and stops there — the tenant is signed into it rather
   than chosen by the caller ([LW-C038](docs/compatibility.md#lw-c038)). Rendering remains
   `@databricks/aibi-client`'s job.
@@ -94,7 +103,7 @@ messages. See [the conversation guide](docs/guides/genie-conversations.md).
 Databricks Apps documentation states: "You can't make Databricks apps public. Anonymous access and
 bypassing single sign-on (SSO) are not supported." Every end user must exist as an identity in your
 Databricks account, an app's address cannot be changed, and the runtime ships Python and Node with
-no .NET.
+no .NET ([LW-C063](docs/compatibility.md#lw-c063)).
 
 Databricks Apps is the right host for internal tooling. It cannot host a customer-facing product
 ([LW-C024](docs/compatibility.md#lw-c024)). If your users can hold Databricks identities, or only
@@ -127,7 +136,8 @@ docs/                         see docs/README.md
 ```
 
 `LakeWright.Multitenancy` does not reference `LakeWright.Databricks`, so adopting the tenancy tier
-alone does not drag in the Databricks client. A test enforces that rather than a convention.
+alone does not drag in the Databricks client. A test enforces that rather than a convention
+([LW-C059](docs/compatibility.md#lw-c059)).
 
 The sample includes opt-in OpenTelemetry export wiring ([LW-C008](docs/compatibility.md#lw-c008)).
 Currency attribution has a billing-reader implementation ([LW-C006](docs/compatibility.md#lw-c006)),

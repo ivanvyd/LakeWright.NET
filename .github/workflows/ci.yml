@@ -232,6 +232,13 @@ jobs:
         run: |
           python3 scripts/test-check-claim-ledger.py
           python3 scripts/check-claim-ledger.py
+      # global.json disables SDK roll-forward, so a Dockerfile SDK image with another version cannot
+      # build. A floating digest broke the Signalboard image that way for three weeks unnoticed.
+      - name: Check Dockerfile SDK pins against global.json
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || github.actor == 'dependabot[bot]'
+        run: |
+          python3 scripts/test-check-sdk-pins.py
+          python3 scripts/check-sdk-pins.py
 
   # Its own required check, so a skipped or filtered-out isolation suite fails
   # the build instead of passing quietly inside the general test job.
