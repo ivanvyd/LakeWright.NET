@@ -240,17 +240,17 @@ jobs:
           global-json-file: global.json
       - run: dotnet test -c Release --filter "Category=TenantIsolation"
 
-  bundle:
+  # Schema validation installs a validator from PyPI, so it runs in its own job: whatever that
+  # install executes shares a runner with no secret. The `bundle` job below, which holds the
+  # workspace credential, installs nothing beyond the pinned Databricks CLI.
+  bundle-schema:
     needs: confidentiality-preflight
-    if: needs.confidentiality-preflight.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || github.actor == 'dependabot[bot]')
+    if: needs.confidentiality-preflight.result == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: databricks/setup-cli@9625fdde9ba2607df0087e0d3ec7449198bf2180 # v1.23.0
-      # `bundle validate` resolves against a live workspace, so it needs credentials
-      # that a fork PR must never receive. Forks get schema validation only; a
-      # maintainer runs the authenticated validation before merge.
       # `bundle schema` only prints the schema, so it has to be fed to a validator
       # against the actual file to check anything.
       # No working-directory here: git does not track empty directories, so `databricks/`
@@ -262,10 +262,21 @@ jobs:
             echo "No bundle yet; nothing to validate."
             exit 0
           fi
-          pipx install check-jsonschema
+          pipx install check-jsonschema==0.40.0
           databricks bundle schema > /tmp/bundle.schema.json
           check-jsonschema --schemafile /tmp/bundle.schema.json databricks/databricks.yml
 
+  bundle:
+    needs: [confidentiality-preflight, bundle-schema]
+    if: needs.confidentiality-preflight.result == 'success' && needs.bundle-schema.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || github.actor == 'dependabot[bot]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: databricks/setup-cli@9625fdde9ba2607df0087e0d3ec7449198bf2180 # v1.23.0
+      # `bundle validate` resolves against a live workspace, so it needs credentials
+      # that a fork PR must never receive. Forks get schema validation only; a
+      # maintainer runs the authenticated validation before merge.
       - name: Validate against workspace
         if: |
           hashFiles('databricks/databricks.yml') != ''

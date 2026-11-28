@@ -1,6 +1,6 @@
 # ADR 0006: No long-lived Databricks credentials anywhere
 
-Status: accepted
+Status: accepted, amended 2026-11-28
 Date: 2026-07-31
 
 ## Context
@@ -37,3 +37,21 @@ Contributors need no credential from the maintainer. This originally said they w
 mock server, which was never built; what exists is the Signalboard sample, which runs on a Postgres
 container with no Databricks account at all. Anyone who does need a workspace uses Free Edition with
 their own identity.
+
+## Amendment: 2026-11-28, CI credentials as built
+
+The CI decision above was not implemented. Two workflows hold stored client secrets. The `bundle`
+job in `ci.yml` uses `DATABRICKS_CLIENT_SECRET` for `databricks bundle validate`, and
+`live-net8-validation.yml` uses `AZURE_CLIENT_SECRET` for the live .NET 8 check. Until each moves to
+GitHub Actions OIDC federation, these controls compensate:
+
+- The `bundle` job runs only for pushes and same-repository pull requests, and installs nothing but
+  the pinned Databricks CLI. The PyPI schema validator runs in a separate job that receives no
+  secret.
+- The live validation job runs only from the default branch and in the `live-validation`
+  environment. Its secrets belong in that environment, behind a deployment-branch rule limited to
+  the default branch. That repository setting is the binding control, because a dispatched branch
+  supplies its own copy of the workflow file.
+
+OIDC federation remains the target. The reference deployment and the application paths are
+unchanged by this amendment.

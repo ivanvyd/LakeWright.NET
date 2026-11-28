@@ -25,6 +25,10 @@ which is the right home for the platform side of the deployment.
   architecture is a footnote next to that.
 - **A complete deploy script.** The `az deployment` command and the GitHub Actions workflow
   in `.github/workflows/deploy-azure.yml` are how the template is applied.
+- **A Signalboard image you can expose.** Signalboard authenticates any `X-Demo-User` header, so
+  it refuses to start outside Development unless `Signalboard:AllowDemoAuthentication` is true.
+  The template does not set that, and must not. Before pointing `containerImage` at a
+  Signalboard build, replace `AddDemoAuthentication` with a real identity provider.
 - **A Databricks deploy.** The bundle in `databricks/` is the Databricks half. The two
   together form a full reference deployment; either alone is the platform side of the
   application or the application side of the platform, never both.
@@ -38,7 +42,9 @@ which is the right home for the platform side of the deployment.
 | `databricksWorkspaceUrl` | Yes | The full workspace URL, e.g. `https://adb-12345.67.azuredatabricks.net`. |
 | `databricksCatalog` | Yes | The catalog tenant schemas live in. Must already exist. |
 | `postgresAdminLogin` | Yes | Use a generated name, not a person's. |
-| `postgresAdminPassword` | Yes | Pass via Key Vault or a parameter file with secure-string semantics, never inline. |
+| `postgresAdminPassword` | Yes | Pass via Key Vault or a parameter file with secure-string semantics, never inline. Used only by the server and the maintenance commands; the application never receives it. |
+| `postgresAppLogin` | No | Default `lakewright_app`. The role the application connects as. It must not own the tables, or the audit table is not append-only. |
+| `postgresAppPassword` | Yes | The application role's password. Same handling as the administrator password. |
 | `location` | No | Defaults to the resource group's location. |
 
 ## Applying it
@@ -51,7 +57,7 @@ az deployment group create \
     --resource-group <rg> \
     --template-file infra/azure-container-apps/main.bicep \
     --parameters databricksWorkspaceUrl=https://adb-... databricksCatalog=lakewright_prod \
-                 postgresAdminLogin=lakewright_admin @password.json
+                 postgresAdminLogin=lakewright_admin @passwords.json
 ```
 
 The output includes `containerAppFqdn` (the URL the application answers at),
@@ -77,9 +83,10 @@ configure the following in Entra ID:
    deploys into.
 4. In the repository or environment, define the secrets `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`,
    `AZURE_SUBSCRIPTION_ID`, `AZURE_RESOURCE_GROUP`, `DATABRICKS_WORKSPACE_URL`,
-   `DATABRICKS_CATALOG`, `POSTGRES_ADMIN_LOGIN`, and `POSTGRES_ADMIN_PASSWORD`. The
-   `POSTGRES_ADMIN_PASSWORD` value is loaded from a Key Vault reference in real deploys and
-   supplied as a parameter file in local deploys — never inline in the workflow.
+   `DATABRICKS_CATALOG`, `POSTGRES_ADMIN_LOGIN`, `POSTGRES_ADMIN_PASSWORD`, and
+   `POSTGRES_APP_PASSWORD`. The password values are loaded from a Key Vault reference in real
+   deploys and supplied as a parameter file in local deploys. The workflow writes its parameter
+   file from those secrets inside the job; it never passes them inline.
 
 The OIDC handshake happens in `azure/login@v3`; the `arm-deploy@v2` step then deploys with
 the token it gets back. If the federated credential's subject does not match the workflow's
@@ -89,11 +96,17 @@ must match the environment the deploy job uses.
 
 ## After the deploy
 
-1. Run the database migration as the PostgreSQL table owner, never with the application
-   connection string:
+1. Provision the application role, then run the database migration, both as the PostgreSQL
+   table owner and never with the application connection string. `provision-app-role` creates
+   the LakeWright tables if the database has none, then the role named by `postgresAppLogin`
+   with exactly the grants the application needs: insert and read on `audit_events`, nothing
+   that can amend them. Run it before the application first starts:
 
    ```bash
    export LAKEWRIGHT_MIGRATION_CONNECTION_STRING='<migration-role connection string>'
+   export LAKEWRIGHT_APPLICATION_ROLE=lakewright_app
+   export LAKEWRIGHT_APPLICATION_ROLE_PASSWORD='<the postgresAppPassword value>'
+   dotnet run --project tools/LakeWright.DatabaseMaintenance -- provision-app-role
    dotnet run --project tools/LakeWright.DatabaseMaintenance -- migrate
    dotnet run --project tools/LakeWright.DatabaseMaintenance -- validate
    ```

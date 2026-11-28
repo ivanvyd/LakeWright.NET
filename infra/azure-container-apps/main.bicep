@@ -42,6 +42,17 @@ param postgresAdminLogin string
 @secure()
 param postgresAdminPassword string
 
+// The application connects as this role, never as the administrator. Audit events are append-only
+// only because the database revokes UPDATE and DELETE from a role that does not own the tables; an
+// owner keeps privileges REVOKE cannot remove. The role is created by
+// `LakeWright.DatabaseMaintenance provision-app-role`, run as the administrator after this deploy.
+@description('PostgreSQL role the application connects as. Created by the provision-app-role maintenance command; must not own the tables.')
+param postgresAppLogin string = 'lakewright_app'
+
+@description('Password for the application role. Pass via Key Vault or a parameter file with secure-string semantics, never inline.')
+@secure()
+param postgresAppPassword string
+
 @description('Tags applied to every resource. The default tags for cost tracking and ownership; override for a production deploy.')
 param tags object = {
   workload: 'lakewright'
@@ -162,7 +173,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           // 15 replicas × 12 = 180 fits under 200 server-side max_connections. The Bicep
           // sets the server ceiling and the connection string sets the client ceiling;
           // the gap between them is the SLO the harness measures.
-          value: 'Host=${postgres.properties.fullyQualifiedDomainName};Database=${postgresDbName};Username=${postgresAdminLogin};Password=${postgresAdminPassword};Maximum Pool Size=12;Timeout=15;Command Timeout=30'
+          value: 'Host=${postgres.properties.fullyQualifiedDomainName};Database=${postgresDbName};Username=${postgresAppLogin};Password=${postgresAppPassword};Maximum Pool Size=12;Timeout=15;Command Timeout=30'
         }
       ]
       ingress: {

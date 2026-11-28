@@ -3,11 +3,14 @@ using LakeWright.Multitenancy;
 using Microsoft.EntityFrameworkCore;
 
 const string connectionVariable = "LAKEWRIGHT_MIGRATION_CONNECTION_STRING";
+const string applicationRoleVariable = "LAKEWRIGHT_APPLICATION_ROLE";
+const string applicationPasswordVariable = "LAKEWRIGHT_APPLICATION_ROLE_PASSWORD";
 
 if (args.Length != 1 || args[0] is "--help" or "-h")
 {
-    Console.Error.WriteLine("Usage: LakeWright.DatabaseMaintenance <migrate|validate|finalize|rollback|maintain>");
+    Console.Error.WriteLine("Usage: LakeWright.DatabaseMaintenance <provision-app-role|migrate|validate|finalize|rollback|maintain>");
     Console.Error.WriteLine($"Set {connectionVariable} to the table-owning migration-role connection string.");
+    Console.Error.WriteLine($"provision-app-role also reads {applicationRoleVariable} and {applicationPasswordVariable}.");
     return args.Length == 1 ? 0 : 2;
 }
 
@@ -48,6 +51,18 @@ var now = DateTimeOffset.UtcNow;
 
 switch (args[0])
 {
+    case "provision-app-role":
+        var applicationRole = Environment.GetEnvironmentVariable(applicationRoleVariable);
+        var applicationPassword = Environment.GetEnvironmentVariable(applicationPasswordVariable);
+        if (string.IsNullOrWhiteSpace(applicationRole) || string.IsNullOrWhiteSpace(applicationPassword))
+        {
+            Console.Error.WriteLine($"{applicationRoleVariable} and {applicationPasswordVariable} are required.");
+            return 2;
+        }
+
+        await ApplicationRoleProvisioning.ApplyAsync(db, applicationRole, applicationPassword);
+        Console.WriteLine($"Application role {applicationRole} provisioned with append-only audit access.");
+        break;
     case "migrate":
         await DatabasePartitioning.MigrateAsync(db, now, options);
         await DatabasePartitioning.ValidateAsync(db);

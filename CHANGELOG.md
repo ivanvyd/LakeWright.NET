@@ -8,6 +8,22 @@ note.
 
 ## [Unreleased]
 
+### Security
+
+- Signalboard refuses to start outside Development unless `Signalboard:AllowDemoAuthentication`
+  is true. Its header authentication accepts any subject, and the deployment guide previously led
+  to an internet-facing host running it. `compose.yaml` and the load harness opt in.
+- The Azure reference template connects the application as a separate role
+  (`postgresAppLogin`/`postgresAppPassword`), no longer as the PostgreSQL administrator. As
+  administrator, the database could not enforce the append-only audit table. The new
+  `LakeWright.DatabaseMaintenance provision-app-role` command creates that role and its grants.
+- The deploy workflow passes its secrets through a parameters file instead of an inline argument
+  string.
+- CI installs the bundle schema validator from PyPI in a job without secrets, pinned to
+  `check-jsonschema` 0.40.0. The live .NET 8 validation runs only from the default branch, in the
+  `live-validation` environment. ADR 0006 records the CI client secrets that OIDC federation has
+  not yet replaced.
+
 ### Fixed
 
 - Treat Genie's `QUERY_RESULT_EXPIRED` status as a completed answer. A resumed message whose SQL
