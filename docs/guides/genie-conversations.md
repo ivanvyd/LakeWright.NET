@@ -21,7 +21,9 @@ An unfamiliar status has `GenieOutcome.Unknown`; it is terminal if Genie also re
 `WaitForResponseAsync` polls with GET only. Calling it again resumes that same message.
 
 Resolve `tenant` from authenticated membership. Use an opaque, stable `ownerKey` that identifies
-the application's authorized principal within its tenant. All read, wait and follow-up operations
+the application's authorized principal within its tenant. Ownership records carry no tenant, so
+build the key from both, for example the tenant ID and the principal ID: a principal's key from
+one tenant must not match its key in another. All read, wait and follow-up operations
 check ownership before acquiring credentials or calling Databricks. Identifiers alone grant no
 access. Keep tenant-to-agent mappings and owner-key construction consistent across processes.
 
@@ -32,8 +34,10 @@ acceptance and application storage. An ownership-write failure exposes known IDs
 `ConversationOwnershipPersistenceException` for trusted reconciliation.
 
 Each separate operation uses `GenieOptions.ResponseTimeout`. Waiting returns `GenieOutcome.TimedOut`
-with known IDs. A single-read deadline throws `TimeoutException`. Cancellation stops local work
-and does not cancel the remote message. `AskAsync` and `ContinueAsync` retain one total response
+with known IDs; a GET that outlives the per-request HTTP timeout is repeated while that deadline
+lasts. A single read that runs out of time throws `TimeoutException`. `QUERY_RESULT_EXPIRED` is
+reported as `Completed`: the result rows expired, the answer text and SQL did not. Cancellation
+stops local work and does not cancel the remote message. `AskAsync` and `ContinueAsync` retain one total response
 deadline over submission and polling.
 
 There are no automatic POST retries. A connection failure or timeout before acceptance is observed
@@ -54,8 +58,10 @@ its existing name and pipeline configuration.
 The registration disables its default HTTP request loggers. At the .NET 8 dependency floor, those
 loggers can record bearer headers at Trace. Application-added HTTP loggers, telemetry and manually
 constructed clients remain the host's responsibility. Do not record tokens or raw response bodies.
-Registration also removes earlier loggers for that same named client. Configure deliberate custom
-HTTP logging after the library registration and apply your own redaction.
+Registration also removes earlier loggers for that same named client, and loggers added for every
+client with `ConfigureHttpClientDefaults`, whatever the registration order: the factory applies
+defaults before named configuration. Configure deliberate custom HTTP logging per named client,
+after the library registration, and apply your own redaction.
 
 [OAuth custom identity claims](https://learn.microsoft.com/en-us/azure/databricks/dev-tools/auth/oauth-custom-identity-claims)
 can govern SQL results. They do not partition service-principal-owned conversation history.

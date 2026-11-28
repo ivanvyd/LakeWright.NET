@@ -19,7 +19,7 @@ public interface IGenieConversations
         string ownerKey,
         string question,
         CancellationToken cancellationToken = default) =>
-        throw new NotSupportedException("This adapter does not support separate Genie message operations.");
+        Task.FromException<GenieAcceptedMessage>(Unsupported());
 
     /// <summary>Submits one follow-up to an owned conversation without polling.</summary>
     /// <remarks>No automatic submission retry is performed. Older adapters throw <see cref="NotSupportedException"/>.</remarks>
@@ -29,7 +29,7 @@ public interface IGenieConversations
         string conversationId,
         string question,
         CancellationToken cancellationToken = default) =>
-        throw new NotSupportedException("This adapter does not support separate Genie message operations.");
+        Task.FromException<GenieAcceptedMessage>(Unsupported());
 
     /// <summary>Reads an owned message once with GET, without submitting a question.</summary>
     /// <remarks>Older adapters throw <see cref="NotSupportedException"/>.</remarks>
@@ -39,13 +39,15 @@ public interface IGenieConversations
         string conversationId,
         string messageId,
         CancellationToken cancellationToken = default) =>
-        throw new NotSupportedException("This adapter does not support separate Genie message operations.");
+        Task.FromException<GenieMessageSnapshot>(Unsupported());
 
     /// <summary>Waits for an owned message using GET requests, without submitting a question.</summary>
     /// <remarks>
     /// Each call has its own <see cref="GenieOptions.ResponseTimeout"/>. Cancellation stops local
-    /// waiting only. IDs do not grant access: ownership and the tenant's agent mapping are checked.
-    /// Older adapters throw <see cref="NotSupportedException"/>.
+    /// waiting only. IDs do not grant access: ownership is checked, and the request is addressed
+    /// through the agent mapped to <paramref name="tenant"/>. Ownership records carry no tenant, so
+    /// an <c>ownerKey</c> must be unique across tenants. Older adapters throw
+    /// <see cref="NotSupportedException"/>.
     /// </remarks>
     Task<GenieAnswer> WaitForResponseAsync(
         TenantContext tenant,
@@ -53,7 +55,7 @@ public interface IGenieConversations
         string conversationId,
         string messageId,
         CancellationToken cancellationToken = default) =>
-        throw new NotSupportedException("This adapter does not support separate Genie message operations.");
+        Task.FromException<GenieAnswer>(Unsupported());
 
     /// <summary>Starts a conversation in the agent <paramref name="tenant"/> is mapped to.</summary>
     /// <remarks>
@@ -90,6 +92,9 @@ public interface IGenieConversations
         string ownerKey,
         string conversationId,
         CancellationToken cancellationToken = default);
+
+    private static NotSupportedException Unsupported() =>
+        new("This adapter does not support separate Genie message operations.");
 }
 
 /// <summary>An accepted message. Identifiers support checkpointing; they are not authorization.</summary>
@@ -136,9 +141,12 @@ public enum GenieOutcome
     TimedOut = 4,
 }
 
-/// <summary>The local response deadline elapsed before a conversation identity was received.</summary>
-/// <remarks>Remote acceptance is unknown: Databricks may still have created a conversation.</remarks>
-public sealed class GenieResponseTimeoutException() : TimeoutException("The Genie response deadline elapsed before a conversation identity was received; remote acceptance is unknown.");
+/// <summary>A submission timed out before Genie's accepted message identity was received.</summary>
+/// <remarks>
+/// Remote acceptance is unknown: Databricks may still have created the conversation or message.
+/// Both the response deadline and the per-request HTTP timeout raise it.
+/// </remarks>
+public sealed class GenieResponseTimeoutException() : TimeoutException("The Genie submission timed out before an accepted message identity was received; remote acceptance is unknown.");
 
 /// <summary>An accepted conversation could not be safely recorded for its owner.</summary>
 /// <remarks>The identifiers support trusted recovery; they do not authorize continuation by themselves.</remarks>

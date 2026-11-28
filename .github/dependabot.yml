@@ -12,6 +12,34 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    # These packages ship with the .NET runtime and track its major version. Moving the net10.0
+    # floor to 11.x makes every .NET 10 consumer load .NET 11 assemblies over its shared framework,
+    # so it is a target-framework decision with its own ADR, not a weekly bump. Patches still flow.
+    # The dotnet/extensions packages (Microsoft.Extensions.AI.*, *.Testing) version independently
+    # and are deliberately absent from this list.
+    ignore:
+      - dependency-name: 'Microsoft.Extensions.Caching.Abstractions'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'Microsoft.Extensions.Configuration.*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'Microsoft.Extensions.DependencyInjection*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'Microsoft.Extensions.Diagnostics.HealthChecks*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'Microsoft.Extensions.Hosting.Abstractions'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'Microsoft.Extensions.Http'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'Microsoft.Extensions.Logging.Abstractions'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'Microsoft.Extensions.Options*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'Microsoft.AspNetCore.*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'Microsoft.EntityFrameworkCore*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'Npgsql*'
+        update-types: ['version-update:semver-major']
     groups:
       # One PR per ecosystem cluster. Fifteen separate bumps a week is how
       # dependency updates stop being reviewed and start being rubber-stamped.

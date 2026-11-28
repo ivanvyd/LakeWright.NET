@@ -8,6 +8,36 @@ note.
 
 ## [Unreleased]
 
+### Fixed
+
+- Treat Genie's `QUERY_RESULT_EXPIRED` status as a completed answer. A resumed message whose SQL
+  result rows had expired previously polled until `ResponseTimeout` and returned `TimedOut`.
+- Keep waiting when one Genie GET outlives the two-minute per-request HTTP timeout and the response
+  deadline still has time left. It previously surfaced as a cancellation the caller never requested.
+  The same timeout on a single read now throws `TimeoutException`, and on a submission
+  `GenieResponseTimeoutException`, because remote acceptance is unknown.
+- Validate the conversation ID in `DeleteAsync`, as every other conversation operation does.
+- Report a missing or path-like accepted identity from Genie as `InvalidOperationException`, not as
+  an `ArgumentException` that blames the caller's input.
+- Return a faulted task, rather than throwing synchronously, from the default
+  `IGenieConversations` methods that older adapters inherit. Awaiting still throws
+  `NotSupportedException`.
+
+### Changed
+
+- Update patch releases of the .NET 10 runtime packages to 10.0.15, Azure.Core to 1.65.0 on .NET 10,
+  Microsoft.Extensions.AI.OpenAI to 11.0.1 and OpenAI to 2.15.0. The .NET 8 dependency floor is
+  unchanged. The direct Microsoft.OpenApi pin is removed: Microsoft.AspNetCore.OpenApi 10.0.15
+  requires a fixed version itself.
+- Dependabot no longer proposes major versions of packages that track the .NET runtime. Moving the
+  .NET 10 floor to .NET 11 packages is a target-framework decision.
+
+### Documentation
+
+- State that Genie ownership records carry no tenant, so an owner key must be unique across
+  tenants, and that host-wide `ConfigureHttpClientDefaults` loggers are removed from library
+  clients as well.
+
 ## [3.1.0] — 2026-11-18
 
 ### Added
