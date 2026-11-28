@@ -71,6 +71,7 @@ note.
   Microsoft.Extensions.AI.OpenAI to 11.0.1 and OpenAI to 2.15.0. The .NET 8 dependency floor is
   unchanged. The direct Microsoft.OpenApi pin is removed: Microsoft.AspNetCore.OpenApi 10.0.15
   requires a fixed version itself.
+- Update Npgsql and Npgsql.EntityFrameworkCore.PostgreSQL to 10.0.4.
 - Dependabot no longer proposes major versions of packages that track the .NET runtime. Moving the
   .NET 10 floor to .NET 11 packages is a target-framework decision.
 

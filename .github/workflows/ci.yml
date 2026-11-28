@@ -250,7 +250,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: databricks/setup-cli@9625fdde9ba2607df0087e0d3ec7449198bf2180 # v1.23.0
+      - uses: databricks/setup-cli@e1dad86b08f6ea07707aea128ec4bfa76af8db55 # v1.28.0
       # `bundle schema` only prints the schema, so it has to be fed to a validator
       # against the actual file to check anything.
       # No working-directory here: git does not track empty directories, so `databricks/`
@@ -280,7 +280,7 @@ jobs:
           echo "bundle-schema finished as '${{ needs.bundle-schema.result }}'."
           exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: databricks/setup-cli@9625fdde9ba2607df0087e0d3ec7449198bf2180 # v1.23.0
+      - uses: databricks/setup-cli@e1dad86b08f6ea07707aea128ec4bfa76af8db55 # v1.28.0
       # `bundle validate` resolves against a live workspace, so it needs credentials
       # that a fork PR must never receive. Fork code runs in neither bundle job; a
       # maintainer runs both validations before merge.

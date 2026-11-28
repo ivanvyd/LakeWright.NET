@@ -27,7 +27,7 @@
     <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="10.0.15" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.15" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.15" />
-    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.4" />
   </ItemGroup>
 
   <ItemGroup Label="Extensions">
@@ -79,7 +79,7 @@
   </ItemGroup>
 
   <ItemGroup Label="Testing">
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
     <!-- xUnit 4 defaults to Microsoft Testing Platform v2. This repository intentionally keeps
          the VSTest pipeline for TRX and coverlet compatibility, so use the official opt-out
          package until the test infrastructure is migrated as one deliberate change. -->
@@ -87,7 +87,7 @@
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
     <PackageVersion Include="Shouldly" Version="4.3.0" />
     <PackageVersion Include="NSubstitute" Version="6.2.0" />
-    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.16.0" />
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.17.0" />
     <!-- Pinned above the transitive SSH.NET version resolved by Testcontainers. Older versions are
          GHSA-q939-rpr3-3284 (high): ScpClient's recursive download writes wherever a malicious
          server's filenames point. Patched in 2026.0.0. Keep the direct pin until Testcontainers
@@ -103,8 +103,8 @@
          utilisation. Same major.minor as the existing Npgsql.EntityFrameworkCore.PostgreSQL
          pin; pulling the bare ADO.NET package in addition is the only way to get the raw
          connection from outside the EF Core model. -->
-    <PackageVersion Include="Npgsql" Version="10.0.3" />
-    <PackageVersion Include="coverlet.collector" Version="10.1.0" />
+    <PackageVersion Include="Npgsql" Version="10.0.4" />
+    <PackageVersion Include="coverlet.collector" Version="10.1.1" />
     <!-- Property-based tests over the one value that reaches Databricks unparameterised: a Unity
          Catalog identifier. Example-based tests check the cases someone thought of; this checks
          the ones nobody did, which for an injection guard is the point. -->
