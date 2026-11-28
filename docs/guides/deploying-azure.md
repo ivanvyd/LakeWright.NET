@@ -103,7 +103,16 @@ must match the environment the deploy job uses.
    that can amend them. It refuses a role that is a superuser or owns the tables, and it sets the
    password on every run, so run it again after rotating `postgresAppPassword`. The template
    deploy starts the Container App before this step can run, so expect the application to fail
-   its database connection until the role exists:
+   its database connection until the role exists. The server's firewall admits Azure addresses
+   only, so run these from an Azure host, or add a rule for your own address and delete it
+   afterwards:
+
+   ```bash
+   az postgres flexible-server firewall-rule create -g <resource group> --server-name <server> \
+     --name operator --start-ip-address <your IP> --end-ip-address <your IP>
+   az postgres flexible-server firewall-rule delete -g <resource group> --server-name <server> \
+     --name operator --yes   # after the commands below
+   ```
 
    ```bash
    export LAKEWRIGHT_MIGRATION_CONNECTION_STRING='<migration-role connection string>'
@@ -139,11 +148,19 @@ must match the environment the deploy job uses.
 
 ## Compatibility
 
-This template has not been deployed. It compiles under `az bicep build` against the Bicep
-schema versions referenced, and the resource SKUs are documented in the Azure product
-documentation, but no one has run a deploy with it. Marked **Documented** in
-[the compatibility matrix](../compatibility.md) for the same reason the rest of the
-deployment column is empty.
+The template was deployed once, on 2026-11-28, into a nonproduction subscription in centralus
+with the default placeholder image, then deleted. The deploy succeeded; the Container App
+answered 200 over HTTPS and redirected HTTP; and `provision-app-role`, `migrate` and `validate`
+passed against the new server through a temporary operator rule. That deploy also showed the
+server had no firewall rule, so nothing could reach it, the application included; the
+Azure-services rule was added afterwards and has not itself been deployed. No LakeWright
+application image has run on it, so the managed identity path and the database connection from
+a hosted process remain unverified. [The compatibility matrix](../compatibility.md) marks the
+deploy and database setup **Verified** and the hosted application path unverified (LW-C007).
+
+PostgreSQL Flexible Server cannot be created in every region on every subscription type: the
+same deploy failed in eastus2 with `The value of the 'Version' should be in: []`, and succeeded
+in centralus.
 
 The template sets `max_connections=200` on the Flexible Server and `Maximum Pool Size=12`
 on the application's connection string, matching [ADR 0015](../decisions/0015-postgres-sizing-for-production.md).

@@ -110,6 +110,17 @@ Embedding failures are typed for HTTP mapping: `TransportException` usually maps
 `WorkspaceRejectedException` to 502, and `NotPublishedException` to 404 or 409. Do not expose the
 workspace response excerpt directly to a viewer; it is for server-side diagnostics.
 
+The embedding service principal needs workspace setup that the code cannot check for you:
+
+- both the **Databricks SQL access** and **Workspace access** entitlements;
+- **CAN RUN** on each published dashboard it embeds;
+- your hosting domain in **Settings > Security > External access > Embed dashboards**. A new
+  workspace allows approved domains only, with an empty list.
+
+On 2026-11-28 a principal with no entitlements got a 403 naming them. With SQL access but neither
+workspace access nor an approved domain, the scoped-token exchange answered 401
+`invalid_authorization_details`. Both surface as `WorkspaceRejectedException`.
+
 When an adopter changes a tenant's effective scope, compute a new `ScopeVersion`, persist it with
 the resolved tenant data, and call `IEmbedTokenCache.EvictTenant(tenantId)`. The changed version
 alters `external_value`, which bypasses the vendor result cache; eviction removes this process's

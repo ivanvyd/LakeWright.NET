@@ -41,12 +41,12 @@ they cannot establish.
 - **Independent human PR review remains unverified.** The current Scorecard review check reports
   no approved changesets in the recent history it inspects. Maintainer review and automated checks
   do not establish independent human review.
-- **The hosted reference application has not been deployed.** Historical Databricks development
-  checks include bundle deployment and destruction, as recorded in the
-  [compatibility matrix](docs/compatibility.md). The Azure Container Apps reference application
-  remains unverified. Its hosted managed-identity path rests on
-  [spike 04](docs/planning/spike-04-managed-identity.md); ingress and encryption in transit still
-  need deployment-specific checks.
+- **No LakeWright application has run on the reference deployment.** The Azure Container Apps
+  template deployed on 2026-11-28 with its placeholder image: HTTPS ingress answered, HTTP
+  redirected, and the database setup commands passed
+  ([LW-C007](docs/compatibility.md#lw-c007)). A managed identity reached the workspace from an
+  Azure container ([LW-C011](docs/compatibility.md#lw-c011)). A hosted LakeWright process, with
+  its database connection and managed identity together, has not been run.
 - **Load evidence is bounded.** The [load harness](scripts/load/README.md) exercises ASP.NET Core
   and disposable PostgreSQL. A [CI run on 2026-11-07](https://github.com/ivanvyd/LakeWright.NET/actions/runs/42392295904)
   passed its configured 50 RPS, 30-second smoke profile. The harness's local sustained target is

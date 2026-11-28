@@ -143,6 +143,20 @@ resource postgresMaxConnections 'Microsoft.DBforPostgreSQL/flexibleServers/confi
   }
 }
 
+// Without a rule the server refuses every client, including this Container App, whose
+// outbound addresses come from a large shared pool rather than a fixed IP. The 0.0.0.0 rule
+// admits connections from any Azure address, other customers' included, so the restricted
+// application role and its password are the barrier. For private networking, put the
+// environment in a VNet and give the server private access instead of this rule.
+resource postgresAllowAzure 'Microsoft.DBforPostgreSQL/flexibleServers/firewallRules@2024-08-01' = {
+  parent: postgres
+  name: 'AllowAllAzureServicesAndResourcesWithinAzureIps'
+  properties: {
+    startIpAddress: '0.0.0.0'
+    endIpAddress: '0.0.0.0'
+  }
+}
+
 resource postgresDb 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2024-08-01' = {
   parent: postgres
   name: postgresDbName

@@ -55,3 +55,12 @@ GitHub Actions OIDC federation, these controls compensate:
 
 OIDC federation remains the target. The reference deployment and the application paths are
 unchanged by this amendment.
+
+## Amendment: 2026-11-28, live validation moves to OIDC
+
+`live-net8-validation.yml` no longer reads `AZURE_CLIENT_SECRET`. It signs in with `azure/login`
+through a GitHub federated credential whose subject is
+`repo:ivanvyd/LakeWright.NET:environment:live-validation`, and `DefaultAzureCredential` uses that
+Azure CLI session. The `live-validation` environment holds only identifiers: tenant and client
+IDs, the workspace URL, warehouse, catalog, schema and live tenant. The `bundle` job in `ci.yml`
+still uses `DATABRICKS_CLIENT_SECRET`.
