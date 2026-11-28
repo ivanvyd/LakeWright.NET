@@ -100,6 +100,12 @@ note.
   Signalboard sample, the package quickstart and the Databricks client dependency, each marked
   **Verified locally**, plus three **Documented** vendor rows. The README no longer says external
   embedding has no per-viewer fee, because the Databricks documentation does not state its pricing.
+- Re-verify 23 claim rows on the 3.1.0 packages against an AWS Free Edition workspace on .NET 8
+  and .NET 10: statements, multi-chunk export, external links, jobs and idempotency, model serving,
+  Genie, and the PostgreSQL-backed isolation and audit rows. Rows stale for the current major fall
+  from 29 to 9. LW-C017 (multi-chunk reads) is verified for the first time. LW-C028 is now
+  **Differs by environment**: on AWS the stock OpenAI client streams without the shim. LW-C066
+  records that the bundle cannot be fully deployed to Free Edition.
 
 ## [3.1.0] — 2026-11-18
 

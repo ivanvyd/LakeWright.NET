@@ -13,8 +13,10 @@ Embedding packages.
 
 The 3.0.0 release checks did not run a live Databricks workspace or deploy the Azure application.
 A separate [2026-11-07 AWS check](#2026-11-07-installed-package-aws-check) exercised the published
-Core and Databricks packages. Earlier live-system observations retain their original dates.
-A stable version does not advance those dates or verify another environment.
+Core and Databricks packages, and the [2026-11-28 AWS check](#2026-11-28-installed-package-aws-check)
+re-ran the statement, export, job, model serving and Genie rows against published 3.1.0. Earlier live-system observations
+retain their original dates. A stable version does not advance those dates or verify another
+environment.
 
 The current package-publication and consumer evidence is in the
 [3.0.0 release evidence](release-evidence/v3.0.0.md). Earlier evidence remains available for
@@ -46,6 +48,7 @@ verification identity lacked `USE SCHEMA` on `system.billing`.
 | **Documented** | The vendor documents it. Nobody here has run it. |
 | **Unverified** | Believed to work by inference. No evidence either way. |
 | **Not supported** | Established as not working, with the reason. |
+| **Differs by environment** | Observed working in one environment and failing in another; the row names each, with its date. |
 
 Each claim row has a stable ID, `LW-Cnnn`, with a matching `#lw-cnnn` anchor that other documents
 cite. IDs are never renumbered or reused; a new row takes the next unused number wherever it sits.
@@ -117,29 +120,29 @@ request, package-consumer, publication and cleanup commands are in the
 | <a id="lw-c009"></a>LW-C009 | Entra ID token accepted as a Databricks bearer token (user principal) | **Verified** | 2026-09-01 | `LiveDatabricksTests`; previously [spike 01](planning/spike-01-statement-execution.md) |
 | <a id="lw-c010"></a>LW-C010 | `TokenCredential` as the shipping credential, through `AddLakeWrightDatabricks` | **Verified** | 2026-09-01 | `LiveDatabricksTests` registers `DefaultAzureCredential` and resolves `IStatementExecutor` and `IJobSubmitter` from the container, so the options binding, the startup validation and the credential are all on the path. No token is passed in. The SDK requests `2ff814a6-3304-4ab8-85cb-cd0e6f879c1d/.default`. |
 | <a id="lw-c011"></a>LW-C011 | Entra ID token via **managed identity** (no user, no secret) | **Verified** | 2026-07-31 | [spike 04](planning/spike-04-managed-identity.md). Databricks resolved the caller as the managed identity; the identity needs no Azure RBAC role. |
-| <a id="lw-c012"></a>LW-C012 | Statement Execution with typed parameters | **Verified** | 2026-09-01 | `LiveDatabricksTests`, through the registered executor. Previously 2026-07-31 via [spike 01](planning/spike-01-statement-execution.md), before the credential changed. |
-| <a id="lw-c013"></a>LW-C013 | Parameters resist injection payloads | **Verified** | 2026-09-01 | Value `acme'; DROP TABLE x; --` returned as a literal |
-| <a id="lw-c014"></a>LW-C014 | `EXTERNAL_LINKS` + `ARROW_STREAM` | **Verified** | 2026-07-31 | 200,000 rows, 3.26 MB retrieved |
+| <a id="lw-c012"></a>LW-C012 | Statement Execution with typed parameters | **Verified** | 2026-11-28 | AWS: published 3.1.0 on .NET 8 and .NET 10, [2026-11-28 check](#2026-11-28-installed-package-aws-check). Azure: `LiveDatabricksTests` through the registered executor, 2026-09-01; previously 2026-07-31 via [spike 01](planning/spike-01-statement-execution.md), before the credential changed. |
+| <a id="lw-c013"></a>LW-C013 | Parameters resist injection payloads | **Verified** | 2026-11-28 | Value `acme'; DROP TABLE x; --` returned as a literal. AWS 2026-11-28 on .NET 8 and .NET 10; Azure 2026-09-01. |
+| <a id="lw-c014"></a>LW-C014 | `EXTERNAL_LINKS` + `ARROW_STREAM` | **Verified** | 2026-11-28 | AWS: the executor with `Databricks:Disposition=EXTERNAL_LINKS` returned a `LargeResult` for 200,000 rows, and its first presigned link downloaded 4.46 MB of Arrow IPC stream without a credential, on .NET 8 and .NET 10. Azure 2026-07-31: 200,000 rows, 3.26 MB retrieved. |
 | <a id="lw-c015"></a>LW-C015 | Presigned link rejects the `Authorization` header | **Verified** | 2026-07-31 | HTTP 400 from Azure blob |
-| <a id="lw-c016"></a>LW-C016 | Failed statement returns rather than throws | **Verified** | 2026-09-01 | Surfaces as `StatementOutcome.Failure` with `BAD_REQUEST`, not as an empty success |
-| <a id="lw-c017"></a>LW-C017 | `GetResultChunk`, multi-chunk reads | Unverified | | Test result fit in one chunk |
+| <a id="lw-c016"></a>LW-C016 | Failed statement returns rather than throws | **Verified** | 2026-11-28 | Surfaces as `StatementOutcome.Failure` with `BAD_REQUEST` and not transient, not as an empty success. AWS 2026-11-28 on .NET 8 and .NET 10; Azure 2026-09-01. |
+| <a id="lw-c017"></a>LW-C017 | `GetResultChunk`, multi-chunk reads | **Verified** | 2026-11-28 | AWS, through `ITenantScopedExport`: 1,000,000 rows of 100-character padding, which the statement manifest split into 8 external-link chunks (114 MB), read in order to the last row with the exact count and sum on .NET 8 and .NET 10. The `ARROW_STREAM` executor path is not covered by this run. |
 | <a id="lw-c018"></a>LW-C018 | Statement read-once semantics, 1 hour expiry | Documented | | |
-| <a id="lw-c019"></a>LW-C019 | Jobs API: submit, poll to a terminal state | **Verified** | 2026-09-01 | `LiveDatabricksTests`, against an isolated temporary job, through the registered `IJobSubmitter` |
-| <a id="lw-c020"></a>LW-C020 | `idempotency_token` returns the original run on re-submission | **Verified** | 2026-09-01 | The repeated key returned the original temporary run rather than starting a second one |
-| <a id="lw-c021"></a>LW-C021 | Statement rows returned inline | **Verified** | 2026-09-01 | Also caught the earlier bug where an `EXTERNAL_LINKS` default left every successful query with zero rows |
+| <a id="lw-c019"></a>LW-C019 | Jobs API: submit, poll to a terminal state | **Verified** | 2026-11-28 | AWS: a temporary serverless notebook job reached `Succeeded` through the registered `IJobSubmitter` on .NET 8 and .NET 10, then the job and notebook were deleted. Azure: `LiveDatabricksTests`, 2026-09-01. |
+| <a id="lw-c020"></a>LW-C020 | `idempotency_token` returns the original run on re-submission | **Verified** | 2026-11-28 | AWS: each framework submitted the same key twice and got its first run back; the Jobs API listed 2 runs for 4 submissions. Azure 2026-09-01. |
+| <a id="lw-c021"></a>LW-C021 | Statement rows returned inline | **Verified** | 2026-11-28 | AWS 2026-11-28 on .NET 8 and .NET 10; Azure 2026-09-01. Also caught the earlier bug where an `EXTERNAL_LINKS` default left every successful query with zero rows |
 | <a id="lw-c022"></a>LW-C022 | Unity Catalog row filters with a **shared** service principal | **Not supported** | | `session_user()` returns the principal, not the end user. This is why isolation lives in the query layer. [ADR 0002](decisions/0002-enforce-tenant-isolation-in-the-query-layer.md) |
 | <a id="lw-c023"></a>LW-C023 | On-behalf-of user tokens for an externally hosted app | **Not supported** | | Exists only for Databricks Apps via `x-forwarded-access-token` |
 | <a id="lw-c024"></a>LW-C024 | Databricks Apps as host for a customer-facing product | **Not supported** | | Anonymous access unsupported; every user must exist in the host's account. [ADR 0001](decisions/0001-host-the-application-outside-databricks.md) |
-| <a id="lw-c025"></a>LW-C025 | Model serving: non-streaming chat via `Microsoft.Extensions.AI.OpenAI` | **Verified** | 2026-08-01 | `LiveChatTests`, through `AddDatabricksChatClient` |
-| <a id="lw-c026"></a>LW-C026 | Model serving: **streaming** chat | **Verified, with a shim** | 2026-08-01 | Databricks attaches `usage` to every chunk with `completion_tokens` and `total_tokens` null; the OpenAI deserialiser types them as numbers and throws mid-stream. `StreamingUsageRepairPolicy` strips the incomplete object. A test asserts the call still fails without it, so the shim's necessity is checked rather than assumed |
-| <a id="lw-c027"></a>LW-C027 | Model serving: tool calling | **Verified** | 2026-07-31 | [spike 03](planning/spike-03-openai-compatibility.md) |
-| <a id="lw-c028"></a>LW-C028 | Model serving: **streaming** via the stock OpenAI client, unmodified | **Not supported** | 2026-08-01 | Confirmed still true today, which is why the shim exists. `LiveChatTests` asserts the unmodified client fails, so this row goes stale loudly rather than quietly. |
-| <a id="lw-c029"></a>LW-C029 | Output-token metering on a streaming call | **Available with the shim** | 2026-08-01 | `completion_tokens` is null on every chunk but the last, which carries real numbers and passes through untouched. The wire supports it; per-tenant metering as a feature is not built — see [the roadmap](../ROADMAP.md). |
+| <a id="lw-c025"></a>LW-C025 | Model serving: non-streaming chat via `Microsoft.Extensions.AI.OpenAI` | **Verified** | 2026-11-28 | AWS: published `LakeWright.AI` 3.1.0 on .NET 10 through `AddDatabricksChatClient`, against five pay-per-token models (Llama 3.3 70B, Llama 4 Maverick, GPT OSS 120B, Qwen3 Next 80B, Gemma 3 12B). Azure: `LiveChatTests`, 2026-08-01. |
+| <a id="lw-c026"></a>LW-C026 | Model serving: **streaming** chat | **Verified, with a shim** | 2026-11-28 | AWS 2026-11-28: streaming through `AddDatabricksChatClient` passed on the five models in LW-C025, and the shim passed complete usage objects through untouched. Azure 2026-08-01: Databricks attached `usage` to every chunk with `completion_tokens` and `total_tokens` null; the OpenAI deserialiser types them as numbers and throws mid-stream. `StreamingUsageRepairPolicy` strips the incomplete object. |
+| <a id="lw-c027"></a>LW-C027 | Model serving: tool calling | **Verified** | 2026-11-28 | AWS: with a required tool, all five models in LW-C025 returned a `get_weather` function call through the registered client. First shown 2026-07-31 in [spike 03](planning/spike-03-openai-compatibility.md). |
+| <a id="lw-c028"></a>LW-C028 | Model serving: **streaming** via the stock OpenAI client, unmodified | **Differs by environment** | 2026-11-28 | AWS 2026-11-28: the stock client streamed without error on all five models in LW-C025, because every chunk's `usage` carried a numeric `completion_tokens` (read from the raw SSE stream). Azure 2026-08-01: it failed mid-stream, which is why the shim exists; that has not been re-checked. `LiveChatTests.Without_the_shim_the_same_call_still_fails` will fail against these AWS endpoints. |
+| <a id="lw-c029"></a>LW-C029 | Output-token metering on a streaming call | **Available with the shim** | 2026-11-28 | AWS 2026-11-28: every chunk carried real usage numbers, and the registered client reported output tokens. Azure 2026-08-01: `completion_tokens` was null on every chunk but the last. Per-tenant metering as a feature is not built — see [the roadmap](../ROADMAP.md). |
 | <a id="lw-c030"></a>LW-C030 | MLflow tracing from .NET over OTLP | Documented | | |
 | <a id="lw-c031"></a>LW-C031 | Declarative Automation Bundles: validate, deploy, summary, destroy | **Verified** | 2026-09-01 | CLI v1.10.0. Validation was re-run against the active workspace; the full lifecycle and dev mode prefixing were previously run on 2026-08-01. [Guide](guides/deploying-databricks.md) |
-| <a id="lw-c032"></a>LW-C032 | Genie Conversation API: start a conversation, poll to `COMPLETED` | **Verified** | 2026-08-05 | `LiveGenieTests`, against a real agent in `lakewright-dev`. The answer came back with the SQL Genie generated, which is what proves the attachment shape this library reads is the shape Databricks sends |
-| <a id="lw-c033"></a>LW-C033 | Genie Conversation API: follow-up in the same conversation | **Verified** | 2026-08-05 | `LiveGenieTests`. Same `conversation_id`, a new `message_id` |
-| <a id="lw-c034"></a>LW-C034 | Genie message states beyond the documented three | **Verified** | 2026-08-05 | A live `start-conversation` returned `SUBMITTED`, which this library does not map and therefore keeps polling rather than treating as terminal. The open-ended-states rule, observed rather than assumed |
+| <a id="lw-c032"></a>LW-C032 | Genie Conversation API: start a conversation, poll to `COMPLETED` | **Verified** | 2026-11-28 | AWS: published `LakeWright.Conversations` 3.1.0 on .NET 8 and .NET 10 against the Free Edition "Bakehouse Sales Starter Space"; the answer completed with the SQL Genie generated, and a tenant with no space was refused before any call. The conversations were deleted. Azure: `LiveGenieTests` in `lakewright-dev`, 2026-08-05. |
+| <a id="lw-c033"></a>LW-C033 | Genie Conversation API: follow-up in the same conversation | **Verified** | 2026-11-28 | Same `conversation_id`, a new `message_id`, completed. AWS 2026-11-28 on .NET 8 and .NET 10; Azure 2026-08-05. |
+| <a id="lw-c034"></a>LW-C034 | Genie message states beyond the documented three | **Verified** | 2026-11-28 | A raw `start-conversation` on AWS returned `SUBMITTED` again on 2026-11-28 (first observed 2026-08-05). This library does not map it and keeps polling rather than treating it as terminal. |
 | <a id="lw-c035"></a>LW-C035 | Genie Agent as the only tenancy boundary | **Documented** | | The Conversation API takes no filter, no viewer identity and no row predicate. One agent per tenant is the design that follows; nothing in the API can be tested to confirm the absence of a feature. Shared mode exists for internal, staff-only tools and is never tenant-isolated. |
 | <a id="lw-c036"></a>LW-C036 | Genie answer rendering hygiene | **Verified locally** | 2026-09-02 | `GenieAnswerSanitizerTests` prove raw HTML and markdown links are neutralized, including a `javascript:` target containing parentheses. Exact HTTPS host allow-listing is opt-in. |
 | <a id="lw-c037"></a>LW-C037 | AI/BI external embedding: the three-leg token exchange | **Verified** | 2026-08-06 | `LiveEmbeddingTests`, against a published dashboard in `lakewright-dev` with a service principal holding CAN RUN. Shipped **unverified** on 2026-08-05 and the matrix said so for a day |
@@ -150,6 +153,7 @@ request, package-consumer, publication and cleanup commands are in the
 | <a id="lw-c063"></a>LW-C063 | Databricks Apps runtime: Python 3.11 and Node.js 22, no .NET | **Documented** | 2026-11-28 | [Platform evidence](release-evidence/databricks-platform-2026-11-28.md), "Apps runtime" row. No .NET runtime or custom container is documented. |
 | <a id="lw-c064"></a>LW-C064 | AI/BI external embedding filters rows per viewer through `__aibi_external_value` | **Documented** | 2026-11-28 | [Platform evidence](release-evidence/databricks-platform-2026-11-28.md), "External embedding filters per viewer" row. LW-C038 verified that the tenant reaches `external_value`; filtering inside a dashboard dataset has not been run here. The documentation does not state a price for external viewers. |
 | <a id="lw-c065"></a>LW-C065 | OAuth custom identity claims for row filtering under app identity | **Documented** | 2026-11-28 | [Platform evidence](release-evidence/databricks-platform-2026-11-28.md), "OAuth custom identity claims" row. LakeWright's credentials do not mint the claim; nothing here has run it. |
+| <a id="lw-c066"></a>LW-C066 | Deploying the bundle to a Free Edition workspace | **Not supported** | 2026-11-28 | CLI v1.16.1: `bundle validate` and `bundle plan` passed, and `bundle deploy` created the schema, but the warehouse was refused with `RESOURCE_EXHAUSTED`, "You've hit the limit for warehouses for free usage." `bundle destroy` then removed the schema. The full lifecycle in LW-C031 remains Azure evidence. |
 
 ### 2026-11-07 installed-package AWS check
 
@@ -169,26 +173,54 @@ not verify separate server-side tenant schemas or RBAC, billing attribution, job
 broader live regressions, cross-cloud parity or .NET 10 live execution. The older capability rows
 above retain their original scope and dates.
 
+### 2026-11-28 installed-package AWS check
+
+A package-only consumer of public `LakeWright.Core` and `LakeWright.Databricks` 3.1.0, built for
+.NET 8 and .NET 10, ran against the same AWS Free Edition workspace and its serverless PRO starter
+warehouse. Authentication was the same CLI user OAuth adapter, with tenant context on
+`samples.bakehouse`. It mirrors `LiveDatabricksTests`, and every check passed on both .NET 8.0.29
+and .NET 10.0.11:
+
+- typed parameters and the injection payload returned as literals (LW-C012, LW-C013, LW-C021);
+- a missing table surfaces as a non-transient `BAD_REQUEST` failure (LW-C016);
+- an 8-chunk external-link export read to the last of 1,000,000 rows (LW-C017);
+- the executor's `EXTERNAL_LINKS` result, whose first presigned link downloads an Arrow stream with
+  no credential (LW-C014);
+- a temporary serverless notebook job reaches `Succeeded`, and a repeated key returns the same run
+  (LW-C019, LW-C020);
+- Genie ask, follow-up and unmapped-tenant refusal through `LakeWright.Conversations` 3.1.0
+  (LW-C032, LW-C033).
+
+`LakeWright.AI` 3.1.0 targets .NET 10 only, so the model serving checks (LW-C025 to LW-C029) ran on
+.NET 10.0.11 against five pay-per-token models.
+
+The temporary job, notebook and Genie conversations were deleted afterwards. The bundle was
+validated, planned and partly deployed, then destroyed; LW-C066 records why the deploy stopped.
+Nothing else in the workspace changed.
+
+This does not exercise `DefaultAzureCredential`, managed identity, LakeWright's machine-to-machine
+OAuth route or embedding, so their rows keep their Azure dates.
+
 ## Clouds
 
 | ID | Cloud | Status | Notes |
 |---|---|---|---|
 | <a id="lw-c042"></a>LW-C042 | Azure | **Verified** for the dated rows above | The hosted reference application remains unverified. |
-| <a id="lw-c043"></a>LW-C043 | AWS | **Verified** for the bounded 2026-11-07 check above | Public Core/Databricks 3.0.0 on .NET 8 with a custom CLI user OAuth adapter. OAuth federation and LakeWright M2M remain unverified. |
+| <a id="lw-c043"></a>LW-C043 | AWS | **Verified** for the bounded 2026-11-07 and 2026-11-28 checks above | Public Core/Databricks 3.1.0 on .NET 8 and .NET 10 with a custom CLI user OAuth adapter: statements, multi-chunk export, jobs, model serving and Genie. OAuth federation and LakeWright M2M remain unverified. |
 | <a id="lw-c044"></a>LW-C044 | GCP | Unverified | OAuth federation documented; no live check recorded |
-| <a id="lw-c045"></a>LW-C045 | Free Edition | **Verified** for the bounded user OAuth check above | The 2026-08-01 assessment recorded service-principal OAuth as unavailable based on the account-level API limitation and a community response. On 2026-11-07, [LakeSpeak's hosted M2M run](https://github.com/ivanvyd/LakeSpeak.NET/actions/runs/42409476224) passed nine live tests in the same Free Edition workspace using an existing client ID/secret pair. LakeWright's M2M route was not retested. The offline sample needs no workspace. |
+| <a id="lw-c045"></a>LW-C045 | Free Edition | **Verified** for the bounded user OAuth check above | The 2026-08-01 assessment recorded service-principal OAuth as unavailable based on the account-level API limitation and a community response. On 2026-11-07, [LakeSpeak's hosted M2M run](https://github.com/ivanvyd/LakeSpeak.NET/actions/runs/42409476224) passed nine live tests in the same Free Edition workspace using an existing client ID/secret pair. LakeWright's M2M route was not retested. The offline sample needs no workspace. The bundle cannot be fully deployed here, because Free Edition allows one warehouse (LW-C066). |
 
 ## .NET
 
 | ID | Capability | Status | Date |
 |---|---|---|---|
-| <a id="lw-c046"></a>LW-C046 | Interpolated SQL is a compile error | **Verified** | 2026-07-31, [spike 02](planning/spike-02-interpolation-guard.md) |
-| <a id="lw-c047"></a>LW-C047 | Cross-tenant resolution refused, against real Postgres | **Verified** | 2026-07-31, [testing isolation](guides/testing-isolation.md) |
-| <a id="lw-c048"></a>LW-C048 | Isolation suite fails when isolation is broken | **Verified** | 2026-07-31, same |
-| <a id="lw-c049"></a>LW-C049 | `audit_events` refuses update and delete in application code | **Verified** | 2026-07-31 |
-| <a id="lw-c050"></a>LW-C050 | `audit_events` refuses `ExecuteDelete`/`ExecuteUpdate` at the database | **Verified** | 2026-07-31, as the restricted application role |
-| <a id="lw-c051"></a>LW-C051 | Populated `audit_events` migration, monthly retention, ACL/RLS preservation and rollback | **Verified** | 2026-09-01, PostgreSQL 17 through `AuditPartitionTests`; scheduling the maintenance command remains an adopter operation. ADR 0020. |
-| <a id="lw-c052"></a>LW-C052 | An operation is invisible to a tenant that does not own it | **Verified** | 2026-07-31 |
+| <a id="lw-c046"></a>LW-C046 | Interpolated SQL is a compile error | **Verified** | 2026-11-28: a consumer of the published 3.1.0 package passing `$"... '{region}'"` to `TenantScopedStatement.Create` fails to build with CS0619 on .NET 8 and .NET 10. First shown 2026-07-31 in [spike 02](planning/spike-02-interpolation-guard.md). |
+| <a id="lw-c047"></a>LW-C047 | Cross-tenant resolution refused, against real Postgres | **Verified** | 2026-11-28, `CrossTenantResolutionTests` against PostgreSQL 17 in the full 568-test run; [testing isolation](guides/testing-isolation.md) |
+| <a id="lw-c048"></a>LW-C048 | Isolation suite fails when isolation is broken | **Verified** | 2026-11-28: with the membership predicate removed from `EfTenantContextResolver`, 17 of 482 `TenantIsolation` tests failed, including both cross-tenant resolution tests; restored, 482 passed. First run 2026-07-31; [testing isolation](guides/testing-isolation.md) |
+| <a id="lw-c049"></a>LW-C049 | `audit_events` refuses update and delete in application code | **Verified** | 2026-11-28, `CrossTenantResolutionTests.Audit_events_cannot_be_edited_or_deleted` in the full run; first 2026-07-31 |
+| <a id="lw-c050"></a>LW-C050 | `audit_events` refuses `ExecuteDelete`/`ExecuteUpdate` at the database | **Verified** | 2026-11-28, `AuditLockdownTests` as the restricted application role, in the full run; first 2026-07-31 |
+| <a id="lw-c051"></a>LW-C051 | Populated `audit_events` migration, monthly retention, ACL/RLS preservation and rollback | **Verified** | 2026-11-28, PostgreSQL 17 through `AuditPartitionTests` in the full run; first 2026-09-01. Scheduling the maintenance command remains an adopter operation. ADR 0020. |
+| <a id="lw-c052"></a>LW-C052 | An operation is invisible to a tenant that does not own it | **Verified** | 2026-11-28, `OperationOwnershipTests` in the full run; first 2026-07-31 |
 | <a id="lw-c053"></a>LW-C053 | EF Core model on Lakebase | Unverified | Standard Postgres only; no Lakebase-specific feature is used |
 
 ## Application tier
