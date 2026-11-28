@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Azure.Core;
 using LakeWright.Conversations;
 using LakeWright.Core.Tenancy;
@@ -16,8 +17,8 @@ namespace LakeWright.TenantIsolation.Tests;
 /// </summary>
 /// <remarks>
 /// This registration does not mint custom-claim tokens. These assert that the agent in the URL
-/// always comes from the resolved tenant,
-/// and that an unmapped tenant is refused rather than served from something else.
+/// always comes from the resolved tenant, and that an unmapped tenant is refused rather than
+/// served from something else.
 /// </remarks>
 [Trait("Category", "TenantIsolation")]
 public class GenieConversationTests : IDisposable
@@ -248,8 +249,11 @@ public class GenieConversationTests : IDisposable
             .WhenStateIs("answered")
             .RespondWith(Json(CompletedMessage));
 
+        // AdvanceUntilDone moves the fake clock on a real-time loop while real HTTP is in flight.
+        // A deadline beyond everything that loop can advance keeps a slow, loaded machine from
+        // turning this polling test into a deadline test.
         var time = new FakeTimeProvider();
-        var genie = Conversations(time);
+        var genie = Conversations(time, TimeSpan.FromDays(1));
 
         // Act
         var asking = genie.AskAsync(Tenant(AcmeId), TestOwner, "how many orders?", TestContext.Current.CancellationToken);
@@ -291,7 +295,8 @@ public class GenieConversationTests : IDisposable
     /// </summary>
     private static async Task AdvanceUntilDone(FakeTimeProvider time, Task pending)
     {
-        for (var i = 0; i < 400 && !pending.IsCompleted; i++)
+        var started = Stopwatch.StartNew();
+        while (!pending.IsCompleted && started.Elapsed < TimeSpan.FromMinutes(1))
         {
             await Task.Delay(5, TestContext.Current.CancellationToken);
             time.Advance(TimeSpan.FromSeconds(2));
@@ -326,9 +331,14 @@ public class GenieConversationTests : IDisposable
     private static IResponseBuilder Json(string body) =>
         Response.Create().WithHeader("Content-Type", "application/json").WithBody(body);
 
-    private GenieConversations Conversations(FakeTimeProvider? time = null)
+    private GenieConversations Conversations(FakeTimeProvider? time = null, TimeSpan? responseTimeout = null)
     {
         var options = new GenieOptions { WorkspaceUrl = _workspace.Urls[0] };
+        if (responseTimeout is { } timeout)
+        {
+            options.ResponseTimeout = timeout;
+        }
+
         options.Spaces[AcmeId.ToString()] = AcmeSpace;
         options.Spaces[GlobexId.ToString()] = GlobexSpace;
 

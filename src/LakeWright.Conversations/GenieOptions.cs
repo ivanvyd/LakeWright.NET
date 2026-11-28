@@ -8,7 +8,7 @@ namespace LakeWright.Conversations;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>One agent per tenant, and no default.</b> The Conversation API takes no filter, no row
+/// <b>One agent per tenant, and no default.</b> The Conversation API takes no filter or row
 /// predicate. This library does not mint tenant-bound OAuth custom identity claims or configure
 /// governed data policies, so it requires separate agents unless the staff-only shared mode is
 /// acknowledged. Conversation-owner authorization remains required with either data model.
@@ -37,7 +37,11 @@ public sealed class GenieOptions
     /// </summary>
     public bool AcknowledgeNoTenantIsolation { get; set; }
 
-    /// <summary>The total local deadline for one question, from credential acquisition through polling.</summary>
+    /// <summary>
+    /// The local deadline for one operation. <c>AskAsync</c> and <c>ContinueAsync</c> spend it once
+    /// across submission and polling; each separate submit, read or wait gets its own, and so does
+    /// the ownership write after acceptance.
+    /// </summary>
     /// <remarks>
     /// Databricks recommends stopping at ten minutes: a question still running after that is not
     /// going to answer usefully, and a request held open longer is a connection the caller's

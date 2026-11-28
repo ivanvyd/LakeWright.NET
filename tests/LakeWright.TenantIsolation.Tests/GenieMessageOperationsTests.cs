@@ -77,6 +77,7 @@ public sealed class GenieMessageOperationsTests
     [InlineData("COMPLETED", GenieOutcome.Completed, true)]
     [InlineData("FAILED", GenieOutcome.Failed, true)]
     [InlineData("CANCELLED", GenieOutcome.Cancelled, true)]
+    [InlineData("QUERY_RESULT_EXPIRED", GenieOutcome.Completed, true)]
     [InlineData("FUTURE_PENDING", GenieOutcome.Unknown, false)]
     public async Task A_single_read_preserves_status_and_terminal_state(string status, GenieOutcome outcome, bool terminal)
     {
@@ -212,7 +213,54 @@ public sealed class GenieMessageOperationsTests
         await fixture.Ownership.RecordAsync("conv", "owner", TestContext.Current.CancellationToken);
         var answer = await fixture.Client.WaitForResponseAsync(Tenant, "owner", "conv", "msg", TestContext.Current.CancellationToken);
         answer.ShouldBe(new GenieAnswer("conv", "msg", GenieOutcome.TimedOut, null, null));
-        await Should.ThrowAsync<TimeoutException>(() => fixture.Client.GetMessageAsync(Tenant, "owner", "conv", "msg", TestContext.Current.CancellationToken));
+        var read = await Should.ThrowAsync<TimeoutException>(() => fixture.Client.GetMessageAsync(Tenant, "owner", "conv", "msg", TestContext.Current.CancellationToken));
+        read.ShouldNotBeOfType<GenieResponseTimeoutException>();
+    }
+
+    [Fact]
+    public async Task A_per_request_http_timeout_during_a_wait_polls_again_instead_of_looking_like_cancellation()
+    {
+        var gets = 0;
+        using var fixture = new Fixture((_, _) => ++gets == 1
+            ? throw HttpClientTimeout()
+            : Task.FromResult(Json("""{"status":"COMPLETED"}""")));
+        await fixture.Ownership.RecordAsync("conv", "owner", TestContext.Current.CancellationToken);
+
+        var waiting = fixture.Client.WaitForResponseAsync(Tenant, "owner", "conv", "msg", TestContext.Current.CancellationToken);
+        for (var step = 0; step < 10 && !waiting.IsCompleted; step++)
+        {
+            // Releases the one-second poll backoff; the five-second deadline is never reached.
+            await Task.Delay(10, TestContext.Current.CancellationToken);
+            fixture.Time.Advance(TimeSpan.FromMilliseconds(500));
+        }
+
+        var answer = await waiting;
+        answer.Outcome.ShouldBe(GenieOutcome.Completed);
+        fixture.Handler.Methods.ShouldBe([HttpMethod.Get, HttpMethod.Get]);
+    }
+
+    [Fact]
+    public async Task A_per_request_http_timeout_reports_a_read_timeout_or_unknown_acceptance()
+    {
+        using var fixture = new Fixture((_, _) => throw HttpClientTimeout());
+        await fixture.Ownership.RecordAsync("conv", "owner", TestContext.Current.CancellationToken);
+
+        var read = await Should.ThrowAsync<TimeoutException>(() => fixture.Client.GetMessageAsync(Tenant, "owner", "conv", "msg", TestContext.Current.CancellationToken));
+        read.ShouldNotBeOfType<GenieResponseTimeoutException>();
+        await Should.ThrowAsync<GenieResponseTimeoutException>(() => fixture.Client.SendMessageAsync(Tenant, "owner", "conv", "question", TestContext.Current.CancellationToken));
+        await Should.ThrowAsync<GenieResponseTimeoutException>(() => fixture.Client.StartConversationAsync(Tenant, "owner", "question", TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData("""{"conversation_id":"..","message_id":"msg"}""")]
+    [InlineData("""{"conversation_id":"conv","message_id":" "}""")]
+    [InlineData("""{"conversation_id":"conv"}""")]
+    public async Task An_invalid_accepted_identity_is_a_platform_error_not_a_caller_error(string body)
+    {
+        using var fixture = new Fixture((_, _) => Task.FromResult(Json(body)));
+        var failure = await Should.ThrowAsync<InvalidOperationException>(() => fixture.Client.StartConversationAsync(Tenant, "owner", "question", TestContext.Current.CancellationToken));
+        failure.ShouldBeOfType<InvalidOperationException>();
+        (await fixture.Ownership.ListAsync("owner", TestContext.Current.CancellationToken)).ShouldBeEmpty();
     }
 
     [Theory]
@@ -227,6 +275,7 @@ public sealed class GenieMessageOperationsTests
         await Should.ThrowAsync<ArgumentException>(() => fixture.Client.GetMessageAsync(Tenant, "owner", "conv", id, TestContext.Current.CancellationToken));
         await Should.ThrowAsync<ArgumentException>(() => fixture.Client.WaitForResponseAsync(Tenant, "owner", id, "msg", TestContext.Current.CancellationToken));
         await Should.ThrowAsync<ArgumentException>(() => fixture.Client.SendMessageAsync(Tenant, "owner", id, "question", TestContext.Current.CancellationToken));
+        await Should.ThrowAsync<ArgumentException>(() => fixture.Client.DeleteAsync(Tenant, "owner", id, TestContext.Current.CancellationToken));
         fixture.Credential.Calls.ShouldBe(0);
     }
 
@@ -235,11 +284,15 @@ public sealed class GenieMessageOperationsTests
     {
         IGenieConversations legacy = new LegacyAdapter();
         (await legacy.ListAsync("owner", TestContext.Current.CancellationToken)).ShouldBeEmpty();
-        Should.Throw<NotSupportedException>(() => legacy.StartConversationAsync(Tenant, "owner", "question", TestContext.Current.CancellationToken));
-        Should.Throw<NotSupportedException>(() => legacy.SendMessageAsync(Tenant, "owner", "conv", "question", TestContext.Current.CancellationToken));
-        Should.Throw<NotSupportedException>(() => legacy.GetMessageAsync(Tenant, "owner", "conv", "msg", TestContext.Current.CancellationToken));
-        Should.Throw<NotSupportedException>(() => legacy.WaitForResponseAsync(Tenant, "owner", "conv", "msg", TestContext.Current.CancellationToken));
+        await Should.ThrowAsync<NotSupportedException>(() => legacy.StartConversationAsync(Tenant, "owner", "question", TestContext.Current.CancellationToken));
+        await Should.ThrowAsync<NotSupportedException>(() => legacy.SendMessageAsync(Tenant, "owner", "conv", "question", TestContext.Current.CancellationToken));
+        await Should.ThrowAsync<NotSupportedException>(() => legacy.GetMessageAsync(Tenant, "owner", "conv", "msg", TestContext.Current.CancellationToken));
+        await Should.ThrowAsync<NotSupportedException>(() => legacy.WaitForResponseAsync(Tenant, "owner", "conv", "msg", TestContext.Current.CancellationToken));
     }
+
+    /// <summary>What <see cref="HttpClient.Timeout"/> throws: a cancellation the caller did not ask for.</summary>
+    private static TaskCanceledException HttpClientTimeout() =>
+        new("The request was canceled due to the configured HttpClient.Timeout.", new TimeoutException());
 
     private static HttpResponseMessage Json(string body) => new(HttpStatusCode.OK)
     {
